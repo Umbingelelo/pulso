@@ -217,6 +217,107 @@ tr:last-child td{ border-bottom:none; }
 .acceso .lockup{ display:block; height:44px; width:auto; margin:0 auto 26px; }
 
 /* ============================================================
+   Preguntas de alternativa
+   ============================================================ */
+.pregunta{ padding:26px 0; }
+.pregunta + .pregunta{ border-top:1px solid var(--borde); }
+.pregunta:last-child{ padding-bottom:4px; }
+
+.enunciado{ display:flex; gap:14px; align-items:flex-start; }
+.enunciado .numero{
+  flex:none; min-width:34px; height:26px; padding:0 8px;
+  display:grid; place-items:center;
+  background:var(--celeste-suave); color:var(--azul);
+  border-radius:7px; font-size:12.5px; font-weight:700; letter-spacing:.02em;
+  margin-top:2px;
+}
+.enunciado .texto{ font-size:16px; font-weight:500; line-height:1.55; }
+.enunciado code{ font-weight:600; }
+
+.pregunta pre{ margin:14px 0 0 48px; font-size:13.5px; }
+@media (max-width:640px){ .pregunta pre{ margin-left:0; } }
+
+.ops{ display:flex; flex-direction:column; gap:9px; margin:16px 0 0 48px; }
+@media (max-width:640px){ .ops{ margin-left:0; } }
+
+.op{
+  position:relative;
+  /* flex-direction explícito: .op es un <label>, y la regla general de label
+     usa column para los formularios. Sin esto la letra cae sobre el texto. */
+  display:flex; flex-direction:row; gap:13px; align-items:flex-start;
+  padding:13px 16px; background:var(--blanco);
+  border:1.5px solid var(--borde); border-radius:var(--r-chico);
+  font-size:15px; line-height:1.5; cursor:pointer;
+  transition:border-color .13s, background .13s;
+}
+.op:hover{ border-color:var(--celeste); background:var(--celeste-suave); }
+
+/* El radio nativo se esconde pero sigue enfocable con el teclado */
+.op input{
+  position:absolute; opacity:0; width:1px; height:1px; margin:0; pointer-events:none;
+}
+.op:has(input:focus-visible){ border-color:var(--azul); box-shadow:0 0 0 3px rgba(14,186,253,.22); }
+
+.op .letra{
+  flex:none; width:27px; height:27px; border-radius:50%;
+  display:grid; place-items:center;
+  background:var(--fondo); color:var(--texto-suave);
+  border:1.5px solid var(--borde);
+  font-size:12.5px; font-weight:700; line-height:1;
+  transition:background .13s, color .13s, border-color .13s;
+}
+
+.op.marcada{ border-color:var(--azul); background:var(--celeste-suave); }
+.op.marcada .letra{ background:var(--azul); color:#fff; border-color:var(--azul); }
+
+/* Corregido: el color no va solo, la letra pasa a ✓ o ✗ */
+.op.correcta{ border-color:var(--verde); background:var(--verde-suave); }
+.op.correcta .letra{ background:var(--verde); border-color:var(--verde); color:#fff; font-size:0; }
+.op.correcta .letra::after{ content:'✓'; font-size:14px; }
+.op.fallada{ border-color:var(--rojo); background:var(--rojo-suave); }
+.op.fallada .letra{ background:var(--rojo); border-color:var(--rojo); color:#fff; font-size:0; }
+.op.fallada .letra::after{ content:'✗'; font-size:14px; }
+
+/* Ya corregido: deja de invitar al clic */
+.op.bloqueada{ cursor:default; }
+.op.bloqueada:hover{ border-color:var(--borde); background:var(--blanco); }
+.op.bloqueada.correcta:hover{ border-color:var(--verde); background:var(--verde-suave); }
+.op.bloqueada.fallada:hover{ border-color:var(--rojo);  background:var(--rojo-suave); }
+.op.bloqueada.marcada:hover{ border-color:var(--azul);  background:var(--celeste-suave); }
+
+.explicacion{
+  margin:12px 0 0 48px; padding:14px 16px;
+  background:var(--fondo); border-left:3px solid var(--celeste);
+  border-radius:0 var(--r-chico) var(--r-chico) 0;
+  font-size:14px; color:var(--texto-suave);
+}
+.explicacion .rotulo{
+  display:block; font-size:11px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--etiqueta); margin-bottom:5px;
+}
+.explicacion code{ background:var(--celeste-suave); }
+@media (max-width:640px){ .explicacion{ margin-left:0; } }
+
+/* Cabecera de sección con su avance */
+.cabecera-seccion{
+  display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;
+}
+
+/* Barra fija con el avance y el botón de entrega */
+.barra-entrega{
+  position:sticky; bottom:0; z-index:5;
+  margin:0 -28px -26px; padding:18px 28px;
+  background:rgba(255,255,255,.94); backdrop-filter:blur(8px);
+  border-top:1px solid var(--borde);
+  border-radius:0 0 var(--r) var(--r);
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+}
+.barra-entrega .avance{ flex:1; min-width:180px; }
+.barra-entrega .avance .cuenta{
+  display:flex; justify-content:space-between; font-size:13px; margin-bottom:7px;
+}
+
+/* ============================================================
    Avatares
    ============================================================ */
 .avatar-grande{

@@ -57,36 +57,58 @@ const CODIGO = 'diagnostico-entrada';
     @if (!yaHecho()) {
       @for (sec of secciones; track sec.id) {
         <div class="tarjeta" style="margin-bottom:20px">
-          <h2>Sección {{ sec.id }} · {{ sec.titulo }}</h2>
+          <div class="cabecera-seccion">
+            <h2>Sección {{ sec.id }} · {{ sec.titulo }}</h2>
+            @if (!corregido()) {
+              <span class="insignia" [class.verde]="respondidasEn(sec) === sec.preguntas.length"
+                    [class.celeste]="respondidasEn(sec) < sec.preguntas.length">
+                {{ respondidasEn(sec) }} de {{ sec.preguntas.length }}
+              </span>
+            } @else {
+              <span class="insignia" [class.verde]="puntaje(sec.id) >= sec.umbral"
+                    [class.roja]="puntaje(sec.id) < sec.umbral">
+                {{ puntaje(sec.id) }} de {{ max(sec) }} correctas
+              </span>
+            }
+          </div>
+
           @if (sec.intro) {
             <div class="aviso dato" style="margin-top:12px">{{ sec.intro }}</div>
           }
 
           @for (p of sec.preguntas; track $index; let ip = $index) {
-            <div style="margin-top:24px">
-              <p style="font-weight:500">
-                <span style="color:var(--azul);font-weight:700">{{ sec.id }}{{ ip + 1 }}.</span>
-                <span [innerHTML]="p.t"></span>
-              </p>
+            <div class="pregunta">
+              <div class="enunciado">
+                <span class="numero">{{ sec.id }}{{ ip + 1 }}</span>
+                <span class="texto" [innerHTML]="p.t"></span>
+              </div>
+
               @if (p.codigo) {
-                <pre style="margin-top:10px"><code>{{ p.codigo }}</code></pre>
+                <pre><code>{{ p.codigo }}</code></pre>
               }
-              <div class="ops" style="margin-top:10px">
+
+              <div class="ops">
                 @for (op of conNoSe(p.ops); track $index; let io = $index) {
                   <label class="op"
-                         [class.marcada]="!corregido() && respuesta(sec.id, ip) === io"
+                         [class.bloqueada]="corregido()"
+                         [class.marcada]="respuesta(sec.id, ip) === io && (!corregido() || p.ok === undefined)"
                          [class.correcta]="corregido() && p.ok === io"
-                         [class.fallada]="corregido() && p.ok !== io && respuesta(sec.id, ip) === io">
+                         [class.fallada]="corregido() && p.ok !== undefined && p.ok !== io && respuesta(sec.id, ip) === io">
                     <input type="radio" [name]="sec.id + ip"
                            [checked]="respuesta(sec.id, ip) === io"
                            [disabled]="corregido()"
                            (change)="marcar(sec.id, ip, io)">
+                    <span class="letra">{{ letra(io) }}</span>
                     <span>{{ op }}</span>
                   </label>
                 }
               </div>
+
               @if (corregido()) {
-                <div class="aviso dato" style="margin-top:10px" [innerHTML]="p.exp"></div>
+                <div class="explicacion">
+                  <span class="rotulo">{{ p.ok === undefined ? 'Por qué la pregunté' : 'Por qué' }}</span>
+                  <span [innerHTML]="p.exp"></span>
+                </div>
               }
             </div>
           }
@@ -96,11 +118,23 @@ const CODIGO = 'diagnostico-entrada';
       @if (!corregido()) {
         <div class="tarjeta">
           @if (error()) { <div class="aviso malo" style="margin-bottom:14px">{{ error() }}</div> }
-          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <div class="barra-entrega">
+            <div class="avance">
+              <div class="cuenta">
+                <span class="suave">{{ total - faltan() }} de {{ total }} respondidas</span>
+                @if (faltan() === 0) {
+                  <span style="color:var(--verde);font-weight:600">Listo para entregar</span>
+                } @else {
+                  <span class="suave">Faltan {{ faltan() }}</span>
+                }
+              </div>
+              <div class="barra" [class.verde]="faltan() === 0">
+                <i [style.width.%]="(total - faltan()) / total * 100"></i>
+              </div>
+            </div>
             <button class="boton" (click)="entregar()" [disabled]="guardando()">
-              {{ guardando() ? 'Registrando…' : 'Entregar y ver mi resultado' }}
+              {{ guardando() ? 'Registrando…' : 'Entregar' }}
             </button>
-            <span class="chico suave">{{ faltan() === 0 ? 'Todas respondidas.' : 'Faltan ' + faltan() + ' de ' + total + '.' }}</span>
           </div>
         </div>
       }
@@ -195,6 +229,15 @@ export class DiagnosticoComponent {
 
   conNoSe(ops: string[]): string[] {
     return [...ops, NO_SE];
+  }
+
+  letra(i: number): string {
+    return String.fromCharCode(65 + i);
+  }
+
+  respondidasEn(sec: typeof SECCIONES[number]): number {
+    const e = this.elegidas();
+    return sec.preguntas.filter((_, i) => e[`${sec.id}${i}`] !== undefined).length;
   }
 
   max(sec: typeof SECCIONES[number]): number {

@@ -7,38 +7,41 @@ import { Asignatura, DatosService, Seccion } from './datos.service';
   selector: 'app-registro',
   imports: [FormsModule, RouterLink],
   template: `
+   <div class="acceso"><div class="caja">
+    <img class="lockup" src="pulso-lockup.png" alt="Pulso">
     <div class="tarjeta">
-      <p class="sobre-titulo">Pulso</p>
       <h1>Crear mi cuenta</h1>
-      <p class="suave">Regístrate con tu correo institucional. Al terminar recibes tus primeros puntos.</p>
+      <p class="suave chico" style="margin-top:4px">
+        Regístrate con tu correo institucional. Al terminar recibes tus primeros puntos.
+      </p>
 
       @if (enviado()) {
-        <div class="aviso ok">
+        <div class="aviso ok" style="margin:20px 0">
           <strong>Cuenta creada.</strong> Revisa tu correo para confirmarla y después inicia sesión.
         </div>
         <a routerLink="/ingresar" class="boton">Ir a iniciar sesión</a>
       } @else {
-        <form (ngSubmit)="registrar()">
+        <form (ngSubmit)="registrar()" style="margin-top:22px">
           <label>
-            Nombre completo
+            <span class="etiqueta">Nombre completo</span>
             <input name="nombre" [(ngModel)]="nombre" required minlength="3"
                    autocomplete="name" placeholder="Nombre y apellido">
           </label>
 
           <label>
-            Correo institucional
+            <span class="etiqueta">Correo institucional</span>
             <input name="correo" type="email" [(ngModel)]="correo" required
                    autocomplete="email" placeholder="nombre@duocuc.cl">
           </label>
 
           <label>
-            Contraseña
+            <span class="etiqueta">Contraseña</span>
             <input name="clave" type="password" [(ngModel)]="clave" required minlength="8"
                    autocomplete="new-password" placeholder="Mínimo 8 caracteres">
           </label>
 
           <label>
-            Asignatura
+            <span class="etiqueta">Asignatura</span>
             <select name="asignatura" [ngModel]="asignaturaId()"
                     (ngModelChange)="cambiarAsignatura($event)" required>
               <option value="" disabled>Selecciona una</option>
@@ -49,7 +52,7 @@ import { Asignatura, DatosService, Seccion } from './datos.service';
           </label>
 
           <label>
-            Sección
+            <span class="etiqueta">Sección</span>
             <select name="seccion" [(ngModel)]="seccionId" required
                     [disabled]="!asignaturaId() || secciones().length === 0">
               <option value="" disabled>
@@ -75,6 +78,7 @@ import { Asignatura, DatosService, Seccion } from './datos.service';
         </p>
       }
     </div>
+   </div></div>
   `,
 })
 export class RegistroComponent {

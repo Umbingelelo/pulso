@@ -31,6 +31,7 @@ const soloSinSesion: CanActivateFn = async () => {
 };
 
 export const routes: Routes = [
+  // Acceso: pantallas centradas, sin barra lateral
   {
     path: 'registro',
     canActivate: [soloSinSesion],
@@ -41,11 +42,19 @@ export const routes: Routes = [
     canActivate: [soloSinSesion],
     loadComponent: () => import('./login.component').then(m => m.LoginComponent),
   },
+
+  // Con sesión: todo vive dentro del marco con barra lateral
   {
-    path: 'inicio',
+    path: '',
     canActivate: [soloConSesion],
-    loadComponent: () => import('./inicio.component').then(m => m.InicioComponent),
+    loadComponent: () => import('./marco.component').then(m => m.MarcoComponent),
+    children: [
+      { path: 'inicio', loadComponent: () => import('./inicio.component').then(m => m.InicioComponent) },
+      { path: 'perfil', loadComponent: () => import('./perfil.component').then(m => m.PerfilComponent) },
+      { path: 'puntos', loadComponent: () => import('./puntos.component').then(m => m.PuntosComponent) },
+      { path: '', pathMatch: 'full', redirectTo: 'inicio' },
+    ],
   },
-  { path: '', pathMatch: 'full', redirectTo: 'inicio' },
+
   { path: '**', redirectTo: 'inicio' },
 ];

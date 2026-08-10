@@ -18,6 +18,7 @@ export interface Perfil {
   id: string;
   nombre: string;
   seccion_id: string;
+  avatar: string;
   creado_en: string;
 }
 
@@ -107,7 +108,7 @@ export class DatosService {
   async miPerfil(): Promise<(Perfil & { seccion: string; asignatura: string }) | null> {
     const { data, error } = await this.sb
       .from('perfiles')
-      .select('id, nombre, seccion_id, creado_en, secciones(codigo, asignaturas(sigla, nombre))')
+      .select('id, nombre, seccion_id, avatar, creado_en, secciones(codigo, asignaturas(sigla, nombre))')
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
@@ -117,12 +118,21 @@ export class DatosService {
       id: data.id,
       nombre: data.nombre,
       seccion_id: data.seccion_id,
+      avatar: data.avatar,
       creado_en: data.creado_en,
       seccion: seccion?.codigo ?? '—',
       asignatura: seccion?.asignaturas
         ? `${seccion.asignaturas.sigla} · ${seccion.asignaturas.nombre}`
         : '—',
     };
+  }
+
+  /** Guarda el avatar elegido, en formato "estilo:semilla". */
+  async guardarAvatar(clave: string): Promise<void> {
+    const u = this.usuario();
+    if (!u) throw new Error('Sin sesión');
+    const { error } = await this.sb.from('perfiles').update({ avatar: clave }).eq('id', u.id);
+    if (error) throw error;
   }
 
   /**

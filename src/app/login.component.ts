@@ -7,19 +7,20 @@ import { DatosService } from './datos.service';
   selector: 'app-login',
   imports: [FormsModule, RouterLink],
   template: `
+   <div class="acceso"><div class="caja">
+    <img class="lockup" src="pulso-lockup.png" alt="Pulso">
     <div class="tarjeta">
-      <p class="sobre-titulo">Pulso</p>
       <h1>Iniciar sesión</h1>
 
-      <form (ngSubmit)="ingresar()">
+      <form (ngSubmit)="ingresar()" style="margin-top:22px">
         <label>
-          Correo institucional
+          <span class="etiqueta">Correo institucional</span>
           <input name="correo" type="email" [(ngModel)]="correo" required
                  autocomplete="email" placeholder="nombre@duocuc.cl">
         </label>
 
         <label>
-          Contraseña
+          <span class="etiqueta">Contraseña</span>
           <input name="clave" type="password" [(ngModel)]="clave" required
                  autocomplete="current-password">
         </label>
@@ -37,6 +38,7 @@ import { DatosService } from './datos.service';
         ¿Primera vez? <a routerLink="/registro">Crea tu cuenta</a>
       </p>
     </div>
+   </div></div>
   `,
 })
 export class LoginComponent {

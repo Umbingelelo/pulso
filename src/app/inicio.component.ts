@@ -1,98 +1,124 @@
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
-import { DatosService, Movimiento, Perfil } from './datos.service';
-
-type PerfilCompleto = Perfil & { seccion: string; asignatura: string };
+import { Component, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { AvatarService } from './avatar.service';
+import { DatosService, Movimiento } from './datos.service';
+import { PerfilStore } from './perfil.store';
 
 @Component({
   selector: 'app-inicio',
-  imports: [DatePipe],
+  imports: [DatePipe, RouterLink],
   template: `
-    <div class="tarjeta ancha">
-      <div class="cabecera">
-        <div>
-          <p class="sobre-titulo">Pulso</p>
-          <h1>{{ perfil()?.nombre ?? 'Mi cuenta' }}</h1>
-          @if (perfil()) {
-            <p class="suave">{{ perfil()!.asignatura }} — sección {{ perfil()!.seccion }}</p>
-          }
-        </div>
-        <button class="boton fantasma" (click)="salir()">Salir</button>
-      </div>
+    <div class="encabezado">
+      <h1>Hola, {{ primerNombre() }}</h1>
+      <p>{{ perfil.perfil()?.asignatura ?? '' }}</p>
+    </div>
 
-      @if (cargando()) {
-        <p class="suave">Cargando…</p>
-      } @else if (!perfil()) {
+    @if (perfil.cargando()) {
+      <div class="tarjeta"><p class="suave">Cargando…</p></div>
+    } @else if (!perfil.perfil()) {
+      <div class="tarjeta">
         <div class="aviso malo">
           <strong>Tu perfil está incompleto.</strong>
           Los datos del registro no alcanzaron a guardarse.
         </div>
-        <button class="boton" (click)="completar()">Completar mi perfil</button>
-        @if (error()) { <div class="aviso malo">{{ error() }}</div> }
-      } @else {
-        <div class="marcador">
-          <div class="saldo">{{ saldo() }}</div>
-          <div class="etq">puntos disponibles</div>
+        <button class="boton" style="margin-top:16px" (click)="completar()">Completar mi perfil</button>
+        @if (error()) { <div class="aviso malo" style="margin-top:12px">{{ error() }}</div> }
+      </div>
+    } @else {
+      <div class="rejilla tres" style="margin-bottom:20px">
+        <div class="tarjeta">
+          <p class="etiqueta">Puntos disponibles</p>
+          <p class="cifra destacada">{{ saldo() }}</p>
+          <p class="chico suave">Para canjear más adelante</p>
         </div>
 
-        <p class="suave chico">
-          Los puntos se van a poder canjear por elementos que te ayuden durante el semestre.
-          Por ahora, acumúlalos.
-        </p>
+        <div class="tarjeta">
+          <p class="etiqueta">Sección</p>
+          <p class="cifra">{{ perfil.perfil()!.seccion }}</p>
+          <p class="chico suave">Tu grupo del semestre</p>
+        </div>
 
-        <h2>Movimientos</h2>
-        @if (movimientos().length === 0) {
-          <p class="suave">Todavía no tienes movimientos.</p>
-        } @else {
-          <table>
-            <tr><th>Motivo</th><th class="der">Puntos</th><th class="der">Fecha</th></tr>
-            @for (m of movimientos(); track m.id) {
-              <tr>
-                <td>{{ m.motivo }}</td>
-                <td class="der num" [class.mas]="m.puntos > 0" [class.menos]="m.puntos < 0">
-                  {{ m.puntos > 0 ? '+' : '' }}{{ m.puntos }}
-                </td>
-                <td class="der num suave">{{ m.creado_en | date:'dd/MM/yyyy' }}</td>
-              </tr>
+        <div class="tarjeta">
+          <p class="etiqueta">Avance del semestre</p>
+          <p class="cifra">{{ avanceSemana }}<span style="font-size:20px;color:var(--texto-suave)">/18</span></p>
+          <div class="barra" style="margin-top:10px"><i [style.width.%]="avanceSemana / 18 * 100"></i></div>
+        </div>
+      </div>
+
+      <div class="rejilla dos">
+        <div class="tarjeta">
+          <h2>Tu avatar</h2>
+          <div style="display:flex;align-items:center;gap:18px;margin-top:16px">
+            <img class="avatar-grande" [src]="avatar()" alt="Tu avatar">
+            <div>
+              <p class="chico suave" style="margin-bottom:10px">
+                Así te ven en Pulso. Puedes cambiarlo cuando quieras.
+              </p>
+              <a class="boton accion chico" routerLink="/perfil">Elegir otro</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="tarjeta">
+          <h2>Últimos movimientos</h2>
+          @if (movimientos().length === 0) {
+            <p class="suave chico" style="margin-top:12px">Todavía no tienes movimientos.</p>
+          } @else {
+            <table style="margin-top:12px">
+              @for (m of ultimos(); track m.id) {
+                <tr>
+                  <td>{{ m.motivo }}</td>
+                  <td class="der num" [class.mas]="m.puntos > 0" [class.menos]="m.puntos < 0">
+                    {{ m.puntos > 0 ? '+' : '' }}{{ m.puntos }}
+                  </td>
+                  <td class="der num suave chico">{{ m.creado_en | date:'dd/MM' }}</td>
+                </tr>
+              }
+            </table>
+            @if (movimientos().length > 4) {
+              <a class="chico" routerLink="/puntos" style="display:inline-block;margin-top:14px">
+                Ver todos los movimientos
+              </a>
             }
-          </table>
-        }
-      }
-    </div>
+          }
+        </div>
+      </div>
+    }
   `,
 })
 export class InicioComponent {
+  protected perfil = inject(PerfilStore);
   private datos = inject(DatosService);
-  private router = inject(Router);
+  private avatares = inject(AvatarService);
 
-  perfil = signal<PerfilCompleto | null>(null);
+  /** Semana del semestre; por ahora fija, la calcularemos cuando exista el avance real. */
+  protected readonly avanceSemana = 1;
+
   saldo = signal(0);
   movimientos = signal<Movimiento[]>([]);
-  cargando = signal(true);
   error = signal('');
+
+  avatar = computed(() => this.avatares.imagen(this.perfil.perfil()?.avatar ?? 'thumbs:inicial', 152));
+  primerNombre = computed(() => (this.perfil.perfil()?.nombre ?? '').split(' ')[0] || 'de nuevo');
+  ultimos = computed(() => this.movimientos().slice(0, 4));
 
   constructor() {
     this.cargar();
   }
 
   private async cargar(): Promise<void> {
-    this.cargando.set(true);
+    await this.perfil.cargar();
+    if (!this.perfil.perfil()) return;
     try {
-      const p = await this.datos.miPerfil();
-      this.perfil.set(p);
-      if (p) {
-        const [saldo, movs] = await Promise.all([
-          this.datos.miSaldo(),
-          this.datos.misMovimientos(),
-        ]);
-        this.saldo.set(saldo);
-        this.movimientos.set(movs);
-      }
+      const [saldo, movs] = await Promise.all([
+        this.datos.miSaldo(),
+        this.datos.misMovimientos(),
+      ]);
+      this.saldo.set(saldo);
+      this.movimientos.set(movs);
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudieron cargar tus datos.');
-    } finally {
-      this.cargando.set(false);
     }
   }
 
@@ -100,14 +126,10 @@ export class InicioComponent {
     this.error.set('');
     try {
       await this.datos.completarPerfil();
+      await this.perfil.cargar(true);
       await this.cargar();
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo completar el perfil.');
     }
-  }
-
-  async salir(): Promise<void> {
-    await this.datos.salir();
-    this.router.navigate(['/ingresar']);
   }
 }

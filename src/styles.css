@@ -1,117 +1,236 @@
 /* ============================================================
-   Pulso — identidad visual
-   Misma paleta que el material del curso: azul de la Escuela de
-   Informática y Telecomunicaciones sobre fondo claro.
+   Pulso — sistema de diseño
+   Colores tomados del logo: azul #0D2679, celeste #0EBAFD,
+   turquesa #2DF8D4. Fondo gris muy claro, tarjetas blancas.
    ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root{
-  --fondo:#FFFFFF;
-  --fondo-alt:#F1F6FD;
-  --marco:#DDE5F0;
-  --borde:#CBD9EC;
-  --texto:#1A1A1A;
-  --texto-suave:#666666;
-  --etiqueta:#2A6BC4;
-  --acento:#307FE2;
-  --acento-fuerte:#1F5FB0;
-  --acento-2:#FFB800;
-  --ok:#1E7A4B;
-  --ok-fondo:#E7F5EE;
-  --error:#C0392B;
-  --error-fondo:#FCECEA;
-  --fuente:'Montserrat','Segoe UI',system-ui,-apple-system,sans-serif;
-  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-  --r:12px;
+  /* Marca */
+  --azul-900:#081A55;
+  --azul:#0D2679;
+  --azul-700:#1B3894;
+  --celeste:#0EBAFD;
+  --celeste-oscuro:#0680B0;   /* variante legible como texto sobre blanco */
+  --turquesa:#2DF8D4;
+
+  /* Superficies */
+  --fondo:#F4F6FA;
+  --blanco:#FFFFFF;
+  --borde:#E6EAF2;
+  --celeste-suave:#E8F7FE;
+
+  /* Texto */
+  --texto:#111827;
+  --texto-suave:#6B7280;
+
+  /* Estados */
+  --verde:#16A34A;      --verde-suave:#E9F7EF;
+  --amarillo:#F59E0B;   --amarillo-suave:#FEF5E7;
+  --rojo:#DC2626;       --rojo-suave:#FDECEC;
+
+  --sombra:0 1px 2px rgba(13,38,121,.05), 0 8px 24px rgba(13,38,121,.06);
+  --sombra-alta:0 2px 4px rgba(13,38,121,.06), 0 16px 40px rgba(13,38,121,.10);
+  --r:16px;
+  --r-chico:10px;
+  --lateral:248px;
 }
 
 *{ box-sizing:border-box; margin:0; padding:0; }
 
 body{
-  background:var(--marco);
+  background:var(--fondo);
   color:var(--texto);
-  font-family:var(--fuente);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:15px;
   line-height:1.6;
+  -webkit-font-smoothing:antialiased;
 }
 
-.marco{ min-height:100vh; display:grid; place-items:center; padding:40px 20px; }
-
-.tarjeta{
-  width:100%; max-width:440px;
-  background:var(--fondo); border-radius:16px;
-  box-shadow:0 2px 24px rgba(26,26,26,.10);
-  padding:40px 44px;
-}
-.tarjeta.ancha{ max-width:640px; }
-@media (max-width:520px){ .tarjeta{ padding:28px 24px; } }
-
-.sobre-titulo{
-  font-size:13px; letter-spacing:.18em; text-transform:uppercase;
-  color:var(--etiqueta); font-weight:650;
-}
-h1{ font-size:30px; line-height:1.2; letter-spacing:-.02em; margin:4px 0 8px; }
-h2{ font-size:20px; margin:32px 0 12px; padding-top:20px; border-top:2px solid var(--borde); }
+h1{ font-size:26px; font-weight:700; line-height:1.25; letter-spacing:-.02em; }
+h2{ font-size:18px; font-weight:600; letter-spacing:-.01em; }
+h3{ font-size:15px; font-weight:600; }
 .suave{ color:var(--texto-suave); }
-.chico{ font-size:14px; }
-a{ color:var(--acento-fuerte); }
+.chico{ font-size:13.5px; }
+a{ color:var(--azul); text-decoration:none; font-weight:500; }
+a:hover{ text-decoration:underline; }
 
-form{ display:flex; flex-direction:column; gap:18px; margin:26px 0 22px; }
+/* ============================================================
+   Estructura con barra lateral
+   ============================================================ */
+.aplicacion{ display:grid; grid-template-columns:var(--lateral) 1fr; min-height:100vh; }
 
-label{
-  display:flex; flex-direction:column; gap:7px;
-  font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--etiqueta);
+.lateral{
+  background:var(--azul);
+  padding:26px 18px;
+  display:flex; flex-direction:column; gap:30px;
+  position:sticky; top:0; height:100vh;
 }
+.lateral .marca{ display:flex; align-items:center; gap:11px; padding:0 8px; }
+.lateral .marca img{ height:34px; width:auto; }
+.lateral .marca span{ color:#fff; font-size:20px; font-weight:700; letter-spacing:-.02em; }
+
+.menu{ display:flex; flex-direction:column; gap:4px; }
+.menu a, .menu button{
+  display:flex; align-items:center; gap:12px;
+  padding:11px 14px; border-radius:var(--r-chico);
+  color:rgba(255,255,255,.72); font-size:14.5px; font-weight:500;
+  background:none; border:none; font-family:inherit; text-align:left;
+  cursor:pointer; width:100%; text-decoration:none;
+}
+.menu a:hover, .menu button:hover{ background:rgba(255,255,255,.09); color:#fff; text-decoration:none; }
+.menu a.activo{ background:rgba(14,186,253,.18); color:#fff; }
+.menu a.activo svg{ color:var(--celeste); }
+.menu svg{ width:19px; height:19px; flex:none; }
+
+.lateral .pie{ margin-top:auto; }
+.usuario-lateral{
+  display:flex; align-items:center; gap:11px;
+  padding:11px 14px; border-radius:var(--r-chico);
+  background:rgba(255,255,255,.07);
+}
+.usuario-lateral img{ width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.15); flex:none; }
+.usuario-lateral .datos{ min-width:0; }
+.usuario-lateral .nom{ color:#fff; font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.usuario-lateral .sec{ color:rgba(255,255,255,.6); font-size:12px; }
+
+.contenido{ padding:32px 40px 60px; min-width:0; }
+.encabezado{ margin-bottom:26px; }
+.encabezado p{ color:var(--texto-suave); margin-top:3px; }
+
+@media (max-width:900px){
+  .aplicacion{ grid-template-columns:72px 1fr; }
+  .lateral{ padding:22px 12px; }
+  .lateral .marca span, .menu a span, .menu button span, .usuario-lateral .datos{ display:none; }
+  .lateral .marca, .menu a, .menu button, .usuario-lateral{ justify-content:center; }
+  .contenido{ padding:24px 20px 48px; }
+}
+
+/* ============================================================
+   Tarjetas
+   ============================================================ */
+.tarjeta{
+  background:var(--blanco); border:1px solid var(--borde);
+  border-radius:var(--r); box-shadow:var(--sombra);
+  padding:26px 28px;
+}
+.rejilla{ display:grid; gap:20px; }
+.rejilla.dos{ grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); }
+.rejilla.tres{ grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); }
+
+.etiqueta{
+  font-size:11.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--texto-suave);
+}
+
+/* Tarjeta de cifra grande */
+.cifra{ font-size:40px; font-weight:700; line-height:1.1; letter-spacing:-.03em; color:var(--azul); }
+.cifra.destacada{
+  background:linear-gradient(135deg,var(--azul) 0%,var(--celeste) 100%);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+}
+
+/* ============================================================
+   Barras de avance
+   ============================================================ */
+.barra{ height:9px; border-radius:999px; background:var(--borde); overflow:hidden; }
+.barra > i{
+  display:block; height:100%; border-radius:999px;
+  background:linear-gradient(90deg,var(--celeste) 0%,var(--turquesa) 100%);
+  transition:width .4s ease;
+}
+.barra.verde    > i{ background:var(--verde); }
+.barra.amarilla > i{ background:var(--amarillo); }
+.barra.roja     > i{ background:var(--rojo); }
+
+.insignia{
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:12.5px; font-weight:600; padding:4px 11px; border-radius:999px;
+}
+.insignia.verde   { background:var(--verde-suave);    color:var(--verde); }
+.insignia.amarilla{ background:var(--amarillo-suave); color:#B45309; }
+.insignia.roja    { background:var(--rojo-suave);     color:var(--rojo); }
+.insignia.celeste { background:var(--celeste-suave);  color:var(--celeste-oscuro); }
+
+/* ============================================================
+   Formularios
+   ============================================================ */
+form{ display:flex; flex-direction:column; gap:16px; }
+
+label{ display:flex; flex-direction:column; gap:6px; }
+label > .etiqueta{ margin-bottom:0; }
+
 input, select{
-  padding:13px 15px; font-size:16px; font-family:inherit;
-  color:var(--texto); background:var(--fondo);
-  border:2px solid var(--borde); border-radius:var(--r);
-  text-transform:none; letter-spacing:normal;
+  padding:12px 14px; font-size:15px; font-family:inherit;
+  color:var(--texto); background:var(--blanco);
+  border:1.5px solid var(--borde); border-radius:var(--r-chico);
+  transition:border-color .12s, box-shadow .12s;
 }
-input:focus, select:focus{ outline:none; border-color:var(--acento); }
-select:disabled{ background:var(--fondo-alt); color:var(--texto-suave); }
+input:focus, select:focus{
+  outline:none; border-color:var(--celeste);
+  box-shadow:0 0 0 3px rgba(14,186,253,.16);
+}
+input::placeholder{ color:#9CA3AF; }
+select:disabled{ background:var(--fondo); color:var(--texto-suave); }
 
 .boton{
-  display:inline-block; text-align:center; text-decoration:none;
-  background:var(--acento-fuerte); color:#fff;
-  border:none; border-radius:999px;
-  padding:14px 30px; font-size:16px; font-weight:650; font-family:inherit;
-  cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  background:var(--azul); color:#fff; border:none; border-radius:var(--r-chico);
+  padding:13px 24px; font-size:15px; font-weight:600; font-family:inherit;
+  cursor:pointer; text-decoration:none; transition:background .12s;
 }
-.boton:hover:not(:disabled){ background:var(--acento); }
+.boton:hover:not(:disabled){ background:var(--azul-900); text-decoration:none; }
 .boton:disabled{ opacity:.45; cursor:not-allowed; }
-.boton.fantasma{
-  background:transparent; color:var(--acento-fuerte);
-  border:2px solid var(--borde); padding:9px 20px; font-size:14px;
-}
-.boton.fantasma:hover{ border-color:var(--acento-fuerte); background:transparent; }
+/* Acciones y avances usan el celeste, con texto azul para que se lea bien */
+.boton.accion{ background:var(--celeste); color:var(--azul); }
+.boton.accion:hover:not(:disabled){ background:#0AA6E3; }
+.boton.contorno{ background:transparent; color:var(--azul); border:1.5px solid var(--borde); }
+.boton.contorno:hover:not(:disabled){ background:var(--fondo); border-color:var(--azul); }
+.boton.chico{ padding:9px 16px; font-size:13.5px; }
 
-.aviso{
-  border-radius:var(--r); padding:14px 18px; font-size:15px;
-  background:var(--fondo-alt); border-left:5px solid var(--acento-2);
-}
-.aviso.ok{ background:var(--ok-fondo); border-left-color:var(--ok); }
-.aviso.malo{ background:var(--error-fondo); border-left-color:var(--error); }
+.aviso{ border-radius:var(--r-chico); padding:13px 16px; font-size:14px; }
+.aviso.ok  { background:var(--verde-suave); color:#15803D; }
+.aviso.malo{ background:var(--rojo-suave);  color:#B91C1C; }
+.aviso.dato{ background:var(--celeste-suave); color:#075985; }
 
-.cabecera{ display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
-
-.marcador{
-  background:var(--fondo-alt); border:2px solid var(--acento);
-  border-radius:var(--r); padding:28px; text-align:center; margin:26px 0 14px;
-}
-.marcador .saldo{
-  font-size:64px; font-weight:700; line-height:1; color:var(--acento-fuerte);
-  font-variant-numeric:tabular-nums;
-}
-.marcador .etq{
-  font-size:13px; letter-spacing:.16em; text-transform:uppercase;
-  color:var(--texto-suave); margin-top:6px;
-}
-
+/* ============================================================
+   Tablas
+   ============================================================ */
 table{ width:100%; border-collapse:collapse; }
 th{
-  text-align:left; font-size:12px; letter-spacing:.1em; text-transform:uppercase;
-  color:var(--etiqueta); padding:10px 8px; border-bottom:2px solid var(--borde);
+  text-align:left; font-size:11.5px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--texto-suave);
+  padding:0 10px 10px; border-bottom:1px solid var(--borde);
 }
-td{ font-size:15px; padding:12px 8px; border-bottom:1px solid var(--borde); }
+td{ font-size:14.5px; padding:13px 10px; border-bottom:1px solid var(--borde); }
+tr:last-child td{ border-bottom:none; }
 .der{ text-align:right; }
 .num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
-.mas{ color:var(--ok); font-weight:650; }
-.menos{ color:var(--error); font-weight:650; }
+.mas  { color:var(--verde); font-weight:600; }
+.menos{ color:var(--rojo);  font-weight:600; }
+
+/* ============================================================
+   Pantallas de acceso (sin barra lateral)
+   ============================================================ */
+.acceso{ min-height:100vh; display:grid; place-items:center; padding:40px 20px; }
+.acceso .caja{ width:100%; max-width:420px; }
+.acceso .lockup{ display:block; height:44px; width:auto; margin:0 auto 26px; }
+
+/* ============================================================
+   Avatares
+   ============================================================ */
+.avatar-grande{
+  width:76px; height:76px; border-radius:50%;
+  background:var(--celeste-suave); border:2px solid var(--borde); flex:none;
+}
+.galeria-avatares{
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(78px,1fr)); gap:12px;
+}
+.opcion-avatar{
+  aspect-ratio:1; padding:5px; background:var(--blanco); cursor:pointer;
+  border:2px solid var(--borde); border-radius:var(--r-chico);
+  transition:border-color .12s, transform .12s;
+}
+.opcion-avatar:hover{ border-color:var(--celeste); transform:translateY(-2px); }
+.opcion-avatar.elegido{ border-color:var(--azul); background:var(--celeste-suave); }
+.opcion-avatar img{ width:100%; height:100%; display:block; }

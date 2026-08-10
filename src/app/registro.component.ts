@@ -1,0 +1,151 @@
+import { Component, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
+import { Asignatura, DatosService, Seccion } from './datos.service';
+
+@Component({
+  selector: 'app-registro',
+  imports: [FormsModule, RouterLink],
+  template: `
+    <div class="tarjeta">
+      <p class="sobre-titulo">Pulso</p>
+      <h1>Crear mi cuenta</h1>
+      <p class="suave">Regístrate con tu correo institucional. Al terminar recibes tus primeros puntos.</p>
+
+      @if (enviado()) {
+        <div class="aviso ok">
+          <strong>Cuenta creada.</strong> Revisa tu correo para confirmarla y después inicia sesión.
+        </div>
+        <a routerLink="/ingresar" class="boton">Ir a iniciar sesión</a>
+      } @else {
+        <form (ngSubmit)="registrar()">
+          <label>
+            Nombre completo
+            <input name="nombre" [(ngModel)]="nombre" required minlength="3"
+                   autocomplete="name" placeholder="Nombre y apellido">
+          </label>
+
+          <label>
+            Correo institucional
+            <input name="correo" type="email" [(ngModel)]="correo" required
+                   autocomplete="email" placeholder="nombre@duocuc.cl">
+          </label>
+
+          <label>
+            Contraseña
+            <input name="clave" type="password" [(ngModel)]="clave" required minlength="8"
+                   autocomplete="new-password" placeholder="Mínimo 8 caracteres">
+          </label>
+
+          <label>
+            Asignatura
+            <select name="asignatura" [ngModel]="asignaturaId()"
+                    (ngModelChange)="cambiarAsignatura($event)" required>
+              <option value="" disabled>Selecciona una</option>
+              @for (a of asignaturas(); track a.id) {
+                <option [value]="a.id">{{ a.sigla }} · {{ a.nombre }}</option>
+              }
+            </select>
+          </label>
+
+          <label>
+            Sección
+            <select name="seccion" [(ngModel)]="seccionId" required
+                    [disabled]="!asignaturaId() || secciones().length === 0">
+              <option value="" disabled>
+                {{ asignaturaId() ? 'Selecciona una' : 'Elige primero la asignatura' }}
+              </option>
+              @for (s of secciones(); track s.id) {
+                <option [value]="s.id">{{ s.codigo }}</option>
+              }
+            </select>
+          </label>
+
+          @if (error()) {
+            <div class="aviso malo">{{ error() }}</div>
+          }
+
+          <button class="boton" type="submit" [disabled]="cargando() || !completo()">
+            {{ cargando() ? 'Creando…' : 'Crear mi cuenta' }}
+          </button>
+        </form>
+
+        <p class="suave chico">
+          ¿Ya tienes cuenta? <a routerLink="/ingresar">Inicia sesión</a>
+        </p>
+      }
+    </div>
+  `,
+})
+export class RegistroComponent {
+  private datos = inject(DatosService);
+  private router = inject(Router);
+
+  nombre = '';
+  correo = '';
+  clave = '';
+  seccionId = '';
+
+  asignaturaId = signal('');
+  asignaturas = signal<Asignatura[]>([]);
+  secciones = signal<Seccion[]>([]);
+  cargando = signal(false);
+  enviado = signal(false);
+  error = signal('');
+
+  constructor() {
+    this.datos.asignaturas()
+      .then(a => this.asignaturas.set(a))
+      .catch(() => this.error.set('No se pudo cargar la lista de asignaturas.'));
+  }
+
+  completo(): boolean {
+    return this.nombre.trim().length >= 3 && this.correo.includes('@')
+      && this.clave.length >= 8 && !!this.seccionId;
+  }
+
+  async cambiarAsignatura(id: string): Promise<void> {
+    this.asignaturaId.set(id);
+    this.seccionId = '';
+    this.secciones.set([]);
+    if (!id) return;
+    try {
+      this.secciones.set(await this.datos.secciones(id));
+    } catch {
+      this.error.set('No se pudieron cargar las secciones.');
+    }
+  }
+
+  async registrar(): Promise<void> {
+    if (!this.completo() || this.cargando()) return;
+    this.cargando.set(true);
+    this.error.set('');
+    try {
+      const { conSesion } = await this.datos.registrar({
+        correo: this.correo.trim(),
+        clave: this.clave,
+        nombre: this.nombre.trim(),
+        seccionId: this.seccionId,
+      });
+      // Con confirmación de correo desactivada la sesión queda abierta al instante.
+      if (conSesion) this.router.navigate(['/inicio']);
+      else this.enviado.set(true);
+    } catch (e: any) {
+      this.error.set(traducir(e?.message ?? 'No se pudo crear la cuenta.'));
+    } finally {
+      this.cargando.set(false);
+    }
+  }
+}
+
+/** Los mensajes de Supabase vienen en inglés; los más comunes se traducen. */
+function traducir(mensaje: string): string {
+  const m = mensaje.toLowerCase();
+  if (m.includes('already registered') || m.includes('already been registered'))
+    return 'Ese correo ya tiene una cuenta. Inicia sesión.';
+  if (m.includes('password')) return 'La contraseña debe tener al menos 8 caracteres.';
+  if (m.includes('invalid email')) return 'Revisa el correo: no parece válido.';
+  if (m.includes('rate limit') || m.includes('too many'))
+    return 'Demasiados intentos seguidos. Espera un momento y vuelve a probar.';
+  return mensaje;
+}

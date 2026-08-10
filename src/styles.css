@@ -1,0 +1,117 @@
+/* ============================================================
+   Pulso — identidad visual
+   Misma paleta que el material del curso: azul de la Escuela de
+   Informática y Telecomunicaciones sobre fondo claro.
+   ============================================================ */
+:root{
+  --fondo:#FFFFFF;
+  --fondo-alt:#F1F6FD;
+  --marco:#DDE5F0;
+  --borde:#CBD9EC;
+  --texto:#1A1A1A;
+  --texto-suave:#666666;
+  --etiqueta:#2A6BC4;
+  --acento:#307FE2;
+  --acento-fuerte:#1F5FB0;
+  --acento-2:#FFB800;
+  --ok:#1E7A4B;
+  --ok-fondo:#E7F5EE;
+  --error:#C0392B;
+  --error-fondo:#FCECEA;
+  --fuente:'Montserrat','Segoe UI',system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --r:12px;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+body{
+  background:var(--marco);
+  color:var(--texto);
+  font-family:var(--fuente);
+  line-height:1.6;
+}
+
+.marco{ min-height:100vh; display:grid; place-items:center; padding:40px 20px; }
+
+.tarjeta{
+  width:100%; max-width:440px;
+  background:var(--fondo); border-radius:16px;
+  box-shadow:0 2px 24px rgba(26,26,26,.10);
+  padding:40px 44px;
+}
+.tarjeta.ancha{ max-width:640px; }
+@media (max-width:520px){ .tarjeta{ padding:28px 24px; } }
+
+.sobre-titulo{
+  font-size:13px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--etiqueta); font-weight:650;
+}
+h1{ font-size:30px; line-height:1.2; letter-spacing:-.02em; margin:4px 0 8px; }
+h2{ font-size:20px; margin:32px 0 12px; padding-top:20px; border-top:2px solid var(--borde); }
+.suave{ color:var(--texto-suave); }
+.chico{ font-size:14px; }
+a{ color:var(--acento-fuerte); }
+
+form{ display:flex; flex-direction:column; gap:18px; margin:26px 0 22px; }
+
+label{
+  display:flex; flex-direction:column; gap:7px;
+  font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--etiqueta);
+}
+input, select{
+  padding:13px 15px; font-size:16px; font-family:inherit;
+  color:var(--texto); background:var(--fondo);
+  border:2px solid var(--borde); border-radius:var(--r);
+  text-transform:none; letter-spacing:normal;
+}
+input:focus, select:focus{ outline:none; border-color:var(--acento); }
+select:disabled{ background:var(--fondo-alt); color:var(--texto-suave); }
+
+.boton{
+  display:inline-block; text-align:center; text-decoration:none;
+  background:var(--acento-fuerte); color:#fff;
+  border:none; border-radius:999px;
+  padding:14px 30px; font-size:16px; font-weight:650; font-family:inherit;
+  cursor:pointer;
+}
+.boton:hover:not(:disabled){ background:var(--acento); }
+.boton:disabled{ opacity:.45; cursor:not-allowed; }
+.boton.fantasma{
+  background:transparent; color:var(--acento-fuerte);
+  border:2px solid var(--borde); padding:9px 20px; font-size:14px;
+}
+.boton.fantasma:hover{ border-color:var(--acento-fuerte); background:transparent; }
+
+.aviso{
+  border-radius:var(--r); padding:14px 18px; font-size:15px;
+  background:var(--fondo-alt); border-left:5px solid var(--acento-2);
+}
+.aviso.ok{ background:var(--ok-fondo); border-left-color:var(--ok); }
+.aviso.malo{ background:var(--error-fondo); border-left-color:var(--error); }
+
+.cabecera{ display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
+
+.marcador{
+  background:var(--fondo-alt); border:2px solid var(--acento);
+  border-radius:var(--r); padding:28px; text-align:center; margin:26px 0 14px;
+}
+.marcador .saldo{
+  font-size:64px; font-weight:700; line-height:1; color:var(--acento-fuerte);
+  font-variant-numeric:tabular-nums;
+}
+.marcador .etq{
+  font-size:13px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--texto-suave); margin-top:6px;
+}
+
+table{ width:100%; border-collapse:collapse; }
+th{
+  text-align:left; font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--etiqueta); padding:10px 8px; border-bottom:2px solid var(--borde);
+}
+td{ font-size:15px; padding:12px 8px; border-bottom:1px solid var(--borde); }
+.der{ text-align:right; }
+.num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+.mas{ color:var(--ok); font-weight:650; }
+.menos{ color:var(--error); font-weight:650; }

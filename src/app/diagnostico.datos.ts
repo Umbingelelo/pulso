@@ -29,7 +29,7 @@ export const NO_SE = 'No sé';
 
 export const SECCIONES: SeccionDiagnostico[] = [
   {
-    id: 'A', titulo: 'Web y HTTP', umbral: 3,
+    id: 'A', titulo: 'Web y HTTP', umbral: 4,
     repaso: 'Métodos HTTP y códigos de estado — semana 1',
     preguntas: [
       {
@@ -52,10 +52,20 @@ export const SECCIONES: SeccionDiagnostico[] = [
         ops: ['Un lenguaje de programación', 'Un formato de texto para representar datos, que casi cualquier lenguaje sabe leer', 'Una base de datos'], ok: 1,
         exp: 'No es lenguaje ni base de datos. Es la forma en que dos sistemas distintos se pasan información sin ponerse de acuerdo en nada más.',
       },
+      {
+        t: '¿Cuál de estas operaciones es <em>idempotente</em>, es decir, repetirla deja el sistema igual que hacerla una sola vez?',
+        ops: ['POST /pedidos con el mismo cuerpo', 'PUT /pedidos/15 con el mismo cuerpo', 'Ninguna de las dos'], ok: 1,
+        exp: '<code>PUT</code> reemplaza el recurso: llamarlo diez veces con el mismo cuerpo deja el pedido 15 idéntico. <code>POST</code> crea, así que diez llamadas crean diez pedidos. Esto importa cuando un cliente reintenta por timeout.',
+      },
+      {
+        t: 'Intentas registrar un usuario con un correo que ya existe en el sistema. ¿Qué código de estado corresponde?',
+        ops: ['400', '404', '409'], ok: 2,
+        exp: 'El <b>409 Conflict</b> dice «tu petición está bien formada, pero choca con el estado actual del sistema». El 400 es para peticiones mal armadas y el 404 para recursos que no existen.',
+      },
     ],
   },
   {
-    id: 'B', titulo: 'Línea de comandos', umbral: 2,
+    id: 'B', titulo: 'Línea de comandos', umbral: 3,
     repaso: 'Navegación básica en terminal — semana 1',
     preguntas: [
       {
@@ -72,6 +82,12 @@ export const SECCIONES: SeccionDiagnostico[] = [
         t: '¿Qué muestra <code>ls -la</code>?',
         ops: ['La lista de programas instalados', 'El contenido de la carpeta actual, incluidos los ocultos, con sus permisos', 'El historial de comandos'], ok: 1,
         exp: 'La <code>a</code> muestra los ocultos (los que empiezan con punto, como <code>.env</code> o <code>.gitignore</code>) y la <code>l</code> muestra el detalle.',
+      },
+      {
+        t: '¿Qué hace esta línea?',
+        codigo: 'cat registro.log | grep ERROR | wc -l',
+        ops: ['Muestra el archivo completo y lo guarda', 'Cuenta cuántas líneas del archivo contienen ERROR', 'Borra las líneas con ERROR'], ok: 1,
+        exp: 'La tubería <code>|</code> pasa la salida de un comando como entrada del siguiente: <code>cat</code> lo lee, <code>grep</code> filtra y <code>wc -l</code> cuenta líneas. Vas a usar esta combinación para diagnosticar logs de contenedores.',
       },
     ],
   },
@@ -99,10 +115,15 @@ export const SECCIONES: SeccionDiagnostico[] = [
         ops: ['Para trabajar en un cambio sin afectar la versión principal hasta que esté listo', 'Para hacer una copia del proyecto en otra carpeta', 'Para dividir el repositorio en dos'], ok: 0,
         exp: 'Permite que dos personas trabajen a la vez sin pisarse.',
       },
+      {
+        t: 'Subiste por error un archivo <code>.env</code> con la contraseña de la base de datos. Lo borras y haces un commit nuevo. ¿Queda resuelto?',
+        ops: ['Sí, el archivo ya no está', 'No: sigue en la historia del repositorio y hay que cambiar la contraseña', 'Sí, siempre que el repositorio sea privado'], ok: 1,
+        exp: 'Git guarda todo lo que pasó. Cualquiera puede recuperar ese archivo de un commit anterior, y si el repositorio es público, asume que la credencial ya está comprometida: hay que rotarla. Borrarla del último commit no borra el pasado.',
+      },
     ],
   },
   {
-    id: 'D', titulo: 'Programación asíncrona en JavaScript', umbral: 4, critica: true,
+    id: 'D', titulo: 'Programación asíncrona en JavaScript', umbral: 5, critica: true,
     repaso: 'Promesas y async/await — semana 4',
     intro: 'Esta es la sección más importante del diagnóstico. Todo el backend del semestre es TypeScript asíncrono.',
     preguntas: [
@@ -169,10 +190,32 @@ const [a, b] = await Promise.all([tarea1(), tarea2()]);`,
         ops: ['Un valor que todavía no está disponible, pero que llegará (o fallará) más adelante', 'Una función que se ejecuta más rápido', 'Una forma de declarar variables constantes'], ok: 0,
         exp: 'Es un compromiso: «todavía no tengo el resultado, pero te aviso cuando lo tenga o cuando falle».',
       },
+      {
+        t: 'De las tres llamadas, la segunda falla. ¿Qué ocurre?',
+        codigo: `const [a, b, c] = await Promise.all([
+  cargarCatalogo(),
+  cargarUsuario(),   // esta lanza un error
+  cargarPuntos()
+]);`,
+        ops: ['Se obtienen a y c, y b queda undefined', 'Todo el await falla: no se obtiene ninguno de los tres', 'Se reintenta la segunda automáticamente'], ok: 1,
+        exp: '<code>Promise.all</code> rechaza en cuanto una falla, así que el <code>await</code> lanza y no recibes nada — aunque las otras dos hayan terminado bien. Si necesitas los resultados que sí llegaron, se usa <code>Promise.allSettled</code>.',
+      },
+      {
+        t: '¿Cuál de las dos versiones espera de verdad a que se guarden todos los pedidos?',
+        codigo: `// Versión A
+for (const p of pedidos) {
+  await guardar(p);
+}
+
+// Versión B
+pedidos.map(async (p) => await guardar(p));`,
+        ops: ['Solo la A', 'Solo la B', 'Las dos'], ok: 0,
+        exp: 'La A espera uno a uno. La B crea un arreglo de promesas y nadie las espera: el código sigue de largo. Para que la B funcione hay que escribir <code>await Promise.all(pedidos.map(...))</code>.',
+      },
     ],
   },
   {
-    id: 'E', titulo: 'Bases de datos', umbral: 2,
+    id: 'E', titulo: 'Bases de datos', umbral: 3,
     repaso: 'SELECT, relaciones y claves foráneas — semana 5',
     preguntas: [
       {
@@ -190,6 +233,16 @@ const [a, b] = await Promise.all([tarea1(), tarea2()]);`,
         t: 'Tienes <code>usuarios</code> y <code>compras</code>. Un usuario puede tener muchas compras, y cada compra pertenece a un solo usuario. ¿Dónde va la referencia?',
         ops: ['En usuarios, apuntando a compras', 'En compras, apuntando a usuarios', 'En una tercera tabla'], ok: 1,
         exp: 'En una relación uno-a-muchos, la referencia va siempre <b>en el lado «muchos»</b>. Cada compra guarda a qué usuario pertenece.',
+      },
+      {
+        t: 'Tienes 100 pedidos, y 20 de ellos apuntan a un usuario que fue eliminado. ¿Cuántas filas devuelve un <code>INNER JOIN</code> entre pedidos y usuarios?',
+        ops: ['100', '80', '120'], ok: 1,
+        exp: 'El <code>INNER JOIN</code> devuelve solo las filas que calzan en ambas tablas: los 20 pedidos huérfanos quedan fuera. Si los quisieras igual, con el usuario en nulo, sería un <code>LEFT JOIN</code>.',
+      },
+      {
+        t: 'Una consulta que busca por correo funcionaba rápido y ahora, con un millón de filas, tarda varios segundos. ¿Qué es lo primero que revisarías?',
+        ops: ['Si la tabla tiene un índice en la columna correo', 'Si el servidor tiene suficiente memoria', 'Si la consulta usa SELECT *'], ok: 0,
+        exp: 'Sin índice, la base recorre la tabla completa en cada búsqueda, y ese costo crece con el tamaño. Con índice va directo. Es el problema de rendimiento más común y el más fácil de arreglar.',
       },
     ],
   },
@@ -212,10 +265,15 @@ const [a, b] = await Promise.all([tarea1(), tarea2()]);`,
         ops: ['Sí, sé crear imágenes y levantar contenedores', 'Lo he usado siguiendo instrucciones, pero no sabría explicarlo', 'Sé qué es, pero nunca lo he usado', 'Nunca lo he escuchado'],
         exp: 'Esta no tiene respuesta correcta: es la pregunta que más le sirve al docente. Si la mayoría del curso nunca lo ha usado, la clase de Docker de la semana 8 se alarga. No pasa nada si nunca lo has tocado.',
       },
+      {
+        t: '¿Cuál es la diferencia principal entre un contenedor y una máquina virtual?',
+        ops: ['El contenedor comparte el núcleo del sistema anfitrión; la máquina virtual lleva su propio sistema operativo completo', 'El contenedor no puede guardar datos', 'La máquina virtual es siempre más rápida'], ok: 0,
+        exp: 'Por eso un contenedor arranca en segundos y pesa megas, mientras una máquina virtual demora y pesa gigas. Es la razón por la que vas a levantar cinco servicios en tu notebook sin que se caiga.',
+      },
     ],
   },
   {
-    id: 'G', titulo: 'Seguridad', umbral: 2,
+    id: 'G', titulo: 'Seguridad', umbral: 3,
     repaso: 'Hash, cifrado y codificación — semana 2',
     preguntas: [
       {
@@ -227,6 +285,53 @@ const [a, b] = await Promise.all([tarea1(), tarea2()]);`,
         t: 'Recibes este texto: <code>eyJub21icmUiOiJhbmEifQ==</code>. ¿Está seguro su contenido?',
         ops: ['Sí, está cifrado', 'No, está codificado en Base64 y cualquiera lo puede leer', 'Depende de la longitud de la clave'], ok: 1,
         exp: 'Base64 <b>no es seguridad</b>, es una forma de representar datos como texto. Ese ejemplo dice <code>{"nombre":"ana"}</code>. Lo vas a comprobar tú mismo en la semana 2, y es clave para entender por qué un token va firmado y no solo codificado.',
+      },
+      {
+        t: 'Un token JWT va firmado. ¿Qué garantiza esa firma?',
+        ops: ['Que su contenido es secreto y nadie puede leerlo', 'Que nadie lo modificó después de emitirlo', 'Que nunca expira'], ok: 1,
+        exp: 'La firma garantiza <b>integridad y origen</b>, no confidencialidad: cualquiera puede leer el contenido de un JWT, pero si le cambia una coma la firma deja de calzar. Por eso jamás se guardan datos sensibles dentro de un token.',
+      },
+      {
+        t: '¿Qué riesgo tiene esta línea?',
+        codigo: `const sql = "SELECT * FROM usuarios WHERE correo = '" + correo + "'";`,
+        ops: ['Ninguno si el correo viene de un formulario', 'Permite inyección SQL: el usuario puede escribir SQL en el campo', 'Solo es lento'], ok: 1,
+        exp: 'Si alguien escribe <code>\' OR 1=1 --</code> en el campo, la consulta cambia de significado y devuelve todos los usuarios. Se evita con consultas parametrizadas, donde el valor nunca se concatena.',
+      },
+    ],
+  },
+  {
+    id: 'H', titulo: 'Tipado y estructura del código', umbral: 3,
+    repaso: 'TypeScript, interfaces e inyección de dependencias — semana 5',
+    preguntas: [
+      {
+        t: '¿Para qué sirve una <em>interfaz</em> en TypeScript?',
+        ops: ['Para describir la forma que debe tener un objeto, sin generar código en tiempo de ejecución', 'Para crear objetos, igual que una clase', 'Para conectarse a una API'], ok: 0,
+        exp: 'La interfaz existe solo mientras el compilador revisa tu código; en el JavaScript final desaparece. Es un contrato: dice qué campos y tipos se esperan.',
+      },
+      {
+        t: '¿Qué problema tiene usar <code>any</code> como tipo?',
+        ops: ['Hace el programa más lento', 'Apaga la verificación del compilador para ese valor', 'No compila'], ok: 1,
+        exp: 'Con <code>any</code> TypeScript deja de avisarte: si escribes mal un nombre de campo, el error recién aparece cuando el programa se cae en ejecución. Es renunciar justo a lo que fuiste a buscar.',
+      },
+      {
+        t: 'Compara las dos versiones. ¿Cuál se puede probar sin tocar la base de datos real?',
+        codigo: `// Versión A
+class ServicioPedidos {
+  guardar(p) { new RepositorioOracle().insertar(p); }
+}
+
+// Versión B
+class ServicioPedidos {
+  constructor(private repo) {}
+  guardar(p) { this.repo.insertar(p); }
+}`,
+        ops: ['La A', 'La B, porque el repositorio se le entrega desde afuera', 'Las dos igual'], ok: 1,
+        exp: 'En la B puedes pasarle un repositorio falso al construirlo. En la A el repositorio real está incrustado adentro y no hay forma de reemplazarlo. Eso es inyección de dependencias, y es la base de cómo funciona NestJS.',
+      },
+      {
+        t: 'Una función de 200 líneas valida el pedido, lo guarda en la base y envía el correo de confirmación. ¿Cuál es el problema principal?',
+        ops: ['Es demasiado larga para leerla', 'Hace tres cosas distintas: no se puede cambiar ni probar una sin arrastrar las otras', 'Ninguno si funciona'], ok: 1,
+        exp: 'El largo es el síntoma; la causa es que mezcla tres responsabilidades. Este semestre la pauta de evaluación revisa justamente eso: que la configuración de mensajería no esté enredada con la lógica de negocio.',
       },
     ],
   },

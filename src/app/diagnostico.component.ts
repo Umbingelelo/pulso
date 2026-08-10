@@ -48,7 +48,8 @@ const CODIGO = 'diagnostico-entrada';
         diagnóstico deja de servir: sirve para decidir cuánto reforzamos cada tema en clases.
         <em>No sé</em> es una respuesta válida y aporta más que un acierto por casualidad.</p>
         <p class="chico suave" style="margin-top:10px">
-          {{ total }} preguntas, unos 40 minutos. <strong>Se rinde una sola vez.</strong>
+          {{ total }} preguntas en ocho secciones, unos 60 minutos.
+          <strong>Se rinde una sola vez</strong>, así que hazlo con tiempo y sin apuro.
         </p>
       </div>
     }

@@ -29,6 +29,24 @@ export interface Movimiento {
   creado_en: string;
 }
 
+export interface Actividad {
+  id: string;
+  codigo: string;
+  titulo: string;
+  descripcion: string | null;
+  tipo: string;
+  puntos: number;
+  orden: number;
+}
+
+export interface Resultado {
+  id: number;
+  actividad_id: string;
+  perfil_id: string;
+  detalle: any;
+  completada_en: string;
+}
+
 export interface ResumenAlumno {
   id: string;
   nombre: string;
@@ -166,6 +184,50 @@ export class DatosService {
     const { data, error } = await this.sb.from('saldos_puntos').select('saldo').maybeSingle();
     if (error) throw error;
     return data?.saldo ?? 0;
+  }
+
+  // ---------- Actividades ----------
+
+  async actividades(): Promise<Actividad[]> {
+    const { data, error } = await this.sb
+      .from('actividades')
+      .select('id, codigo, titulo, descripcion, tipo, puntos, orden')
+      .order('orden');
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  async actividad(codigo: string): Promise<Actividad | null> {
+    const { data, error } = await this.sb
+      .from('actividades')
+      .select('id, codigo, titulo, descripcion, tipo, puntos, orden')
+      .eq('codigo', codigo)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  /** Los resultados propios; para un docente, los de todo el curso. */
+  async resultados(): Promise<Resultado[]> {
+    const { data, error } = await this.sb
+      .from('resultados_actividad')
+      .select('id, actividad_id, perfil_id, detalle, completada_en')
+      .order('completada_en', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  /**
+   * Registra el resultado. Los puntos los agrega un trigger, no el cliente.
+   * La restricción única impide rehacer la actividad para volver a cobrarlos.
+   */
+  async registrarResultado(actividadId: string, detalle: unknown): Promise<void> {
+    const u = this.usuario();
+    if (!u) throw new Error('Sin sesión');
+    const { error } = await this.sb
+      .from('resultados_actividad')
+      .insert({ actividad_id: actividadId, perfil_id: u.id, detalle: detalle as any });
+    if (error) throw error;
   }
 
   // ---------- Docente ----------

@@ -78,6 +78,14 @@ export const routes: Routes = [
         loadComponent: () => import('./perfil.component').then(m => m.PerfilComponent),
       },
       {
+        path: 'actividades', canActivate: [soloAlumno],
+        loadComponent: () => import('./actividades.component').then(m => m.ActividadesComponent),
+      },
+      {
+        path: 'diagnostico', canActivate: [soloAlumno],
+        loadComponent: () => import('./diagnostico.component').then(m => m.DiagnosticoComponent),
+      },
+      {
         path: 'puntos', canActivate: [soloAlumno],
         loadComponent: () => import('./puntos.component').then(m => m.PuntosComponent),
       },

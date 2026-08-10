@@ -2,7 +2,8 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AvatarService } from './avatar.service';
-import { DatosService, ResumenAlumno } from './datos.service';
+import { Actividad, DatosService, Resultado, ResumenAlumno } from './datos.service';
+import { SECCIONES, puntuables } from './diagnostico.datos';
 
 @Component({
   selector: 'app-docente',
@@ -27,6 +28,47 @@ import { DatosService, ResumenAlumno } from './datos.service';
         <p class="etiqueta">Puntos otorgados</p>
         <p class="cifra">{{ totalPuntos() }}</p>
       </div>
+    </div>
+
+    <!-- ============ Diagnóstico del curso ============ -->
+    <div class="tarjeta" style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+        <h2>Diagnóstico de entrada</h2>
+        <span class="insignia celeste">{{ rendidos().length }} de {{ alumnos().length }} rendidos</span>
+      </div>
+
+      @if (rendidos().length === 0) {
+        <div class="aviso dato" style="margin-top:14px">
+          Todavía nadie lo ha rendido. Los resultados aparecen acá solos, sin que nadie tenga que
+          reportar nada.
+        </div>
+      } @else {
+        <table style="margin-top:14px">
+          <tr>
+            <th>Sección del diagnóstico</th>
+            <th class="der">Promedio</th>
+            <th class="der">Bajo el umbral</th>
+            <th>Estado</th>
+          </tr>
+          @for (s of resumenDiagnostico(); track s.id) {
+            <tr>
+              <td>{{ s.id }} · {{ s.titulo }}</td>
+              <td class="der num">{{ s.promedio }} <span class="suave">de {{ s.max }}</span></td>
+              <td class="der num">{{ s.bajo }} <span class="suave">· {{ s.pct }}%</span></td>
+              <td>
+                <div class="barra" [class.roja]="s.pct >= 50" [class.amarilla]="s.pct >= 25 && s.pct < 50"
+                     [class.verde]="s.pct < 25" style="max-width:170px">
+                  <i [style.width.%]="100 - s.pct"></i>
+                </div>
+              </td>
+            </tr>
+          }
+        </table>
+        <p class="chico suave" style="margin-top:14px">
+          Si más de la mitad del curso queda bajo el umbral en una sección, esa nivelación necesita
+          más tiempo del planificado.
+        </p>
+      }
     </div>
 
     <div class="tarjeta">
@@ -116,6 +158,35 @@ export class DocenteComponent {
   error = signal('');
   hecho = signal('');
 
+  private resultados = signal<Resultado[]>([]);
+  private diagnostico = signal<Actividad | null>(null);
+
+  /** Resultados del diagnóstico, filtrados por la actividad correspondiente. */
+  rendidos = computed(() => {
+    const act = this.diagnostico();
+    if (!act) return [];
+    return this.resultados().filter(r => r.actividad_id === act.id);
+  });
+
+  /** Promedio y porcentaje bajo umbral por sección, sobre quienes lo rindieron. */
+  resumenDiagnostico = computed(() => {
+    const filas = this.rendidos();
+    if (filas.length === 0) return [];
+    return SECCIONES.map(sec => {
+      const valores = filas.map(r => Number(r.detalle?.puntajes?.[sec.id] ?? 0));
+      const promedio = valores.reduce((n, v) => n + v, 0) / valores.length;
+      const bajo = valores.filter(v => v < sec.umbral).length;
+      return {
+        id: sec.id,
+        titulo: sec.titulo,
+        max: puntuables(sec),
+        promedio: promedio.toFixed(1),
+        bajo,
+        pct: Math.round(bajo / valores.length * 100),
+      };
+    });
+  });
+
   secciones = computed(() => [...new Set(this.alumnos().map(a => a.seccion))].sort());
   visibles = computed(() =>
     this.filtro() ? this.alumnos().filter(a => a.seccion === this.filtro()) : this.alumnos()
@@ -129,7 +200,14 @@ export class DocenteComponent {
   private async cargar(): Promise<void> {
     this.cargando.set(true);
     try {
-      this.alumnos.set(await this.datos.resumenAlumnos());
+      const [alumnos, resultados, diag] = await Promise.all([
+        this.datos.resumenAlumnos(),
+        this.datos.resultados(),
+        this.datos.actividad('diagnostico-entrada'),
+      ]);
+      this.alumnos.set(alumnos);
+      this.resultados.set(resultados);
+      this.diagnostico.set(diag);
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo cargar la nómina.');
     } finally {

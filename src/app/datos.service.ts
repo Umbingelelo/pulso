@@ -29,6 +29,16 @@ export interface Movimiento {
   creado_en: string;
 }
 
+export interface ResumenAlumno {
+  id: string;
+  nombre: string;
+  avatar: string;
+  seccion: string;
+  asignatura: string;
+  puntos: number;
+  creado_en: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class DatosService {
   private sb: SupabaseClient = createClient(ENTORNO.supabaseUrl, ENTORNO.supabaseKey);
@@ -156,6 +166,36 @@ export class DatosService {
     const { data, error } = await this.sb.from('saldos_puntos').select('saldo').maybeSingle();
     if (error) throw error;
     return data?.saldo ?? 0;
+  }
+
+  // ---------- Docente ----------
+
+  /** Solo devuelve fila si el usuario está en la tabla de docentes. */
+  async esDocente(): Promise<boolean> {
+    const u = this.usuario();
+    if (!u) return false;
+    const { data, error } = await this.sb.from('docentes').select('id').maybeSingle();
+    if (error) return false;
+    return !!data;
+  }
+
+  /** El curso completo. Un alumno solo se vería a sí mismo: lo filtra el RLS. */
+  async resumenAlumnos(): Promise<ResumenAlumno[]> {
+    const { data, error } = await this.sb
+      .from('resumen_alumnos')
+      .select('id, nombre, avatar, seccion, asignatura, puntos, creado_en')
+      .order('seccion')
+      .order('nombre');
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  /** Otorga o descuenta puntos. Solo pasa el RLS si quien llama es docente. */
+  async otorgarPuntos(perfilId: string, puntos: number, motivo: string): Promise<void> {
+    const { error } = await this.sb
+      .from('movimientos_puntos')
+      .insert({ perfil_id: perfilId, puntos, motivo });
+    if (error) throw error;
   }
 
   async misMovimientos(): Promise<Movimiento[]> {

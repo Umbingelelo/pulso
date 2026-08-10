@@ -20,31 +20,50 @@ import { PerfilStore } from './perfil.store';
         </div>
 
         <nav class="menu">
-          <a routerLink="/inicio" routerLinkActive="activo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/>
-            </svg>
-            <span>Inicio</span>
-          </a>
-          <a routerLink="/perfil" routerLinkActive="activo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>
-            </svg>
-            <span>Mi perfil</span>
-          </a>
-          <a routerLink="/puntos" routerLinkActive="activo">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>
-            </svg>
-            <span>Mis puntos</span>
-          </a>
+          @if (perfil.esDocente()) {
+            <a routerLink="/curso" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.3 2.9-5.4 6.5-5.4S15.5 16.7 15.5 20"/>
+                <path d="M17 11.5a2.6 2.6 0 1 0 0-5.2"/><path d="M18.5 20c0-2.4-.9-4-2.4-4.9"/>
+              </svg>
+              <span>Curso</span>
+            </a>
+          } @else {
+            <a routerLink="/inicio" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/>
+              </svg>
+              <span>Inicio</span>
+            </a>
+            <a routerLink="/perfil" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>
+              </svg>
+              <span>Mi perfil</span>
+            </a>
+            <a routerLink="/puntos" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>
+              </svg>
+              <span>Mis puntos</span>
+            </a>
+          }
         </nav>
 
         <div class="pie">
-          @if (perfil.perfil(); as p) {
+          @if (perfil.esDocente()) {
+            <div class="usuario-lateral">
+              <img [src]="avatar()" alt="">
+              <div class="datos">
+                <div class="nom">Cristian Calderón</div>
+                <div class="sec">Docente</div>
+              </div>
+            </div>
+          } @else if (perfil.perfil(); as p) {
             <div class="usuario-lateral">
               <img [src]="avatar()" alt="">
               <div class="datos">
@@ -77,7 +96,12 @@ export class MarcoComponent {
   private avatares = inject(AvatarService);
   private router = inject(Router);
 
-  avatar = computed(() => this.avatares.imagen(this.perfil.perfil()?.avatar ?? 'thumbs:inicial', 72));
+  avatar = computed(() =>
+    this.avatares.imagen(
+      this.perfil.esDocente() ? 'notionists:cristian-calderon' : (this.perfil.perfil()?.avatar ?? 'thumbs:inicial'),
+      72
+    )
+  );
 
   constructor() {
     this.perfil.cargar();

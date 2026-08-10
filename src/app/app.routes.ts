@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router, Routes } from '@angular/router';
 import { DatosService } from './datos.service';
+import { PerfilStore } from './perfil.store';
 
 /** Espera a que se resuelva la sesión guardada antes de decidir. */
 async function sesionResuelta(datos: DatosService): Promise<void> {
@@ -30,6 +31,25 @@ const soloSinSesion: CanActivateFn = async () => {
   return false;
 };
 
+/** Las páginas de alumno no tienen sentido para un docente: no tiene sección. */
+const soloAlumno: CanActivateFn = async () => {
+  const perfil = inject(PerfilStore);
+  const router = inject(Router);
+  await perfil.cargar();
+  if (!perfil.esDocente()) return true;
+  router.navigate(['/curso']);
+  return false;
+};
+
+const soloDocente: CanActivateFn = async () => {
+  const perfil = inject(PerfilStore);
+  const router = inject(Router);
+  await perfil.cargar();
+  if (perfil.esDocente()) return true;
+  router.navigate(['/inicio']);
+  return false;
+};
+
 export const routes: Routes = [
   // Acceso: pantallas centradas, sin barra lateral
   {
@@ -49,9 +69,22 @@ export const routes: Routes = [
     canActivate: [soloConSesion],
     loadComponent: () => import('./marco.component').then(m => m.MarcoComponent),
     children: [
-      { path: 'inicio', loadComponent: () => import('./inicio.component').then(m => m.InicioComponent) },
-      { path: 'perfil', loadComponent: () => import('./perfil.component').then(m => m.PerfilComponent) },
-      { path: 'puntos', loadComponent: () => import('./puntos.component').then(m => m.PuntosComponent) },
+      {
+        path: 'inicio', canActivate: [soloAlumno],
+        loadComponent: () => import('./inicio.component').then(m => m.InicioComponent),
+      },
+      {
+        path: 'perfil', canActivate: [soloAlumno],
+        loadComponent: () => import('./perfil.component').then(m => m.PerfilComponent),
+      },
+      {
+        path: 'puntos', canActivate: [soloAlumno],
+        loadComponent: () => import('./puntos.component').then(m => m.PuntosComponent),
+      },
+      {
+        path: 'curso', canActivate: [soloDocente],
+        loadComponent: () => import('./docente.component').then(m => m.DocenteComponent),
+      },
       { path: '', pathMatch: 'full', redirectTo: 'inicio' },
     ],
   },

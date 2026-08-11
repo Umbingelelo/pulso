@@ -179,14 +179,14 @@ export class RegistroComponent {
   }
 }
 
-/** Los mensajes de Supabase vienen en inglés; los más comunes se traducen. */
+/**
+ * Las funciones de `/api/auth/*` ya devuelven el mensaje en español, escrito por
+ * `registrar_alumno()` en la base. Esto solo queda como red por si algún día se
+ * cuela un error de más abajo.
+ */
 function traducir(mensaje: string): string {
   const m = mensaje.toLowerCase();
-  if (m.includes('already registered') || m.includes('already been registered'))
+  if (m.includes('duplicate') || m.includes('unique'))
     return 'Ese correo ya tiene una cuenta. Inicia sesión.';
-  if (m.includes('password')) return 'La contraseña debe tener al menos 8 caracteres.';
-  if (m.includes('invalid email')) return 'Revisa el correo: no parece válido.';
-  if (m.includes('rate limit') || m.includes('too many'))
-    return 'Demasiados intentos seguidos. Espera un momento y vuelve a probar.';
   return mensaje;
 }

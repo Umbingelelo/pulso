@@ -1,6 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
-import { ENTORNO } from '../entorno';
+import { NeonPostgrestClient, fetchWithToken } from '@neondatabase/postgrest-js';
 
 export interface Periodo {
   id: string;
@@ -223,37 +222,133 @@ export interface Ficha {
   soy_docente: boolean;
 }
 
+/** Lo que la app necesita saber de la sesión: quién es, nada más. */
+export interface Usuario {
+  id: string;
+}
+
+/**
+ * Acceso a datos sobre Neon.
+ *
+ * El navegador le habla directo a la base a través de la **Data API** de Neon,
+ * que es PostgREST — el mismo motor que servía Supabase—, y la autorización la
+ * sigue decidiendo el RLS. Lo que cambió es de dónde sale la identidad:
+ *
+ *   * `/api/auth/*` son cuatro funciones nuestras que validan la contraseña
+ *     dentro de Postgres y firman un token de acceso corto.
+ *   * `/db/*` se reescribe en Vercel hacia la Data API, así que el navegador
+ *     **solo le habla a pulso-rust.vercel.app**. Esa es la razón de toda la
+ *     migración: un dominio de terceros es bloqueable, y Duoc ya bloqueó uno.
+ *
+ * El token vive en memoria y se renueva solo. Sin sesión se pide uno público,
+ * porque la Data API exige JWT incluso para el catálogo del registro.
+ */
 @Injectable({ providedIn: 'root' })
 export class DatosService {
-  private sb: SupabaseClient = createClient(ENTORNO.supabaseUrl, ENTORNO.supabaseKey);
-
-  /** Usuario autenticado, o null. Se mantiene al día con los eventos de auth. */
-  readonly usuario = signal<User | null>(null);
+  /** Usuario autenticado, o null. */
+  readonly usuario = signal<Usuario | null>(null);
   /** false hasta que se resuelve la sesión guardada, para no parpadear al cargar. */
   readonly listo = signal(false);
 
-  constructor() {
-    this.sb.auth.getSession().then(({ data }) => {
-      this.usuario.set(data.session?.user ?? null);
-      this.listo.set(true);
-    });
+  private token = '';
+  private expiraEn = 0;          // marca de tiempo en milisegundos
+  private renovando: Promise<void> | null = null;
 
-    this.sb.auth.onAuthStateChange((_evento, sesion) => {
-      this.usuario.set(sesion?.user ?? null);
-    });
+  /**
+   * PostgREST apuntado al proxy, no al dominio de Neon.
+   *
+   * `fetchWithToken` es del propio cliente: le pasa el token a cada petición
+   * llamando a la función que le damos, así ninguna consulta tiene que acordarse
+   * de inyectarlo. Y como esa función es la que renueva, un token vencido se
+   * repone solo antes de la llamada.
+   */
+  private db = new NeonPostgrestClient({
+    dataApiUrl: '/db',
+    options: {
+      global: {
+        fetch: fetchWithToken(async () => {
+          await this.asegurarToken();
+          return this.token;
+        }),
+      },
+    },
+  });
+
+  constructor() {
+    this.restaurarSesion();
   }
 
-  // ---------- Catálogo (lectura pública, sirve para los desplegables) ----------
+  // ---------- Sesión ----------
+
+  private async restaurarSesion(): Promise<void> {
+    try {
+      await this.renovarToken();
+    } catch {
+      /* sin sesión: se sigue con el token público */
+    } finally {
+      this.listo.set(true);
+    }
+  }
+
+  /**
+   * Pide un token nuevo. Con cookie de refresco válida devuelve el del alumno;
+   * si no, uno público que solo abre el catálogo.
+   */
+  private async renovarToken(): Promise<void> {
+    const r = await fetch('/api/auth/sesion', { credentials: 'same-origin' });
+    if (r.ok) {
+      const d = await r.json();
+      this.guardarToken(d.token, d.expira_en, d.usuario_id);
+      return;
+    }
+
+    const p = await fetch('/api/auth/publico');
+    if (!p.ok) throw new Error('No se pudo contactar al servidor.');
+    const d = await p.json();
+    this.guardarToken(d.token, d.expira_en, null);
+  }
+
+  private guardarToken(token: string, expiraEn: number, usuarioId: string | null): void {
+    this.token = token;
+    // Un minuto de margen: no sirve un token que vence en el viaje.
+    this.expiraEn = Date.now() + (expiraEn - 60) * 1000;
+    this.usuario.set(usuarioId ? { id: usuarioId } : null);
+  }
+
+  /** Renueva si hace falta, y sin lanzar dos renovaciones en paralelo. */
+  private async asegurarToken(): Promise<void> {
+    if (this.token && Date.now() < this.expiraEn) return;
+    if (!this.renovando) {
+      this.renovando = this.renovarToken().finally(() => { this.renovando = null; });
+    }
+    return this.renovando;
+  }
+
+
+  /** Las funciones de `/api/auth/*` devuelven `{error}` con un mensaje legible. */
+  private async auth(ruta: string, cuerpo?: unknown): Promise<any> {
+    const r = await fetch(`/api/auth/${ruta}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d?.error ?? 'No se pudo completar la operación.');
+    return d;
+  }
+
+  // ---------- Catálogo (con el token público, antes de iniciar sesión) ----------
 
   /** Periodos abiertos a matrícula. Hoy es uno; en 2027-1 serán otros. */
   async periodos(): Promise<Periodo[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('periodos')
       .select('id, codigo, nombre, activo')
       .eq('activo', true)
       .order('codigo', { ascending: false });
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Periodo[];
   }
 
   /**
@@ -262,7 +357,7 @@ export class DatosService {
    * matricular.
    */
   async asignaturasDe(periodoId: string): Promise<Asignatura[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('secciones')
       .select('asignaturas(id, sigla, nombre)')
       .eq('periodo_id', periodoId)
@@ -278,7 +373,7 @@ export class DatosService {
   }
 
   async secciones(asignaturaId: string, periodoId: string): Promise<Seccion[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('secciones')
       .select('id, codigo, asignatura_id, periodo_id')
       .eq('asignatura_id', asignaturaId)
@@ -286,16 +381,15 @@ export class DatosService {
       .eq('activa', true)
       .order('codigo');
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Seccion[];
   }
 
   // ---------- Autenticación ----------
 
   /**
-   * Registra al alumno. El nombre y la sección viajan como metadata: un trigger
-   * en la base crea el perfil y su primera matrícula con esos datos, y otorga los
-   * puntos de bienvenida. Devuelve si quedó con sesión abierta (depende de si el
-   * proyecto exige confirmar el correo).
+   * Crea la cuenta. `registrar_alumno()` hace usuario, perfil y primera
+   * matrícula en una transacción, y deja la sesión abierta: ya no hay que
+   * confirmar el correo, que era lo que reventaba con el 429.
    */
   async registrar(datos: {
     correo: string;
@@ -303,22 +397,26 @@ export class DatosService {
     nombre: string;
     seccionId: string;
   }): Promise<{ conSesion: boolean }> {
-    const { data, error } = await this.sb.auth.signUp({
-      email: datos.correo,
-      password: datos.clave,
-      options: { data: { nombre: datos.nombre, seccion_id: datos.seccionId } },
+    const d = await this.auth('registro', {
+      correo: datos.correo,
+      clave: datos.clave,
+      nombre: datos.nombre,
+      seccion_id: datos.seccionId || null,
     });
-    if (error) throw error;
-    return { conSesion: !!data.session };
+    this.guardarToken(d.token, d.expira_en, d.usuario_id);
+    return { conSesion: true };
   }
 
   async ingresar(correo: string, clave: string): Promise<void> {
-    const { error } = await this.sb.auth.signInWithPassword({ email: correo, password: clave });
-    if (error) throw error;
+    const d = await this.auth('ingresar', { correo, clave });
+    this.guardarToken(d.token, d.expira_en, d.usuario_id);
   }
 
   async salir(): Promise<void> {
-    await this.sb.auth.signOut();
+    await this.auth('salir').catch(() => undefined);
+    this.token = '';
+    this.expiraEn = 0;
+    this.usuario.set(null);
   }
 
   // ---------- Perfil y matrículas ----------
@@ -327,92 +425,83 @@ export class DatosService {
   async miPerfil(): Promise<Perfil | null> {
     const u = this.usuario();
     if (!u) return null;
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('perfiles')
       .select('id, nombre, avatar, creado_en')
       .eq('id', u.id)
       .maybeSingle();
     if (error) throw error;
-    return data;
+    return data as Perfil | null;
   }
 
   /** Todos los ramos del alumno, del más reciente al más antiguo. */
   async misRamos(): Promise<Ramo[]> {
     const u = this.usuario();
     if (!u) return [];
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('mis_ramos')
       .select('*')
       .eq('perfil_id', u.id)
       .order('periodo', { ascending: false })
       .order('sigla');
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Ramo[];
   }
 
   /** Agrega un ramo. El RLS solo lo acepta si la sección y el periodo están abiertos. */
   async matricularme(seccionId: string): Promise<void> {
     const u = this.usuario();
     if (!u) throw new Error('Sin sesión');
-    const { error } = await this.sb
+    const { error } = await this.db
       .from('matriculas')
       .insert({ perfil_id: u.id, seccion_id: seccionId });
     if (error) throw error;
   }
 
   /**
-   * Crea el perfil desde la metadata del usuario. Solo se necesita si el trigger
-   * no alcanzó a crearlo por venir datos incompletos.
+   * Antes servía para rescatar un registro a medias, cuando el perfil lo creaba
+   * un trigger sobre `auth.users` y podía quedar sin crear. Ahora las tres
+   * inserciones van en una transacción, así que este caso no puede ocurrir.
    */
   async completarPerfil(): Promise<void> {
-    const u = this.usuario();
-    if (!u) throw new Error('Sin sesión');
-    const meta: any = u.user_metadata ?? {};
-    if (!meta.nombre) {
-      throw new Error('Faltan datos del registro. Escríbele al docente.');
-    }
-    const { error } = await this.sb
-      .from('perfiles')
-      .insert({ id: u.id, nombre: meta.nombre });
-    if (error) throw error;
-    if (meta.seccion_id) await this.matricularme(meta.seccion_id);
+    throw new Error('Tu cuenta quedó incompleta. Escríbele al docente para arreglarlo.');
   }
 
   /** Guarda el avatar elegido, en formato "estilo:semilla". */
   async guardarAvatar(clave: string): Promise<void> {
     const u = this.usuario();
     if (!u) throw new Error('Sin sesión');
-    const { error } = await this.sb.from('perfiles').update({ avatar: clave }).eq('id', u.id);
+    const { error } = await this.db.from('perfiles').update({ avatar: clave }).eq('id', u.id);
     if (error) throw error;
   }
 
   // ---------- Puntos ----------
 
   async saldo(matriculaId: string): Promise<number> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('saldos_puntos')
       .select('saldo')
       .eq('matricula_id', matriculaId)
       .maybeSingle();
     if (error) throw error;
-    return data?.saldo ?? 0;
+    return (data as any)?.saldo ?? 0;
   }
 
   async movimientos(matriculaId: string): Promise<Movimiento[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('movimientos_puntos')
       .select('id, puntos, motivo, creado_en')
       .eq('matricula_id', matriculaId)
       .order('creado_en', { ascending: false });
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Movimiento[];
   }
 
   // ---------- Actividades ----------
 
   /** Las del ramo, y solo las de ese ramo. El RLS filtra igual, por si acaso. */
   async actividades(ramo: Ramo): Promise<Actividad[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('actividades')
       .select('id, codigo, titulo, descripcion, tipo, puntos, orden')
       .eq('asignatura_id', ramo.asignatura_id)
@@ -420,17 +509,17 @@ export class DatosService {
       .eq('activa', true)
       .order('orden');
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Actividad[];
   }
 
   async resultados(matriculaId: string): Promise<Resultado[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('resultados_actividad')
       .select('id, actividad_id, matricula_id, detalle, completada_en')
       .eq('matricula_id', matriculaId)
       .order('completada_en', { ascending: false });
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Resultado[];
   }
 
   // ---------- Diagnóstico ----------
@@ -439,7 +528,7 @@ export class DatosService {
   // pauta y corrigen en el servidor.
 
   async cuestionario(matriculaId: string): Promise<Cuestionario | null> {
-    const { data, error } = await this.sb.rpc('diagnostico_cuestionario', {
+    const { data, error } = await this.db.rpc('diagnostico_cuestionario', {
       p_matricula: matriculaId,
     });
     if (error) throw error;
@@ -451,7 +540,7 @@ export class DatosService {
     matriculaId: string,
     respuestas: Record<string, number>,
   ): Promise<Cuestionario> {
-    const { data, error } = await this.sb.rpc('rendir_diagnostico', {
+    const { data, error } = await this.db.rpc('rendir_diagnostico', {
       p_matricula: matriculaId,
       p_respuestas: respuestas,
     });
@@ -460,7 +549,7 @@ export class DatosService {
   }
 
   async resumenDiagnostico(actividadId: string): Promise<FilaResumenDiagnostico[]> {
-    const { data, error } = await this.sb.rpc('diagnostico_resumen', {
+    const { data, error } = await this.db.rpc('diagnostico_resumen', {
       p_actividad: actividadId,
     });
     if (error) throw error;
@@ -471,23 +560,23 @@ export class DatosService {
 
   /** La vitrina del ramo, con el saldo y lo ya canjeado calculados por la base. */
   async vitrina(matriculaId: string): Promise<Articulo[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('vitrina')
       .select('*')
       .eq('matricula_id', matriculaId)
       .order('orden');
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Articulo[];
   }
 
   async misCanjes(matriculaId: string): Promise<Canje[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('canjes_detalle')
       .select('*')
       .eq('matricula_id', matriculaId)
       .order('creado_en', { ascending: false });
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Canje[];
   }
 
   /**
@@ -495,7 +584,7 @@ export class DatosService {
    * bueno queda «solicitado» y se devuelven solos si lo rechazan.
    */
   async solicitarCanje(matriculaId: string, articuloId: string, nota?: string): Promise<number> {
-    const { data, error } = await this.sb.rpc('solicitar_canje', {
+    const { data, error } = await this.db.rpc('solicitar_canje', {
       p_matricula: matriculaId,
       p_articulo: articuloId,
       p_nota: nota?.trim() || null,
@@ -506,20 +595,20 @@ export class DatosService {
 
   /** Solo mientras nadie lo ha revisado. Devuelve los puntos. */
   async cancelarCanje(canjeId: number): Promise<void> {
-    const { error } = await this.sb.rpc('cancelar_canje', { p_canje: canjeId });
+    const { error } = await this.db.rpc('cancelar_canje', { p_canje: canjeId });
     if (error) throw error;
   }
 
   /** La bandeja del docente: lo que está esperando respuesta. */
   async canjesDelRamo(asignaturaId: string, periodoId: string): Promise<Canje[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('canjes_detalle')
       .select('*')
       .eq('asignatura_id', asignaturaId)
       .eq('periodo_id', periodoId)
       .order('creado_en', { ascending: false });
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Canje[];
   }
 
   async resolverCanje(
@@ -527,7 +616,7 @@ export class DatosService {
     estado: 'aprobado' | 'entregado' | 'rechazado',
     comentario?: string,
   ): Promise<void> {
-    const { error } = await this.sb.rpc('resolver_canje', {
+    const { error } = await this.db.rpc('resolver_canje', {
       p_canje: canjeId,
       p_estado: estado,
       p_comentario: comentario?.trim() || null,
@@ -542,7 +631,7 @@ export class DatosService {
    * docente: quién puede verla lo decide la base, no el cliente.
    */
   async ficha(matriculaId: string): Promise<Ficha | null> {
-    const { data, error } = await this.sb.rpc('ficha_alumno', { p_matricula: matriculaId });
+    const { data, error } = await this.db.rpc('ficha_alumno', { p_matricula: matriculaId });
     if (error) throw error;
     return data as Ficha | null;
   }
@@ -553,14 +642,14 @@ export class DatosService {
   async esDocente(): Promise<boolean> {
     const u = this.usuario();
     if (!u) return false;
-    const { data, error } = await this.sb.from('docentes').select('id').maybeSingle();
+    const { data, error } = await this.db.from('docentes').select('id').maybeSingle();
     if (error) return false;
     return !!data;
   }
 
   /** Lo que dicta: una fila por asignatura y periodo. */
   async ramosQueDicto(): Promise<RamoDocente[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('docente_asignaturas')
       .select('asignatura_id, periodo_id, asignaturas(sigla, nombre), periodos(codigo)');
     if (error) throw error;
@@ -577,7 +666,7 @@ export class DatosService {
 
   /** La nómina de una asignatura en un periodo. El RLS ya la acota a lo que dicta. */
   async nomina(asignaturaSigla: string, periodo: string): Promise<AlumnoNomina[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('resumen_alumnos')
       .select('*')
       .eq('asignatura', asignaturaSigla)
@@ -585,24 +674,24 @@ export class DatosService {
       .order('seccion')
       .order('nombre');
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as AlumnoNomina[];
   }
 
   /** Las actividades de un ramo que dicta el docente. */
   async actividadesDe(asignaturaId: string, periodoId: string): Promise<Actividad[]> {
-    const { data, error } = await this.sb
+    const { data, error } = await this.db
       .from('actividades')
       .select('id, codigo, titulo, descripcion, tipo, puntos, orden')
       .eq('asignatura_id', asignaturaId)
       .eq('periodo_id', periodoId)
       .order('orden');
     if (error) throw error;
-    return data ?? [];
+    return (data ?? []) as Actividad[];
   }
 
   /** Otorga o descuenta puntos sobre una matrícula. Solo pasa el RLS si dicta esa sección. */
   async otorgarPuntos(matriculaId: string, puntos: number, motivo: string): Promise<void> {
-    const { error } = await this.sb
+    const { error } = await this.db
       .from('movimientos_puntos')
       .insert({ matricula_id: matriculaId, puntos, motivo });
     if (error) throw error;

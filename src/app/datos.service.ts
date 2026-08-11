@@ -263,7 +263,10 @@ export class DatosService {
    * repone solo antes de la llamada.
    */
   private db = new NeonPostgrestClient({
-    dataApiUrl: '/db',
+    // Absoluto y del mismo origen: `postgrest-js` hace `new URL(...)` y con una
+    // ruta relativa revienta antes de enviar la petición. Sigue siendo nuestro
+    // dominio, así que el navegador no le habla a ningún tercero.
+    dataApiUrl: `${location.origin}/db`,
     options: {
       global: {
         fetch: fetchWithToken(async () => {

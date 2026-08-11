@@ -1,15 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    {
-      "comment": "Neon lee esta llave pública desde sus servidores para validar la firma de los tokens de acceso.",
-      "source": "/.well-known/jwks.json",
-      "destination": "/api/jwks"
-    },
-    {
-      "comment": "Todo lo que no sea una función ni un archivo cae en el index: es una SPA con rutas del lado del cliente.",
-      "source": "/((?!api/|db/|assets/|\\.well-known/).*)",
-      "destination": "/index.html"
-    }
+    { "source": "/.well-known/jwks.json", "destination": "/api/jwks" },
+    { "source": "/((?!api/|db/|assets/|\\.well-known/).*)", "destination": "/index.html" }
   ]
 }

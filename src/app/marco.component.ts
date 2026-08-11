@@ -45,6 +45,14 @@ import { PerfilStore } from './perfil.store';
               </svg>
               <span>Actividades</span>
             </a>
+            <a routerLink="/ramos" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 5.5h6.5a2 2 0 0 1 2 2V20a2 2 0 0 0-2-2H4z"/>
+                <path d="M20 5.5h-6.5a2 2 0 0 0-2 2V20a2 2 0 0 1 2-2H20z"/>
+              </svg>
+              <span>Mis ramos</span>
+            </a>
             <a routerLink="/perfil" routerLinkActive="activo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round">
@@ -59,6 +67,21 @@ import { PerfilStore } from './perfil.store';
               </svg>
               <span>Mis puntos</span>
             </a>
+            <a routerLink="/tienda" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 8h16l-1.2 11.2a1.5 1.5 0 0 1-1.5 1.3H6.7a1.5 1.5 0 0 1-1.5-1.3z"/>
+                <path d="M8.8 8V6.2a3.2 3.2 0 0 1 6.4 0V8"/>
+              </svg>
+              <span>Tienda</span>
+            </a>
+            <a routerLink="/ficha" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 3h12v18H6z"/><path d="M9 7.5h6"/><path d="M9 12h6"/><path d="M9 16.5h3.5"/>
+              </svg>
+              <span>Mi ficha</span>
+            </a>
           }
         </nav>
 
@@ -72,11 +95,33 @@ import { PerfilStore } from './perfil.store';
               </div>
             </div>
           } @else if (perfil.perfil(); as p) {
+            <!-- El ramo elegido manda sobre casi todo lo que se muestra, así que
+                 el selector vive acá, siempre a la vista. Con un solo ramo no
+                 aparece: sería una lista de un elemento. -->
+            @if (perfil.ramos().length > 1) {
+              <label class="selector-ramo">
+                <span class="etiqueta">Ramo</span>
+                <select [value]="perfil.ramoId()"
+                        (change)="cambiarRamo($any($event.target).value)">
+                  @for (r of perfil.ramos(); track r.matricula_id) {
+                    <option [value]="r.matricula_id">
+                      {{ r.sigla }} · {{ r.seccion }} · {{ r.periodo }}
+                    </option>
+                  }
+                </select>
+              </label>
+            }
             <div class="usuario-lateral">
               <img [src]="avatar()" alt="">
               <div class="datos">
                 <div class="nom">{{ p.nombre }}</div>
-                <div class="sec">Sección {{ p.seccion }}</div>
+                <div class="sec">
+                  @if (perfil.ramo(); as r) {
+                    {{ r.sigla }} · Sección {{ r.seccion }}
+                  } @else {
+                    Sin ramos
+                  }
+                </div>
               </div>
             </div>
           }
@@ -113,6 +158,10 @@ export class MarcoComponent {
 
   constructor() {
     this.perfil.cargar();
+  }
+
+  cambiarRamo(matriculaId: string): void {
+    this.perfil.elegirRamo(matriculaId);
   }
 
   async salir(): Promise<void> {

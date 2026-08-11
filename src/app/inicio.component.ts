@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import { DatosService, Movimiento } from './datos.service';
@@ -11,7 +11,7 @@ import { PerfilStore } from './perfil.store';
   template: `
     <div class="encabezado">
       <h1>Hola, {{ primerNombre() }}</h1>
-      <p>{{ perfil.perfil()?.asignatura ?? '' }}</p>
+      <p>{{ perfil.ramo()?.asignatura ?? '' }}</p>
     </div>
 
     @if (perfil.cargando()) {
@@ -25,24 +25,34 @@ import { PerfilStore } from './perfil.store';
         <button class="boton" style="margin-top:16px" (click)="completar()">Completar mi perfil</button>
         @if (error()) { <div class="aviso malo" style="margin-top:12px">{{ error() }}</div> }
       </div>
+    } @else if (!perfil.ramo()) {
+      <div class="tarjeta">
+        <div class="aviso dato">
+          <strong>Todavía no estás matriculado en ningún ramo.</strong>
+          Elige el tuyo para empezar a acumular puntos.
+        </div>
+        <a class="boton" style="margin-top:16px" routerLink="/ramos">Agregar un ramo</a>
+      </div>
     } @else {
       <div class="rejilla tres" style="margin-bottom:20px">
         <div class="tarjeta">
           <p class="etiqueta">Puntos disponibles</p>
           <p class="cifra destacada">{{ saldo() }}</p>
-          <p class="chico suave">Para canjear más adelante</p>
+          <p class="chico suave">En {{ perfil.ramo()!.sigla }}, para canjear más adelante</p>
         </div>
 
         <div class="tarjeta">
           <p class="etiqueta">Sección</p>
-          <p class="cifra">{{ perfil.perfil()!.seccion }}</p>
-          <p class="chico suave">Tu grupo del semestre</p>
+          <p class="cifra">{{ perfil.ramo()!.seccion }}</p>
+          <p class="chico suave">{{ perfil.ramo()!.periodo_nombre }}</p>
         </div>
 
         <div class="tarjeta">
-          <p class="etiqueta">Avance del semestre</p>
-          <p class="cifra">{{ avanceSemana }}<span style="font-size:20px;color:var(--texto-suave)">/18</span></p>
-          <div class="barra" style="margin-top:10px"><i [style.width.%]="avanceSemana / 18 * 100"></i></div>
+          <p class="etiqueta">Mis ramos</p>
+          <p class="cifra">{{ perfil.ramos().length }}</p>
+          <p class="chico suave">
+            <a routerLink="/ramos">Ver todos o agregar otro</a>
+          </p>
         </div>
       </div>
 
@@ -92,9 +102,6 @@ export class InicioComponent {
   private datos = inject(DatosService);
   private avatares = inject(AvatarService);
 
-  /** Semana del semestre; por ahora fija, la calcularemos cuando exista el avance real. */
-  protected readonly avanceSemana = 1;
-
   saldo = signal(0);
   movimientos = signal<Movimiento[]>([]);
   error = signal('');
@@ -104,16 +111,20 @@ export class InicioComponent {
   ultimos = computed(() => this.movimientos().slice(0, 4));
 
   constructor() {
-    this.cargar();
+    this.perfil.cargar();
+    // Al cambiar de ramo en la barra lateral hay que recargar saldo e historial:
+    // son distintos en cada asignatura.
+    effect(() => {
+      const ramo = this.perfil.ramo();
+      if (ramo) this.cargar(ramo.matricula_id);
+    });
   }
 
-  private async cargar(): Promise<void> {
-    await this.perfil.cargar();
-    if (!this.perfil.perfil()) return;
+  private async cargar(matriculaId: string): Promise<void> {
     try {
       const [saldo, movs] = await Promise.all([
-        this.datos.miSaldo(),
-        this.datos.misMovimientos(),
+        this.datos.saldo(matriculaId),
+        this.datos.movimientos(matriculaId),
       ]);
       this.saldo.set(saldo);
       this.movimientos.set(movs);
@@ -127,7 +138,6 @@ export class InicioComponent {
     try {
       await this.datos.completarPerfil();
       await this.perfil.cargar(true);
-      await this.cargar();
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo completar el perfil.');
     }

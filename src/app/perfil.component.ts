@@ -1,10 +1,12 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import { DatosService } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 @Component({
   selector: 'app-perfil',
+  imports: [RouterLink],
   template: `
     <div class="encabezado">
       <h1>Mi perfil</h1>
@@ -18,21 +20,33 @@ import { PerfilStore } from './perfil.store';
           <img class="avatar-grande" [src]="vistaPrevia()" alt="Avatar elegido">
           <div>
             <p style="font-weight:600">{{ perfil.perfil()?.nombre }}</p>
-            <p class="chico suave">{{ perfil.perfil()?.asignatura }}</p>
-            <p class="chico suave">Sección {{ perfil.perfil()?.seccion }}</p>
+            @if (perfil.ramo(); as r) {
+              <p class="chico suave">{{ r.asignatura }}</p>
+              <p class="chico suave">Sección {{ r.seccion }} · {{ r.periodo }}</p>
+            }
           </div>
         </div>
       </div>
 
       <div class="tarjeta">
-        <h2>Datos de la cuenta</h2>
-        <table style="margin-top:12px">
-          <tr><td class="suave">Nombre</td><td class="der">{{ perfil.perfil()?.nombre }}</td></tr>
-          <tr><td class="suave">Asignatura</td><td class="der">{{ perfil.perfil()?.asignatura }}</td></tr>
-          <tr><td class="suave">Sección</td><td class="der">{{ perfil.perfil()?.seccion }}</td></tr>
-        </table>
+        <h2>Mis ramos</h2>
+        @if (perfil.ramos().length === 0) {
+          <p class="suave chico" style="margin-top:12px">Todavía no estás matriculado en ninguno.</p>
+        } @else {
+          <table style="margin-top:12px">
+            <tr><th>Asignatura</th><th>Sección</th><th>Periodo</th><th class="der">Puntos</th></tr>
+            @for (r of perfil.ramos(); track r.matricula_id) {
+              <tr>
+                <td>{{ r.sigla }}</td>
+                <td><span class="insignia celeste">{{ r.seccion }}</span></td>
+                <td class="suave chico">{{ r.periodo }}</td>
+                <td class="der num" style="font-weight:600">{{ r.puntos }}</td>
+              </tr>
+            }
+          </table>
+        }
         <p class="chico suave" style="margin-top:14px">
-          Si algo de esto está mal —por ejemplo la sección— escríbele al docente.
+          <a routerLink="/ramos">Agregar otro ramo</a>. Si una sección está mal, escríbele al docente.
         </p>
       </div>
     </div>

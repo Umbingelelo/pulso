@@ -1,14 +1,19 @@
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { DatosService, Movimiento } from './datos.service';
+import { PerfilStore } from './perfil.store';
 
 @Component({
   selector: 'app-puntos',
-  imports: [DatePipe],
+  imports: [DatePipe, RouterLink],
   template: `
     <div class="encabezado">
       <h1>Mis puntos</h1>
-      <p>Todo lo que has ganado, y en qué se te fue.</p>
+      <p>
+        Todo lo que has ganado en {{ perfil.ramo()?.sigla ?? 'este ramo' }}, y en qué se te fue.
+        El saldo es de cada asignatura por separado.
+      </p>
     </div>
 
     <div class="rejilla tres" style="margin-bottom:20px">
@@ -50,15 +55,17 @@ import { DatosService, Movimiento } from './datos.service';
 
     <div class="tarjeta" style="margin-top:20px">
       <h2>Tienda de canje</h2>
-      <div class="aviso dato" style="margin-top:14px">
-        Todavía no está abierta. Acumula puntos: pronto vas a poder cambiarlos por cosas que te
-        sirvan durante el semestre.
-      </div>
+      <p class="chico suave" style="margin-top:6px">
+        Décimas, prórrogas, pistas y unas cuantas cosas más. Todavía se están afinando los precios,
+        pero ya puedes mirar la vitrina y saber hacia dónde ahorrar.
+      </p>
+      <a class="boton accion" style="margin-top:16px" routerLink="/tienda">Ver la tienda</a>
     </div>
   `,
 })
 export class PuntosComponent {
   private datos = inject(DatosService);
+  protected perfil = inject(PerfilStore);
 
   movimientos = signal<Movimiento[]>([]);
   saldo = signal(0);
@@ -68,14 +75,20 @@ export class PuntosComponent {
   gastados = signal(0);
 
   constructor() {
-    this.cargar();
+    this.perfil.cargar();
+    effect(() => {
+      const ramo = this.perfil.ramo();
+      if (ramo) this.cargar(ramo.matricula_id);
+      else this.cargando.set(false);
+    });
   }
 
-  private async cargar(): Promise<void> {
+  private async cargar(matriculaId: string): Promise<void> {
+    this.cargando.set(true);
     try {
       const [saldo, movs] = await Promise.all([
-        this.datos.miSaldo(),
-        this.datos.misMovimientos(),
+        this.datos.saldo(matriculaId),
+        this.datos.movimientos(matriculaId),
       ]);
       this.saldo.set(saldo);
       this.movimientos.set(movs);

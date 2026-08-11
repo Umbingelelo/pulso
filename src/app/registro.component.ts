@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { Asignatura, DatosService, Seccion } from './datos.service';
+import { Asignatura, DatosService, Periodo, Seccion } from './datos.service';
 
 @Component({
   selector: 'app-registro',
@@ -21,6 +21,10 @@ import { Asignatura, DatosService, Seccion } from './datos.service';
         </div>
         <a routerLink="/ingresar" class="boton">Ir a iniciar sesión</a>
       } @else {
+        <p class="suave chico" style="margin-top:14px">
+          Si cursas más de una asignatura conmigo, empieza por una: las demás las agregas
+          después desde <em>Mis ramos</em>, con la misma cuenta.
+        </p>
         <form (ngSubmit)="registrar()" style="margin-top:22px">
           <label>
             <span class="etiqueta">Nombre completo</span>
@@ -39,6 +43,20 @@ import { Asignatura, DatosService, Seccion } from './datos.service';
             <input name="clave" type="password" [(ngModel)]="clave" required minlength="8"
                    autocomplete="new-password" placeholder="Mínimo 8 caracteres">
           </label>
+
+          <!-- El periodo solo se pregunta si hay más de uno abierto. Hoy es uno
+               solo, así que el alumno no ve este campo. -->
+          @if (periodos().length > 1) {
+            <label>
+              <span class="etiqueta">Periodo</span>
+              <select name="periodo" [ngModel]="periodoId()"
+                      (ngModelChange)="cambiarPeriodo($event)" required>
+                @for (p of periodos(); track p.id) {
+                  <option [value]="p.id">{{ p.nombre }}</option>
+                }
+              </select>
+            </label>
+          }
 
           <label>
             <span class="etiqueta">Asignatura</span>
@@ -90,6 +108,8 @@ export class RegistroComponent {
   clave = '';
   seccionId = '';
 
+  periodos = signal<Periodo[]>([]);
+  periodoId = signal('');
   asignaturaId = signal('');
   asignaturas = signal<Asignatura[]>([]);
   secciones = signal<Seccion[]>([]);
@@ -98,9 +118,26 @@ export class RegistroComponent {
   error = signal('');
 
   constructor() {
-    this.datos.asignaturas()
-      .then(a => this.asignaturas.set(a))
-      .catch(() => this.error.set('No se pudo cargar la lista de asignaturas.'));
+    this.cargarCatalogo();
+  }
+
+  private async cargarCatalogo(): Promise<void> {
+    try {
+      const periodos = await this.datos.periodos();
+      this.periodos.set(periodos);
+      if (periodos.length) await this.cambiarPeriodo(periodos[0].id);
+      else this.error.set('No hay periodos abiertos a matrícula.');
+    } catch {
+      this.error.set('No se pudo cargar la lista de asignaturas.');
+    }
+  }
+
+  async cambiarPeriodo(id: string): Promise<void> {
+    this.periodoId.set(id);
+    this.asignaturaId.set('');
+    this.seccionId = '';
+    this.secciones.set([]);
+    this.asignaturas.set(id ? await this.datos.asignaturasDe(id) : []);
   }
 
   completo(): boolean {
@@ -114,7 +151,7 @@ export class RegistroComponent {
     this.secciones.set([]);
     if (!id) return;
     try {
-      this.secciones.set(await this.datos.secciones(id));
+      this.secciones.set(await this.datos.secciones(id, this.periodoId()));
     } catch {
       this.error.set('No se pudieron cargar las secciones.');
     }

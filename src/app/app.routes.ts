@@ -78,6 +78,10 @@ export const routes: Routes = [
         loadComponent: () => import('./perfil.component').then(m => m.PerfilComponent),
       },
       {
+        path: 'ramos', canActivate: [soloAlumno],
+        loadComponent: () => import('./ramos.component').then(m => m.RamosComponent),
+      },
+      {
         path: 'actividades', canActivate: [soloAlumno],
         loadComponent: () => import('./actividades.component').then(m => m.ActividadesComponent),
       },
@@ -90,8 +94,23 @@ export const routes: Routes = [
         loadComponent: () => import('./puntos.component').then(m => m.PuntosComponent),
       },
       {
+        path: 'tienda', canActivate: [soloAlumno],
+        loadComponent: () => import('./tienda.component').then(m => m.TiendaComponent),
+      },
+      {
         path: 'curso', canActivate: [soloDocente],
         loadComponent: () => import('./docente.component').then(m => m.DocenteComponent),
+      },
+      // La ficha es de los dos: el docente llega con el id de la matrícula desde
+      // la nómina, el alumno entra sin id y ve la de su ramo elegido. Quién puede
+      // ver cuál lo decide `ficha_alumno()` en la base, no un guard de acá.
+      {
+        path: 'ficha/:matriculaId',
+        loadComponent: () => import('./ficha.component').then(m => m.FichaComponent),
+      },
+      {
+        path: 'ficha', canActivate: [soloAlumno],
+        loadComponent: () => import('./ficha.component').then(m => m.FichaComponent),
       },
       { path: '', pathMatch: 'full', redirectTo: 'inicio' },
     ],

@@ -94,6 +94,64 @@ a:hover{ text-decoration:underline; }
 .usuario-lateral .nom{ color:#fff; font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .usuario-lateral .sec{ color:rgba(255,255,255,.6); font-size:12px; }
 
+/* Cambiar de ramo: solo aparece si el alumno cursa más de uno. */
+.selector-ramo{ display:block; margin-bottom:10px; }
+.selector-ramo .etiqueta{
+  display:block; margin-bottom:5px; padding-left:2px;
+  color:rgba(255,255,255,.55); font-size:11px; font-weight:600;
+  letter-spacing:.06em; text-transform:uppercase;
+}
+.selector-ramo select{
+  width:100%; padding:9px 11px; border-radius:var(--r-chico);
+  border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.07);
+  color:#fff; font-size:13px; font-weight:600; font-family:inherit;
+  appearance:none; cursor:pointer;
+}
+.selector-ramo select:focus{ outline:2px solid rgba(255,255,255,.45); outline-offset:1px; }
+.selector-ramo option{ color:var(--texto); background:#fff; font-weight:500; }
+
+/* ============================================================
+   Tienda — la vitrina de canjes
+   ============================================================ */
+.vitrina{ display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(268px,1fr)); }
+
+.articulo{
+  display:flex; flex-direction:column;
+  border:1px solid var(--borde); border-radius:var(--r-chico);
+  padding:18px; background:var(--blanco);
+  transition:border-color .15s, box-shadow .15s;
+}
+.articulo:hover{ border-color:var(--celeste); box-shadow:var(--sombra); }
+/* Lo que todavía no se puede pedir se atenúa, pero se sigue leyendo: la vitrina
+   también sirve para que el alumno sepa hacia dónde ahorrar. */
+.articulo.agotado{ opacity:.62; }
+.articulo.agotado:hover{ border-color:var(--borde); box-shadow:none; }
+
+.articulo .cabeza{
+  display:flex; justify-content:space-between; align-items:center;
+  gap:12px; margin-bottom:12px;
+}
+.articulo .icono{ font-size:30px; line-height:1; }
+.articulo .precio{
+  font-size:21px; font-weight:700; color:var(--azul);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.articulo .precio .pt{
+  font-size:11px; font-weight:600; color:var(--texto-suave);
+  margin-left:3px; text-transform:uppercase; letter-spacing:.04em;
+}
+.articulo h3{ font-size:15.5px; font-weight:600; line-height:1.35; margin-bottom:6px; }
+.articulo .letra-chica{
+  font-size:12px; line-height:1.5; color:var(--texto-suave);
+  border-left:2px solid var(--borde); padding-left:10px; margin-top:10px;
+}
+.articulo .pie-articulo{
+  display:flex; gap:6px; flex-wrap:wrap;
+  margin-top:14px; padding-top:14px; border-top:1px solid var(--borde);
+}
+/* El botón queda pegado abajo para que las tarjetas de una fila terminen parejas. */
+.articulo > button{ margin-top:auto; }
+
 .contenido{ padding:32px 40px 60px; min-width:0; }
 .encabezado{ margin-bottom:26px; }
 .encabezado p{ color:var(--texto-suave); margin-top:3px; }
@@ -103,6 +161,8 @@ a:hover{ text-decoration:underline; }
   .lateral{ padding:22px 12px; }
   .lateral .marca span, .menu a span, .menu button span, .usuario-lateral .datos{ display:none; }
   .lateral .marca, .menu a, .menu button, .usuario-lateral{ justify-content:center; }
+  /* En la barra angosta no cabe el desplegable: se cambia de ramo desde /ramos. */
+  .selector-ramo{ display:none; }
   .contenido{ padding:24px 20px 48px; }
 }
 

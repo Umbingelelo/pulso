@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Actividad, DatosService, Resultado } from './datos.service';
+import { PerfilStore } from './perfil.store';
 
 @Component({
   selector: 'app-actividades',
@@ -9,7 +10,7 @@ import { Actividad, DatosService, Resultado } from './datos.service';
   template: `
     <div class="encabezado">
       <h1>Actividades</h1>
-      <p>Lo que tienes que hacer, y lo que ya hiciste.</p>
+      <p>{{ perfil.ramo()?.asignatura ?? 'Lo que tienes que hacer, y lo que ya hiciste.' }}</p>
     </div>
 
     @if (cargando()) {
@@ -60,6 +61,7 @@ import { Actividad, DatosService, Resultado } from './datos.service';
 })
 export class ActividadesComponent {
   private datos = inject(DatosService);
+  protected perfil = inject(PerfilStore);
 
   actividades = signal<Actividad[]>([]);
   private resultados = signal<Resultado[]>([]);
@@ -77,9 +79,13 @@ export class ActividadesComponent {
 
   private async cargar(): Promise<void> {
     try {
+      await this.perfil.cargar();
+      const ramo = this.perfil.ramo();
+      if (!ramo) return;
+
       const [acts, res] = await Promise.all([
-        this.datos.actividades(),
-        this.datos.resultados(),
+        this.datos.actividades(ramo),
+        this.datos.resultados(ramo.matricula_id),
       ]);
       this.actividades.set(acts);
       this.resultados.set(res);
@@ -99,7 +105,8 @@ export class ActividadesComponent {
   }
 
   ruta(a: Actividad): string {
-    // Por ahora solo el diagnóstico tiene pantalla propia.
-    return a.codigo === 'diagnostico-entrada' ? '/diagnostico' : '/actividades';
+    // Se enruta por tipo, no por código: el código solo es único dentro de una
+    // asignatura y un periodo, así que cada ramo tiene el suyo.
+    return a.tipo === 'diagnostico' ? '/diagnostico' : '/actividades';
   }
 }

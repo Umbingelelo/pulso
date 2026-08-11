@@ -46,3 +46,8 @@ Thumbs.db
 # Contenido de los diagnósticos: trae la pauta de corrección y este repo es
 # público. Las migraciones (estructura) sí se versionan; las semillas no.
 /supabase/semillas/*.sql
+
+# Credenciales de la base y de la sesión. Nunca al repositorio.
+.env
+.env.*
+!.env.example

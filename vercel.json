@@ -1,7 +1,17 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/.well-known/jwks.json", "destination": "/api/jwks" },
-    { "source": "/((?!api/|db/|assets/|\\.well-known/).*)", "destination": "/index.html" }
+    {
+      "source": "/.well-known/jwks.json",
+      "destination": "/api/jwks"
+    },
+    {
+      "source": "/db/:path*",
+      "destination": "https://ep-late-sky-act23shb.apirest.sa-east-1.aws.neon.tech/neondb/rest/v1/:path*"
+    },
+    {
+      "source": "/((?!api/|db/|assets/|\\.well-known/).*)",
+      "destination": "/index.html"
+    }
   ]
 }

@@ -138,8 +138,22 @@ Para dar de baja una sección o una asignatura, `activa = false`; para cerrar un
 npm install
 npm start          # http://localhost:4200
 npm run build
-npx vercel deploy --prod
 ```
+
+## Desplegar
+
+**Se despliega con `git push`.** El proyecto tiene la integración de Git de Vercel: cada push a `main`
+construye y publica en producción solo.
+
+> **No uses `npx vercel deploy --prod`.** Se probó el 11 de agosto de 2026 y produjo un despliegue que
+> respondía **404** en todas las rutas, pese a que el build en Vercel terminó bien; además se quedó
+> con el alias de producción y tumbó el sitio hasta promover a mano el despliegue del push. El de la
+> integración de Git, con el mismo commit, quedó correcto. Si alguna vez pasa de nuevo:
+>
+> ```bash
+> npx vercel ls pulso                    # busca el despliegue bueno
+> npx vercel promote <url-del-bueno>     # devuélvele el alias
+> ```
 
 La configuración de Supabase está en `src/entorno.ts`. El contenido del diagnóstico ya no está en el
 código: vive en la base, y su semilla en `supabase/semillas/`.

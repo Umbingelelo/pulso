@@ -118,8 +118,15 @@ try {
   await pagina.type('input[type=email]', CORREO);
   await pagina.type('input[type=password]', CLAVE);
   await pagina.click('button[type=submit]');
-  await new Promise((r) => setTimeout(r, 3000));
-  revisar('quedó dentro', !/\/ingresar$/.test(pagina.url()), true);
+  // Por condición y no por reloj: el ingreso es un cambio de ruta del lado del
+  // cliente y tarda lo que tarde la red. Con una espera fija la prueba falla por
+  // lenta y no por rota, que es peor que no tenerla.
+  let dentro = false;
+  for (let i = 0; i < 30; i++) {
+    if (!/\/ingresar\/?$/.test(pagina.url())) { dentro = true; break; }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  revisar('quedó dentro', dentro, true);
 
   console.log('\n2. La lista de clases');
   await pagina.goto(`${BASE}/clases`, { waitUntil: 'networkidle2' });

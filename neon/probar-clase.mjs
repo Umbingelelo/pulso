@@ -217,6 +217,19 @@ revisar('bajó del blob', html.length > 100000, true);
 revisar('sigue siendo el mismo archivo', html.includes('<title>'), true);
 const salida = instrumentar(html, { claseId: clase.id, docente: false, slides: clase.slides });
 revisar('creció solo lo del script', salida.length - html.length < 6000, true);
+
+// El módulo puede estar bien y el script emitido roto: el guion se arma con un
+// template literal, y basta un backtick en un comentario para cerrarlo antes de
+// tiempo. Pasó una vez y tumbó `/api/clase` con un 500. Así que se parsea.
+const emitido = salida.slice(salida.indexOf('<script data-pulso="rastreo">') + 29,
+                             salida.lastIndexOf('</script>'));
+try {
+  new Function(emitido);
+  revisar('el script emitido parsea', true, true);
+} catch (e) {
+  revisar(`el script emitido parsea (${e.message})`, false, true);
+}
+revisar('sin backticks sueltos en el script', emitido.includes('`'), false);
 revisar('el script quedó antes de </body>',
   salida.lastIndexOf('data-pulso="rastreo"') < salida.lastIndexOf('</body>'), true);
 revisar('lleva el id de la clase', salida.includes(clase.id), true);

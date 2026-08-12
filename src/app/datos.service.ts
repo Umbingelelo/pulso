@@ -75,6 +75,33 @@ export interface Resultado {
   completada_en: string;
 }
 
+/**
+ * Una clase, con el avance del alumno pegado.
+ *
+ * No trae la ruta del archivo ni la pauta de sus quiz: la vista `mis_clases` no
+ * los selecciona y el rol de la app no tiene permiso sobre esas dos columnas. El
+ * deck se abre por `/api/clase?id=…`, que es lo único que sabe dónde está.
+ */
+export interface Clase {
+  id: string;
+  codigo: string;
+  titulo: string;
+  descripcion: string | null;
+  orden: number;
+  dictada_el: string | null;
+  slides: number;
+  actividades: number;
+  puntos_abrir: number;
+  puntos_actividad: number;
+  puntos_terminar: number;
+  matricula_id: string;
+  abierta: boolean;
+  abierta_en: string | null;
+  slide_max: number | null;
+  terminada_en: string | null;
+  resueltas: number;
+}
+
 export interface AlumnoNomina {
   matricula_id: string;
   perfil_id: string;
@@ -523,6 +550,28 @@ export class DatosService {
       .order('completada_en', { ascending: false });
     if (error) throw error;
     return (data ?? []) as Resultado[];
+  }
+
+  // ---------- Clases ----------
+
+  /**
+   * Las clases publicadas del ramo, con el avance propio.
+   *
+   * Filtra por `matricula_id` y no por asignatura porque la vista ya trae una
+   * fila por matrícula: si un alumno cursa dos ramos, sin este filtro vería las
+   * clases del otro mezcladas.
+   */
+  async clases(ramo: Ramo): Promise<Clase[]> {
+    const { data, error } = await this.db
+      .from('mis_clases')
+      // En una sola línea a propósito: `postgrest-js` infiere el tipo del
+      // resultado leyendo este literal, y una cadena concatenada lo deja ciego.
+      .select('id, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, matricula_id, abierta, abierta_en, slide_max, terminada_en, resueltas')
+      .eq('matricula_id', ramo.matricula_id)
+      .order('orden')
+      .order('codigo');
+    if (error) throw error;
+    return (data ?? []) as Clase[];
   }
 
   // ---------- Diagnóstico ----------

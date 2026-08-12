@@ -53,12 +53,14 @@ periodos ─────┐
 asignaturas ──┤                      │   │          │
               │                      │   │    saldos_puntos (vista)
               │                      │   └──< canjes >── articulos
-              └──< actividades ──< resultados_actividad
-                        │
-                        └──< diagnostico_secciones ──< diagnostico_preguntas
+              ├──< actividades ──< resultados_actividad
+              │           │
+              │           └──< diagnostico_secciones ──< diagnostico_preguntas
+              └──< clases ──< progreso_clase
 
 docentes ──< docente_asignaturas    ← qué dicta cada docente, y en qué periodo
 mis_ramos                           ← vista: los ramos del alumno con su saldo
+mis_clases                          ← vista: las clases del ramo con el avance propio
 resumen_alumnos                     ← vista: la nómina del docente
 vitrina                             ← vista: la tienda de un ramo, con saldo y límites
 canjes_detalle                      ← vista: los canjes con alumno y artículo resueltos
@@ -112,17 +114,99 @@ declaró dictar.
   llevaría el artículo sin pagar.
 - **Ficha**: una sola función para el alumno y para el docente, y la autorización se decide adentro.
   Cambiar el id de la matrícula en la URL no abre la ficha de nadie más.
+- **Clases**: el deck vive en un store de Blob **privado**, y su ruta está en `clases.archivo`, una
+  columna sobre la que `pulso_app` **no tiene grant**. La pauta de sus quiz, en `clases.pauta`,
+  tampoco. Son grants por columna: la tabla se lee, esas dos no. El único camino al archivo es
+  `/api/clase`, que exige cookie de sesión y matrícula vigente. `progreso_clase` no tiene políticas de
+  `insert` ni `update`: todo pasa por `abrir_clase()` y `progreso_clase_guardar()`, que son las que
+  corrigen y pagan.
 - Ni un resultado ni un movimiento tienen políticas de `update` o `delete`: no se editan nunca.
-- El perfil y su primera matrícula los crea un trigger sobre `auth.users` a partir de la metadata del
-  registro, así que funciona aunque la confirmación de correo esté activada y todavía no exista sesión.
-
-La clave que va en el navegador es la **publicable**, pública por diseño. La `service role` no
-aparece en el repositorio.
+- El perfil y su primera matrícula los crea `registrar_alumno()` en una sola transacción, junto con la
+  cuenta. No hay trigger sobre una tabla ajena que pueda quedar a medias.
+- La tabla de credenciales, `usuarios`, tiene RLS activo y **ninguna política ni grant**. Solo se entra
+  por `autenticar()`, `registrar_alumno()` y `cambiar_clave()`, así que un error de programación en la
+  API no puede filtrar un hash: el rol con el que se conecta no alcanza esa tabla.
 
 ### Este repositorio es público
 
-Por eso el contenido de los diagnósticos **no se versiona**: vive en `supabase/semillas/`, que está en
-`.gitignore`, y en la base. Solo se versiona la estructura, en `supabase/migrations/`.
+Por eso el contenido de los diagnósticos **no se versiona**: vive en `.gitignore` y en la base. Solo se
+versiona la estructura, en `neon/migrations/`.
+
+Y por eso los decks de clase tampoco: viven en Vercel Blob privado, no acá. Subirlos a `public/` habría
+sido más simple y habría dejado el material de todo el semestre —y los apuntes docentes— a un clic de
+cualquiera, además de volver los puntos por abrir la clase un adorno.
+
+## Clases
+
+Cada clase es un deck HTML **autocontenido**: fuentes, CSS, imágenes y JS incrustados, cero referencias
+externas. Por eso se puede servir desde cualquier parte sin adaptarlo, y por eso el archivo que el
+docente proyecta en sala es exactamente el mismo que estudia el alumno.
+
+Se sube con:
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/subir-clase.mjs \
+  --archivo "../Desarrollo_Cloud_Native/Clases/decks/S01-Presentacion-de-la-asignatura.html" \
+  --sigla DSY1107 --periodo 2026-2 --codigo S01 \
+  --titulo "Presentación de la asignatura" \
+  --dictada 2026-08-10 --orden 1 --publicar
+```
+
+Sin `--publicar` queda cargada y **oculta**: así el deck de la próxima semana puede estar arriba sin que
+nadie lo vea antes de tiempo. `--publicar-en "2026-08-17T08:30:00-04:00"` la programa. `--seco` informa
+lo que haría sin subir ni escribir.
+
+El script lee el deck para sacar dos cosas que el navegador no debe decidir: **cuántas diapositivas**
+tiene y la **pauta de sus quiz**. La llave de la pauta es el índice de la diapositiva que contiene el
+quiz, porque así lo guarda el deck (`slides.indexOf(el.closest('.slide'))`). Si eso cambia en la
+plantilla hay que cambiarlo en el script el mismo día: una pauta con las llaves corridas no da error,
+simplemente deja de pagar puntos.
+
+### Los puntos
+
+| Tramo | Por omisión | Cuándo |
+|---|---|---|
+| Abrir | 5 | La primera vez que la abre |
+| Actividad | 10 | Por cada quiz del deck que responda bien, una vez cada uno |
+| Terminar | 20 | Al llegar a la última diapositiva, **si pasó el mínimo de tiempo** |
+
+El mínimo son 15 segundos por diapositiva. Sin él, saltar al final pagaría lo mismo que recorrerla.
+
+### Cómo se entera Pulso
+
+`/api/clase` sirve el deck y le pega un script al final del `body`, **al pasar**. Los archivos de la
+carpeta de la asignatura no se tocan nunca: rehacer un deck no obliga a reinstrumentarlo.
+
+Ese script hace dos cosas. Primero fuerza el modo estudio, porque el deck arranca en modo `clase`
+—pensado para proyectar— y en ese modo no persiste nada; sin esto nadie sumaría un punto. Después
+intercepta el `localStorage.setItem` con el que el deck guarda su avance completo y lo reenvía a
+`/api/clase-avance`. Se apoya en la *forma* del objeto que el deck persiste, no en sus variables
+internas, así que sobrevive a que el deck cambie por dentro.
+
+La corrección la hace Postgres contra `clases.pauta`. La API no confía en un «acerté 3» del navegador.
+
+> **Letra chica honesta:** el avance lo reporta el navegador, y el `data-correcta` sigue estando en el
+> HTML que el alumno descarga. Quien abra las herramientas de desarrollo puede mentir. La base se
+> defiende de lo que puede —paga una sola vez cada cosa y exige el mínimo de tiempo— pero estos puntos
+> son un empujón para repasar, no una evaluación. Lo que evalúa son el diagnóstico y los laboratorios.
+
+### Probarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/probar-clase.mjs                      # DSY1107 / S01
+node neon/probar-clase.mjs --sigla ITY1102 --codigo S01
+```
+
+Recorre el ciclo completo con la cuenta `alumno.prueba@duocuc.cl`: abrir, reabrir sin cobrar, fallar,
+acertar, reenviar sin cobrar, mandar basura, intentar terminar antes del mínimo, terminar de verdad,
+y comprobar que `mis_clases` no expone `archivo` ni `pauta` y que `pulso_app` no puede leer esas dos
+columnas. Deja el progreso limpio al empezar, así que se puede correr tantas veces como haga falta.
+
+**Esa cuenta se mantiene a propósito** y está matriculada en DSY1107 001D y en ITY1102 001D. Aparece en
+la nómina del docente, que es el precio de tenerla: si molesta, `matriculas.activa = false` la saca de
+los promedios pero también la deja fuera de la prueba.
 
 ## Agregar una asignatura o un semestre
 
@@ -155,14 +239,25 @@ construye y publica en producción solo.
 > npx vercel promote <url-del-bueno>     # devuélvele el alias
 > ```
 
-La configuración de Supabase está en `src/entorno.ts`. El contenido del diagnóstico ya no está en el
-código: vive en la base, y su semilla en `supabase/semillas/`.
+No hay archivo de configuración en `src/`: la app llega a la base por `/db`, que `vercel.json` reescribe
+a la Data API de Neon, y la sesión la manejan las funciones de `api/auth/`. Los secretos están en las
+variables de entorno del proyecto en Vercel y, para desarrollo, en `.env.local`, que no se versiona.
 
 ## Rutas
 
 | Ruta | Quién entra |
 |---|---|
 | `/registro`, `/ingresar` | Solo sin sesión |
-| `/inicio`, `/actividades`, `/diagnostico`, `/ramos`, `/perfil`, `/puntos`, `/tienda` | Alumnos |
+| `/inicio`, `/clases`, `/actividades`, `/diagnostico`, `/ramos`, `/perfil`, `/puntos`, `/tienda` | Alumnos |
 | `/curso` | Docentes |
 | `/ficha/:matriculaId` | Los dos: el alumno la suya, el docente las de sus secciones |
+
+Y fuera de Angular, servidas por funciones:
+
+| Ruta | Qué hace |
+|---|---|
+| `/api/auth/*` | Ingreso, registro, refresco y cierre de sesión |
+| `/api/clase?id=…` | Sirve el deck de una clase, tras comprobar sesión y matrícula |
+| `/api/clase-avance` | Recibe el avance dentro del deck y paga los puntos |
+| `/.well-known/jwks.json` | La llave pública con la que Neon valida los tokens |
+| `/db/*` | Reescritura a la Data API de Neon |

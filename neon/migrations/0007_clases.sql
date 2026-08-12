@@ -259,12 +259,17 @@ begin
     end if;
   end loop;
 
+  -- El motivo se lee en el historial de puntos del alumno, así que se escribe
+  -- como se habla: «una actividad», no «1 actividad(es)».
   if array_length(v_nuevos, 1) > 0 and v_clase.puntos_actividad > 0 then
     v_puntos := v_puntos + array_length(v_nuevos, 1) * v_clase.puntos_actividad;
     insert into public.movimientos_puntos (matricula_id, puntos, motivo)
     values (v_matricula, array_length(v_nuevos, 1) * v_clase.puntos_actividad,
-            'Resolvió ' || array_length(v_nuevos, 1) || ' actividad(es) de '
-              || v_clase.codigo);
+            case when array_length(v_nuevos, 1) = 1
+                 then 'Resolvió una actividad de ' || v_clase.codigo
+                 else 'Resolvió ' || array_length(v_nuevos, 1)
+                        || ' actividades de ' || v_clase.codigo
+            end);
   end if;
 
   -- Terminar exige dos cosas: haber llegado al final y haber tardado un mínimo
@@ -325,6 +330,12 @@ create view public.mis_clases with (security_invoker = true) as
 alter table public.clases         enable row level security;
 alter table public.progreso_clase enable row level security;
 
+-- `drop policy if exists` antes de cada `create policy` para que el archivo se
+-- pueda reaplicar completo. Sin esto, reaplicarlo revienta en la primera política
+-- y —lo peor— deja sin ejecutar el bloque de grants del final: la vista se acaba
+-- de recrear con `drop view`, que descarta sus permisos, así que `mis_clases`
+-- queda ilegible y la página de clases responde 403. Pasó exactamente así.
+drop policy if exists "clases: las de mis ramos" on public.clases;
 create policy "clases: las de mis ramos" on public.clases for select to pulso_app
   using ((publicada_desde is not null and publicada_desde <= now() and public.cursa_clase(id))
          or public.docente_ve_clase(id));
@@ -332,6 +343,7 @@ create policy "clases: las de mis ramos" on public.clases for select to pulso_ap
 -- Solo lectura del propio avance. No hay insert ni update para nadie: todo pasa
 -- por `abrir_clase()` y `progreso_clase_guardar()`, que son las que corrigen y
 -- cobran. Si el alumno pudiera escribir acá, se pondría la clase por terminada.
+drop policy if exists "progreso: el mio" on public.progreso_clase;
 create policy "progreso: el mio" on public.progreso_clase for select to pulso_app
   using (public.mi_matricula(matricula_id) or public.docente_ve_matricula(matricula_id));
 

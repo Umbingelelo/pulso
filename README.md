@@ -193,16 +193,37 @@ La corrección la hace Postgres contra `clases.pauta`. La API no confía en un �
 
 ### Probarlo
 
+Tres capas, porque cada una ve lo que la anterior no puede. Todas usan la cuenta
+`alumno.prueba@duocuc.cl` y todas dejan su progreso limpio al empezar, así que se corren tantas veces
+como haga falta.
+
 ```bash
 set -a; . ./.env.local; set +a
-node neon/probar-clase.mjs                      # DSY1107 / S01
-node neon/probar-clase.mjs --sigla ITY1102 --codigo S01
+
+node neon/probar-clase.mjs             # 1. la lógica: Postgres y el Blob
+node neon/probar-clase-http.mjs        # 2. el cable: producción por HTTP
+node neon/probar-clase-navegador.mjs   # 3. el navegador: que el inyector se ejecute
 ```
 
-Recorre el ciclo completo con la cuenta `alumno.prueba@duocuc.cl`: abrir, reabrir sin cobrar, fallar,
-acertar, reenviar sin cobrar, mandar basura, intentar terminar antes del mínimo, terminar de verdad,
-y comprobar que `mis_clases` no expone `archivo` ni `pauta` y que `pulso_app` no puede leer esas dos
-columnas. Deja el progreso limpio al empezar, así que se puede correr tantas veces como haga falta.
+**1. La lógica.** Abrir, reabrir sin cobrar, fallar, acertar, reenviar sin cobrar, mandar basura,
+intentar terminar antes del mínimo, terminar de verdad. Y que `mis_clases` no exponga `archivo` ni
+`pauta`, y que `pulso_app` reciba `permission denied` al intentar leer esas dos columnas. Acepta
+`--sigla` y `--codigo`.
+
+**2. El cable.** Lo mismo pero contra producción: sin sesión no se abre, con cookie llega el deck
+completo, el `ETag` devuelve `304` sin reenviar 750 KB, y la ruta del blob no aparece en el HTML.
+
+**3. El navegador.** La que de verdad importa, y la última que escribí. Las otras dos comprueban que el
+script inyectado **está** en el HTML; ninguna comprueba que se **ejecute**. Y el inyector se apoya en
+dos hechos del deck —que `cambiarModo` queda en el objeto global, y que envolver
+`Storage.prototype.setItem` intercepta su guardado— que serán ciertos hasta que la plantilla cambie a un
+módulo ES, y entonces dejarán de serlo **en silencio**: el alumno vería su clase igual de bien y no
+sumaría un solo punto. Esta prueba maneja un Chrome real, recorre las 21 diapositivas con la flecha,
+responde un quiz y verifica que el POST salga, que pague y que el aviso aparezca.
+
+Necesita `puppeteer-core` —ya está como devDependency, no descarga navegador— y un Chrome instalado.
+Usa un perfil temporal que borra al terminar, así que no toca el tuyo. Si tu Chrome está en otra parte:
+`CHROME=/ruta/al/binario node neon/probar-clase-navegador.mjs`.
 
 **Esa cuenta se mantiene a propósito** y está matriculada en DSY1107 001D y en ITY1102 001D. Aparece en
 la nómina del docente, que es el precio de tenerla: si molesta, `matriculas.activa = false` la saca de

@@ -154,6 +154,11 @@ revisar('puntos (solo las actividades que faltaban)', t1.r.puntos_nuevos,
   (clase.actividades - 1) * clase.puntos_actividad);
 revisar('terminada', t1.r.terminada, false);
 revisar('aciertos', t1.r.aciertos, clase.actividades);
+// Lo que convierte la negación en una postergación: el servidor dice cuánto
+// falta, y con eso el navegador programa un reintento. Sin este dato, el «todavía
+// no» era definitivo y 19 alumnos se quedaron sin sus 20 puntos.
+revisar('dice cuántos segundos faltan', t1.r.faltan_segundos > 0, true);
+revisar('y no más que el umbral', t1.r.faltan_segundos <= clase.segundos_minimos, true);
 
 // ---------- 8. Terminar de verdad ----------
 
@@ -216,7 +221,10 @@ const html = await new Response(blob.stream).text();
 revisar('bajó del blob', html.length > 100000, true);
 revisar('sigue siendo el mismo archivo', html.includes('<title>'), true);
 const salida = instrumentar(html, { claseId: clase.id, docente: false, slides: clase.slides });
-revisar('creció solo lo del script', salida.length - html.length < 6000, true);
+// La cota es generosa a propósito: lo que interesa es cazar que no se duplique el
+// deck o se cuele algo grande, no vigilar cada comentario que se agregue al guion.
+// Hoy pesa ~6,3 KB, un 1,5% de un deck de 400 KB.
+revisar('creció solo lo del script', salida.length - html.length < 15000, true);
 
 // El módulo puede estar bien y el script emitido roto: el guion se arma con un
 // template literal, y basta un backtick en un comentario para cerrarlo antes de
@@ -237,6 +245,37 @@ revisar('fuerza el modo estudio', salida.includes("cambiarModo('estudio')"), tru
 revisar('el deck original no trae rastreo', html.includes('data-pulso="rastreo"'), false);
 const docente = instrumentar(html, { claseId: clase.id, docente: true, slides: clase.slides });
 revisar('al docente no se le rastrea', docente.includes('DOCENTE = true'), true);
+
+// ---------- 13. La red: reabrir liquida el término pendiente ----------
+
+console.log('\n13. Quien recorre rápido y cierra la pestaña lo cobra al reabrir');
+// Se rehace el caso completo: recorrer hasta el final antes del plazo y no volver
+// a reportar nunca. Es exactamente lo que le pasó a 19 alumnos.
+await dueno`delete from public.progreso_clase
+             where matricula_id = ${matricula.id} and clase_id = ${clase.id}`;
+await dueno`delete from public.movimientos_puntos
+             where matricula_id = ${matricula.id}
+               and (motivo like ${'%clase ' + CODIGO + '%'} or motivo like ${'%de ' + CODIGO})`;
+const saldoRed = await saldoDe();
+
+await comoAlumno(alumno.id, (s) => s`select public.abrir_clase(${clase.id}::uuid) as r`);
+const [r1] = await comoAlumno(alumno.id, (s) =>
+  s`select public.progreso_clase_guardar(${clase.id}::uuid, ${clase.slides - 1}::integer,
+             '{}'::jsonb) as r`);
+revisar('al llegar rápido, no paga el término', r1.r.terminada, false);
+
+// Cierra la pestaña. Pasa el tiempo. Vuelve a entrar.
+await dueno`update public.progreso_clase
+               set abierta_en = now() - make_interval(secs => ${clase.segundos_minimos + 5})
+             where matricula_id = ${matricula.id} and clase_id = ${clase.id}`;
+const [reab] = await comoAlumno(alumno.id, (s) =>
+  s`select public.abrir_clase(${clase.id}::uuid) as r`);
+revisar('al reabrir cobra el término', reab.r.puntos_nuevos, clase.puntos_terminar);
+
+const [reab2] = await comoAlumno(alumno.id, (s) =>
+  s`select public.abrir_clase(${clase.id}::uuid) as r`);
+revisar('y no lo cobra dos veces', reab2.r.puntos_nuevos, 0);
+revisar('saldo', await saldoDe(), saldoRed + clase.puntos_abrir + clase.puntos_terminar);
 
 console.log(fallos === 0
   ? `\nTodo bien: ${(await saldoDe()) - saldoInicial} puntos ganados en el recorrido completo.`

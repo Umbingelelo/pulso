@@ -126,8 +126,18 @@ if (choques.length) {
 }
 
 const nombre = args.titulo || titulo(html) || args.codigo;
-// 15 segundos por diapositiva: el piso para dar la clase por terminada.
-const segundosMinimos = Number(args['segundos-minimos'] ?? slides.length * 15);
+
+// 8 segundos por diapositiva: el piso para dar la clase por terminada.
+//
+// Empezó en 15 y con los tiempos reales del curso a la vista era demasiado —había
+// alumnos que recorrieron un deck de 21 diapositivas en 244 segundos, leyendo de
+// verdad, y quedaban bajo la línea—. La migración 0008 bajó las clases ya subidas
+// a esta misma fórmula; si se cambia acá, hay que cambiarla allá o las clases
+// nuevas quedan con otro criterio que las viejas.
+//
+// El piso ya no niega el término: solo lo posterga. Ver 0008.
+const SEGUNDOS_POR_SLIDE = 8;
+const segundosMinimos = Number(args['segundos-minimos'] ?? slides.length * SEGUNDOS_POR_SLIDE);
 const ruta = `clases/${args.sigla}/${args.periodo}/${args.codigo}.html`;
 
 const publicadaDesde = args['publicar-en']

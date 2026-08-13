@@ -129,6 +129,12 @@ try {
   revisar('quedó dentro', dentro, true);
 
   console.log('\n2. La lista de clases');
+  // La página muestra las clases del ramo **seleccionado**, y el alumno de prueba
+  // cursa dos asignaturas. Sin elegir el ramo de la clase que estamos probando,
+  // la lista sale correcta pero de la otra asignatura, y la prueba acusa un fallo
+  // que no existe. Se deja elegido el que corresponde, igual que si el alumno lo
+  // hubiera cambiado en el selector.
+  await pagina.evaluate((id) => localStorage.setItem('pulso.ramo', id), mat.id);
   await pagina.goto(`${BASE}/clases`, { waitUntil: 'networkidle2' });
   // Se espera el contenido y no un tiempo fijo: Angular pide perfil, ramos y
   // clases en cadena, y con un sleep la prueba falla por lenta, no por rota.

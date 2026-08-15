@@ -171,7 +171,45 @@ simplemente deja de pagar puntos.
 | Actividad | 10 | Por cada quiz del deck que responda bien, una vez cada uno |
 | Terminar | 20 | Al llegar a la última diapositiva, **si pasó el mínimo de tiempo** |
 
-El mínimo son 15 segundos por diapositiva. Sin él, saltar al final pagaría lo mismo que recorrerla.
+El mínimo son 8 segundos por diapositiva. Sin él, saltar al final pagaría lo mismo que recorrerla.
+Pero **pospone, no niega**: si todavía no se cumple, el servidor devuelve `faltan_segundos` y el
+navegador vuelve a preguntar en ese instante; y si el alumno cerró la pestaña, `abrir_clase()` lo
+liquida la próxima vez que entre. Antes negaba, y 19 alumnos se quedaron sin sus 20 puntos.
+
+### La ventana: llegar a tiempo vale más
+
+```
+publicada_desde ──────────── ventana_hasta ──────────────▶
+     │      puntos completos       │   puntos × factor_atrasado
+     │                             │
+  se puede abrir              cierra la ventana
+```
+
+Antes de `publicada_desde` la clase no existe para el alumno. Entre las dos fechas todo vale
+completo. Después sigue sumando —queremos que repase igual— pero multiplicado por
+`factor_atrasado`, que por omisión es la mitad. `ventana_hasta` en null significa que no caduca.
+
+El factor se decide **en el momento de cada cobro**, no al abrir: quien abre durante la clase y
+resuelve ahí mismo cobra completo; quien abre a tiempo pero la termina en tres semanas cobra
+completo la apertura y reducido el resto. Es lo que se quiere premiar: haberla visto.
+
+Con una excepción que importa. El término se valora con el instante en que el alumno **llegó a la
+última diapositiva** (`progreso_clase.alcanzo_final_en`), no con el instante en que se le paga.
+Entre los dos puede pasar el mínimo de tiempo, y sería absurdo que nuestra propia demora lo dejara
+fuera de la ventana. Es el caso 5 de `neon/probar-ventana.mjs` y es el que más fácil se rompe si
+alguien toca esto después.
+
+El movimiento en el historial lo dice: «Terminó la clase D1 · … **(fuera de plazo)**».
+
+### Programarla
+
+Desde `/curso`, en la tarjeta **Clases**: horario de habilitación, cierre de la ventana, factor y los
+puntos de cada tramo. **Habilitar ahora** abre la ventana por 90 minutos, que es el atajo del día de
+clase. Todo pasa por `clase_programar()`, que es `security definer` y comprueba adentro que la clase
+sea de una asignatura que dictas: cambiar el id en la petición no programa la clase de nadie más.
+
+Hay un `check` que impide que la ventana cierre antes de que la clase se publique. En ese estado
+nadie podría cobrar completo nunca, así que siempre es un error y no una intención.
 
 ### Cómo se entera Pulso
 
@@ -203,6 +241,7 @@ set -a; . ./.env.local; set +a
 node neon/probar-clase.mjs             # 1. la lógica: Postgres y el Blob
 node neon/probar-clase-http.mjs        # 2. el cable: producción por HTTP
 node neon/probar-clase-navegador.mjs   # 3. el navegador: que el inyector se ejecute
+node neon/probar-ventana.mjs           # 4. la ventana: que llegar a tiempo valga más
 ```
 
 **1. La lógica.** Abrir, reabrir sin cobrar, fallar, acertar, reenviar sin cobrar, mandar basura,

@@ -39,6 +39,12 @@ import { PerfilStore } from './perfil.store';
           <strong>{{ clases()[0].puntos_actividad }}</strong>, y llegar al final,
           <strong>{{ clases()[0].puntos_terminar }}</strong>. Cada cosa se paga una sola vez.
         </p>
+        @if (hayPlazos()) {
+          <p class="chico suave" style="margin:10px 0 0">
+            Las clases tienen plazo: mientras esté abierto pagan completo, y después
+            siguen sumando pero menos. Verla el día de la clase es lo que más rinde.
+          </p>
+        }
       </div>
 
       <div class="rejilla dos">
@@ -57,6 +63,21 @@ import { PerfilStore } from './perfil.store';
                 <span class="insignia celeste">Nueva</span>
               }
             </div>
+
+            @if (c.ventana_hasta && !c.terminada_en) {
+              @if (c.en_ventana) {
+                <p class="chico" style="margin-top:10px;color:var(--ok,#3fb950)">
+                  <strong>Puntos completos</strong> hasta el
+                  {{ c.ventana_hasta | date:'dd/MM' }} a las
+                  {{ c.ventana_hasta | date:'HH:mm' }}.
+                </p>
+              } @else {
+                <p class="chico suave" style="margin-top:10px">
+                  El plazo cerró: ahora paga
+                  <strong>{{ porcentaje(c) }}%</strong> de los puntos. Igual conviene verla.
+                </p>
+              }
+            }
 
             @if (c.descripcion) {
               <p class="chico suave" style="margin-top:10px">{{ c.descripcion }}</p>
@@ -138,11 +159,26 @@ export class ClasesComponent {
     return Math.min(100, Math.round((((c.slide_max ?? 0) + 1) / c.slides) * 100));
   }
 
-  /** Lo que todavía no ha cobrado en esta clase. */
+  /** Si alguna clase del ramo tiene plazo, se explica el sistema arriba. */
+  hayPlazos(): boolean {
+    return this.clases().some(c => !!c.ventana_hasta);
+  }
+
+  porcentaje(c: Clase): number {
+    return Math.round(Number(c.factor_atrasado) * 100);
+  }
+
+  /**
+   * Lo que todavía no ha cobrado en esta clase, ya con el factor aplicado: si el
+   * plazo cerró, mostrar el número completo sería prometerle puntos que no va a
+   * recibir.
+   */
   porGanar(c: Clase): number {
-    const abrir = c.abierta ? 0 : c.puntos_abrir;
-    const actividades = Math.max(0, c.actividades - c.resueltas) * c.puntos_actividad;
-    const terminar = c.terminada_en ? 0 : c.puntos_terminar;
+    const factor = c.en_ventana ? 1 : Number(c.factor_atrasado);
+    const abrir = c.abierta ? 0 : Math.round(c.puntos_abrir * factor);
+    const actividades = Math.max(0, c.actividades - c.resueltas)
+      * Math.round(c.puntos_actividad * factor);
+    const terminar = c.terminada_en ? 0 : Math.round(c.puntos_terminar * factor);
     return abrir + actividades + terminar;
   }
 }

@@ -100,6 +100,42 @@ export interface Clase {
   slide_max: number | null;
   terminada_en: string | null;
   resueltas: number;
+
+  /**
+   * La ventana: hasta `ventana_hasta` los puntos valen completos; después se
+   * multiplican por `factor_atrasado`. En null no hay castigo nunca.
+   */
+  ventana_hasta: string | null;
+  factor_atrasado: number;
+  en_ventana: boolean;
+}
+
+/** La misma clase vista por quien la dicta: trae también las no publicadas. */
+export interface ClaseDocente {
+  id: string;
+  asignatura_id: string;
+  periodo_id: string;
+  sigla: string;
+  asignatura: string;
+  periodo: string;
+  codigo: string;
+  titulo: string;
+  descripcion: string | null;
+  orden: number;
+  dictada_el: string | null;
+  slides: number;
+  actividades: number;
+  puntos_abrir: number;
+  puntos_actividad: number;
+  puntos_terminar: number;
+  publicada_desde: string | null;
+  ventana_hasta: string | null;
+  factor_atrasado: number;
+  publicada: boolean;
+  en_ventana: boolean;
+  abrieron: number;
+  terminaron: number;
+  a_tiempo: number;
 }
 
 export interface AlumnoNomina {
@@ -566,12 +602,51 @@ export class DatosService {
       .from('mis_clases')
       // En una sola línea a propósito: `postgrest-js` infiere el tipo del
       // resultado leyendo este literal, y una cadena concatenada lo deja ciego.
-      .select('id, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, matricula_id, abierta, abierta_en, slide_max, terminada_en, resueltas')
+      .select('id, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, matricula_id, abierta, abierta_en, slide_max, terminada_en, resueltas, ventana_hasta, factor_atrasado, en_ventana')
       .eq('matricula_id', ramo.matricula_id)
       .order('orden')
       .order('codigo');
     if (error) throw error;
     return (data ?? []) as Clase[];
+  }
+
+  /** Las clases que dicta el docente, incluidas las que todavía no publica. */
+  async clasesQueDicto(asignaturaId: string, periodoId: string): Promise<ClaseDocente[]> {
+    const { data, error } = await this.db
+      .from('clases_que_dicto')
+      .select('id, asignatura_id, periodo_id, sigla, asignatura, periodo, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, publicada_desde, ventana_hasta, factor_atrasado, publicada, en_ventana, abrieron, terminaron, a_tiempo')
+      .eq('asignatura_id', asignaturaId)
+      .eq('periodo_id', periodoId)
+      .order('orden')
+      .order('codigo');
+    if (error) throw error;
+    return (data ?? []) as ClaseDocente[];
+  }
+
+  /**
+   * Programa una clase: cuándo se habilita, hasta cuándo vale completo y cuánto
+   * paga cada tramo. Las fechas van en ISO (UTC); el formulario las convierte
+   * desde la hora local del navegador.
+   */
+  async programarClase(datos: {
+    claseId: string;
+    publicadaDesde: string | null;
+    ventanaHasta: string | null;
+    factorAtrasado?: number;
+    puntosAbrir?: number;
+    puntosActividad?: number;
+    puntosTerminar?: number;
+  }): Promise<void> {
+    const { error } = await this.db.rpc('clase_programar', {
+      p_clase: datos.claseId,
+      p_publicada_desde: datos.publicadaDesde,
+      p_ventana_hasta: datos.ventanaHasta,
+      p_factor_atrasado: datos.factorAtrasado ?? null,
+      p_puntos_abrir: datos.puntosAbrir ?? null,
+      p_puntos_actividad: datos.puntosActividad ?? null,
+      p_puntos_terminar: datos.puntosTerminar ?? null,
+    });
+    if (error) throw error;
   }
 
   // ---------- Diagnóstico ----------

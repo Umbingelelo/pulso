@@ -138,6 +138,40 @@ export interface ClaseDocente {
   a_tiempo: number;
 }
 
+/**
+ * La misión del día. `enunciado` es lo único que baja al navegador: la pauta
+ * vive en una columna sin permiso para el rol de la aplicación, y la corrección
+ * la hace Postgres.
+ */
+export interface Mision {
+  id: string;
+  fecha: string;
+  tipo: 'diaria' | 'semanal';
+  xp: number;
+  plantilla: string;
+  nombre: string;
+  mecanica: string;
+  banda: string;
+  resuelta_en: string | null;
+  acertada: boolean | null;
+  intentos: number;
+  enunciado: {
+    mecanica: string;
+    termino: string | null;
+    fuente: string | null;
+    pregunta: string;
+    opciones: string[];
+  };
+}
+
+export interface EstadoMision {
+  dia: string;
+  ya_tiene: boolean;
+  puede_generar: boolean;
+  proxima_en: string;
+  faltan_segundos: number;
+}
+
 export interface AlumnoNomina {
   matricula_id: string;
   perfil_id: string;
@@ -647,6 +681,37 @@ export class DatosService {
       p_puntos_terminar: datos.puntosTerminar ?? null,
     });
     if (error) throw error;
+  }
+
+  // ---------- Misiones ----------
+  // Van por `/api/*` y no por la Data API: la generación necesita la key del
+  // modelo y el rol que registra misiones, y ninguna de las dos cosas puede
+  // vivir en el navegador.
+
+  async misionDelDia(matriculaId: string): Promise<{ estado: EstadoMision; mision: Mision | null }> {
+    return this.pedir(`/api/mision?matricula=${encodeURIComponent(matriculaId)}`);
+  }
+
+  /** Arma la misión de hoy. Tarda unos segundos: la escribe un modelo. */
+  async generarMision(matriculaId: string): Promise<{ estado: EstadoMision; mision: Mision | null }> {
+    return this.pedir('/api/mision', { matricula: matriculaId });
+  }
+
+  async responderMision(misionId: string, respuesta: Record<string, string>): Promise<any> {
+    return this.pedir('/api/mision-responder', { mision: misionId, respuesta });
+  }
+
+  /** Igual que `auth()`, pero para las rutas que no cuelgan de `/api/auth`. */
+  private async pedir(ruta: string, cuerpo?: unknown): Promise<any> {
+    const r = await fetch(ruta, {
+      method: cuerpo ? 'POST' : 'GET',
+      credentials: 'same-origin',
+      headers: cuerpo ? { 'Content-Type': 'application/json' } : undefined,
+      body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d?.error ?? 'No se pudo completar la operación.');
+    return d;
   }
 
   // ---------- Diagnóstico ----------

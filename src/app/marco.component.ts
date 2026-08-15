@@ -37,6 +37,13 @@ import { PerfilStore } from './perfil.store';
               </svg>
               <span>Inicio</span>
             </a>
+            <a routerLink="/misiones" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3.2l2.3 4.8 5.2.8-3.8 3.7.9 5.2-4.6-2.5-4.6 2.5.9-5.2L4.5 8.8l5.2-.8z"/>
+              </svg>
+              <span>Misión del día</span>
+            </a>
             <a routerLink="/clases" routerLinkActive="activo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round">

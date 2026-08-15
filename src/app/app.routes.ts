@@ -86,6 +86,10 @@ export const routes: Routes = [
         loadComponent: () => import('./clases.component').then(m => m.ClasesComponent),
       },
       {
+        path: 'misiones', canActivate: [soloAlumno],
+        loadComponent: () => import('./misiones.component').then(m => m.MisionesComponent),
+      },
+      {
         path: 'actividades', canActivate: [soloAlumno],
         loadComponent: () => import('./actividades.component').then(m => m.ActividadesComponent),
       },

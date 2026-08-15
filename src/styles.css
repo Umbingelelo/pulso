@@ -395,3 +395,27 @@ tr:last-child td{ border-bottom:none; }
 .opcion-avatar:hover{ border-color:var(--celeste); transform:translateY(-2px); }
 .opcion-avatar.elegido{ border-color:var(--azul); background:var(--celeste-suave); }
 .opcion-avatar img{ width:100%; height:100%; display:block; }
+
+/* ============================================================
+   Misión del día — alternativas
+   ============================================================ */
+.opcion-mision{
+  display:flex; align-items:flex-start; gap:12px; width:100%;
+  text-align:left; padding:14px 16px; border-radius:var(--r-chico);
+  border:1.5px solid var(--borde); background:var(--blanco);
+  color:var(--texto); font:inherit; cursor:pointer;
+  transition:border-color .15s, background .15s;
+}
+.opcion-mision:hover:not(:disabled){ border-color:var(--celeste); background:var(--celeste-suave); }
+.opcion-mision:disabled{ cursor:default; }
+.opcion-mision .letra{
+  flex:none; width:26px; height:26px; border-radius:50%;
+  display:grid; place-items:center; font-weight:700; font-size:13px;
+  background:var(--fondo); color:var(--texto-suave);
+}
+.opcion-mision.elegida{ border-color:var(--azul); background:var(--celeste-suave); }
+.opcion-mision.elegida .letra{ background:var(--azul); color:#fff; }
+.opcion-mision.correcta{ border-color:var(--verde); background:var(--verde-suave); }
+.opcion-mision.correcta .letra{ background:var(--verde); color:#fff; }
+.opcion-mision.incorrecta{ border-color:var(--rojo); background:var(--rojo-suave); }
+.opcion-mision.incorrecta .letra{ background:var(--rojo); color:#fff; }

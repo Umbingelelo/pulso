@@ -11,7 +11,8 @@ ayuden durante el semestre.
 Por eso vive en `2026-02/Pulso`, al mismo nivel que las asignaturas y no dentro de ninguna.
 
 - **En producción:** https://pulso-rust.vercel.app
-- **Base de datos:** Supabase, organización Pulso
+- **Base de datos:** Neon (Postgres 17), proyecto `pulso` en São Paulo
+- **Material de clases:** Vercel Blob privado, store `pulso-clases`
 
 ## Estado
 
@@ -41,7 +42,9 @@ En la hoja de ruta: avance por laboratorio y planes de estudio personales.
 | | |
 |---|---|
 | Frontend | Angular 20, componentes autónomos y señales |
-| Datos y autenticación | Supabase (Postgres 17) |
+| Datos | Neon (Postgres 17) por su Data API, con RLS |
+| Autenticación | Propia: `crypt()` en Postgres, JWT ES256, cookie httpOnly |
+| Archivos | Vercel Blob privado |
 | Avatares | DiceBear, generados en el navegador |
 | Despliegue | Vercel |
 

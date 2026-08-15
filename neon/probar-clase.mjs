@@ -27,7 +27,7 @@ const SIGLA = args.sigla ?? 'DSY1107';
 const CODIGO = args.codigo ?? 'S01';
 
 const dueno = neon(process.env.DATABASE_URL_OWNER);
-const app = neon(process.env.DATABASE_URL);
+const app = neon(process.env.DATABASE_URL_OWNER);
 
 let fallos = 0;
 function revisar(etiqueta, real, esperado) {
@@ -41,9 +41,10 @@ function revisar(etiqueta, real, esperado) {
 async function comoAlumno(usuarioId, consulta) {
   const r = await app.transaction([
     app`select set_config('pulso.usuario_id', ${usuarioId}, true)`,
+    app`set local role pulso_app`,
     consulta(app),
   ]);
-  return r[1] ?? [];
+  return r[2] ?? [];
 }
 
 // ---------- Preparación ----------

@@ -72,7 +72,10 @@ import { DocenteStore } from './docente.store';
           <div class="rejilla dos" style="margin-top:16px">
             <label>
               <span class="etiqueta">Código</span>
-              <input [(ngModel)]="form().codigo" name="codigo" placeholder="LAB1"
+              <!-- Lectura simple y escritura por tocar(). Un enlace de dos vías
+                   sobre la propiedad del objeto lo mutaría sin avisarle a la
+                   señal, y la pantalla no se enteraría del cambio. -->
+              <input [ngModel]="form().codigo" name="codigo" placeholder="LAB1"
                      (ngModelChange)="tocar('codigo', $event)">
             </label>
             <label>

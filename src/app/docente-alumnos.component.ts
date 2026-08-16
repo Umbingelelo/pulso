@@ -28,15 +28,17 @@ import { DocenteStore } from './docente.store';
       <div class="tarjeta" style="margin-bottom:18px">
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
           <input style="flex:1 1 240px" placeholder="Buscar por nombre o correo"
-                 [(ngModel)]="busca" name="busca">
-          <select [(ngModel)]="filtroSeccion" name="filtro" style="flex:0 0 auto">
+                 [ngModel]="busca()" (ngModelChange)="busca.set($event)" name="busca">
+          <select [ngModel]="filtroSeccion()" (ngModelChange)="filtroSeccion.set($event)"
+                  name="filtro" style="flex:0 0 auto">
             <option value="">Todas las secciones</option>
             @for (s of secciones(); track s.id) {
               <option [value]="s.id">{{ s.codigo }} · {{ s.matriculados }}</option>
             }
           </select>
           <label style="display:flex;align-items:center;gap:8px;margin:0">
-            <input type="checkbox" [(ngModel)]="verBajas" name="bajas" style="width:auto">
+            <input type="checkbox" [ngModel]="verBajas()" (ngModelChange)="verBajas.set($event)"
+                   name="bajas" style="width:auto">
             <span class="chico">Ver dados de baja</span>
           </label>
           <span class="insignia celeste">{{ visibles().length }} de {{ alumnos().length }}</span>
@@ -155,17 +157,28 @@ export class DocenteAlumnosComponent {
   error = signal('');
   hecho = signal('');
 
-  busca = '';
-  filtroSeccion = '';
-  verBajas = false;
+  /**
+   * Los filtros son señales, no propiedades.
+   *
+   * `visibles` es un `computed`, y un computed solo se recalcula cuando cambia
+   * una **señal** que lee. Con propiedades normales el buscador no filtraba nada:
+   * la lista se quedaba completa y «Editar» terminaba abriendo al alumno
+   * equivocado, que es mucho peor que no filtrar.
+   */
+  busca = signal('');
+  filtroSeccion = signal('');
+  verBajas = signal(false);
+
   nuevaSeccion = '';
   clave = '';
 
   visibles = computed(() => {
-    const q = this.busca.trim().toLowerCase();
+    const q = this.busca().trim().toLowerCase();
+    const sec = this.filtroSeccion();
+    const bajas = this.verBajas();
     return this.alumnos().filter(a =>
-      (this.verBajas || a.activa)
-      && (!this.filtroSeccion || a.seccion_id === this.filtroSeccion)
+      (bajas || a.activa)
+      && (!sec || a.seccion_id === sec)
       && (!q || a.nombre.toLowerCase().includes(q) || a.correo.toLowerCase().includes(q)));
   });
 

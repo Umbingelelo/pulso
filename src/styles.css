@@ -419,3 +419,127 @@ tr:last-child td{ border-bottom:none; }
 .opcion-mision.correcta .letra{ background:var(--verde); color:#fff; }
 .opcion-mision.incorrecta{ border-color:var(--rojo); background:var(--rojo-suave); }
 .opcion-mision.incorrecta .letra{ background:var(--rojo); color:#fff; }
+
+/* ============================================================
+   Movimiento
+   ------------------------------------------------------------
+   Un solo juego de duraciones y curvas para toda la app: si cada
+   componente inventa la suya, la interfaz se siente hecha por
+   varias manos. Entrada con ease-out —arranca rápido y frena—,
+   que es como se mueven las cosas con inercia.
+   ============================================================ */
+:root{
+  --mov-rapido:180ms;
+  --mov-medio:280ms;
+  --mov-lento:420ms;
+  --mov-entra:cubic-bezier(.16,1,.3,1);
+  --mov-sale:cubic-bezier(.4,0,1,1);
+}
+
+@keyframes surgir{
+  from{ opacity:0; transform:translateY(10px); }
+  to  { opacity:1; transform:none; }
+}
+@keyframes aparecer{ from{ opacity:0 } to{ opacity:1 } }
+@keyframes latir{
+  0%,100%{ transform:scale(1) }
+  50%    { transform:scale(1.06) }
+}
+
+/* Entrada escalonada. El retraso lo pone el componente con --i, entre
+   30 y 50 ms por elemento: menos no se nota, más se hace lento. */
+.surge{
+  opacity:0;
+  animation:surgir var(--mov-medio) var(--mov-entra) forwards;
+  animation-delay:calc(var(--i, 0) * 38ms);
+}
+
+/* ============================================================
+   Pase de batalla
+   ============================================================ */
+.pase-cabecera{
+  display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+  padding:22px 24px; border-radius:var(--r);
+  background:linear-gradient(135deg, var(--azul) 0%, var(--azul-700) 55%, var(--celeste-oscuro) 100%);
+  color:#fff; box-shadow:var(--sombra-alta);
+}
+.pase-nivel{
+  flex:none; width:74px; height:74px; border-radius:50%;
+  display:grid; place-items:center; text-align:center;
+  background:rgba(255,255,255,.14); border:2px solid rgba(255,255,255,.35);
+}
+.pase-nivel b{ display:block; font-size:26px; line-height:1; font-variant-numeric:tabular-nums; }
+.pase-nivel span{ font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; opacity:.85; }
+.pase-cabecera .info{ flex:1 1 260px; min-width:0; }
+.pase-cabecera h2{ color:#fff; margin:0 0 2px; }
+.pase-cabecera .sub{ font-size:13px; opacity:.85; }
+
+/* La barra se anima con scaleX y no con width: animar width fuerza
+   un reflow en cada cuadro y la barra tiembla en equipos lentos. */
+.pase-barra{
+  position:relative; height:10px; border-radius:99px; margin-top:14px;
+  background:rgba(255,255,255,.18); overflow:hidden;
+}
+.pase-barra i{
+  position:absolute; inset:0; transform-origin:left center;
+  transform:scaleX(var(--llenado, 0));
+  background:linear-gradient(90deg, var(--turquesa), var(--celeste));
+  border-radius:99px;
+  transition:transform var(--mov-lento) var(--mov-entra);
+}
+
+/* La escalera de niveles */
+.escalera{
+  display:flex; gap:12px; overflow-x:auto; padding:20px 4px 12px;
+  scroll-snap-type:x proximity;
+}
+.escalon{
+  flex:none; width:112px; scroll-snap-align:center;
+  border-radius:var(--r-chico); border:1.5px solid var(--borde);
+  background:var(--blanco); padding:12px; text-align:center;
+  transition:border-color var(--mov-rapido), transform var(--mov-rapido) var(--mov-entra);
+}
+.escalon .n{
+  font-family:inherit; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--texto-suave); font-variant-numeric:tabular-nums;
+}
+.escalon .premio{
+  margin:10px auto 8px; width:44px; height:44px; border-radius:12px;
+  display:grid; place-items:center; background:var(--fondo);
+  color:var(--texto-suave);
+}
+.escalon .nom{ font-size:12.5px; line-height:1.35; }
+.escalon.abierto{ border-color:var(--turquesa); background:var(--verde-suave); }
+.escalon.abierto .premio{ background:var(--turquesa); color:var(--azul-900); }
+.escalon.actual{ border-color:var(--celeste); box-shadow:0 0 0 3px var(--celeste-suave); }
+.escalon.actual .premio{ animation:latir 2.4s ease-in-out infinite; }
+.escalon.cerrado{ opacity:.55; }
+
+/* ============================================================
+   Tabla de posiciones
+   ============================================================ */
+.puesto{
+  display:flex; align-items:center; gap:14px;
+  padding:12px 14px; border-radius:var(--r-chico);
+  border:1.5px solid transparent; background:var(--blanco);
+}
+.puesto + .puesto{ margin-top:8px; }
+.puesto .lugar{
+  flex:none; width:34px; text-align:right; font-weight:700;
+  font-variant-numeric:tabular-nums; color:var(--texto-suave);
+}
+.puesto.podio-1 .lugar{ color:#B7791F; }
+.puesto.podio-2 .lugar{ color:#6B7280; }
+.puesto.podio-3 .lugar{ color:#9C5221; }
+.puesto img{ width:38px; height:38px; border-radius:50%; background:var(--fondo); }
+.puesto .quien{ flex:1 1 auto; min-width:0; }
+.puesto .quien .nom{ font-weight:600; }
+.puesto .quien .tit{ font-size:12.5px; color:var(--celeste-oscuro); font-weight:500; }
+.puesto .xp{ font-variant-numeric:tabular-nums; font-weight:700; color:var(--azul); }
+.puesto.yo{ border-color:var(--celeste); background:var(--celeste-suave); }
+
+@media (prefers-reduced-motion: reduce){
+  .surge{ animation:none; opacity:1; }
+  .pase-barra i{ transition:none; }
+  .escalon.actual .premio{ animation:none; }
+}

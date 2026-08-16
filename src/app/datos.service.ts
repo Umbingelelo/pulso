@@ -172,6 +172,47 @@ export interface EstadoMision {
   faltan_segundos: number;
 }
 
+/** El pase de batalla del ramo, con la escalera de recompensas. */
+export interface Pase {
+  pase_id: string;
+  numero: number;
+  nombre: string;
+  desde: string;
+  hasta: string;
+  vigente: boolean;
+  xp: number;
+  nivel: number;
+  xp_nivel: number;
+  xp_para_subir: number;
+  xp_total_pase: number;
+  completo: boolean;
+  xp_sobrante: number;
+  puntos_por_sobrante: number;
+  recompensas: Recompensa[];
+}
+
+export interface Recompensa {
+  nivel: number;
+  tiradas: number;
+  desbloqueada: boolean;
+  obtenida: boolean;
+  cosmetico: {
+    id: string; tipo: string; nombre: string;
+    descripcion: string | null; valor: string; rareza: string;
+  } | null;
+}
+
+export interface Posicion {
+  matricula_id: string;
+  nombre: string;
+  avatar: string;
+  seccion: string;
+  xp: number;
+  lugar: number;
+  orden: number;
+  titulo: string | null;
+}
+
 export interface AlumnoNomina {
   matricula_id: string;
   perfil_id: string;
@@ -681,6 +722,45 @@ export class DatosService {
       p_puntos_terminar: datos.puntosTerminar ?? null,
     });
     if (error) throw error;
+  }
+
+  // ---------- Pase de batalla y posiciones ----------
+
+  async miPase(matriculaId: string): Promise<Pase | null> {
+    const { data, error } = await this.db.rpc('mi_pase', { p_matricula: matriculaId });
+    if (error) throw error;
+    return data as Pase | null;
+  }
+
+  /** Entrega lo que el alumno ya desbloqueó. Idempotente: devuelve solo lo nuevo. */
+  async sincronizarPase(matriculaId: string): Promise<{ nuevos: any[]; tiradas: number } | null> {
+    const { data, error } = await this.db.rpc('sincronizar_pase', { p_matricula: matriculaId });
+    if (error) throw error;
+    return data as any;
+  }
+
+  async equipar(matriculaId: string, cosmeticoId: string | null): Promise<void> {
+    const { error } = await this.db.rpc('equipar_cosmetico', {
+      p_matricula: matriculaId, p_cosmetico: cosmeticoId,
+    });
+    if (error) throw error;
+  }
+
+  /**
+   * La tabla del ramo. Se piden 40 filas y no 10: los empatados comparten lugar,
+   * así que «los diez primeros lugares» pueden ser muchas más filas, y el propio
+   * alumno puede venir más abajo. Recortar acá dejaría fuera su posición.
+   */
+  async posiciones(asignaturaId: string, periodoId: string): Promise<Posicion[]> {
+    const { data, error } = await this.db
+      .from('posiciones')
+      .select('matricula_id, nombre, avatar, seccion, xp, lugar, orden, titulo')
+      .eq('asignatura_id', asignaturaId)
+      .eq('periodo_id', periodoId)
+      .order('orden')
+      .limit(40);
+    if (error) throw error;
+    return (data ?? []) as Posicion[];
   }
 
   // ---------- Misiones ----------

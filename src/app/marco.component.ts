@@ -37,6 +37,14 @@ import { PerfilStore } from './perfil.store';
               </svg>
               <span>Inicio</span>
             </a>
+            <a routerLink="/pase" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 4h10v6a5 5 0 0 1-10 0z"/><path d="M7 5.5H4.5V8a3 3 0 0 0 2.7 3"/>
+                <path d="M17 5.5h2.5V8a3 3 0 0 1-2.7 3"/><path d="M12 15v3"/><path d="M8.5 21h7l-.7-3h-5.6z"/>
+              </svg>
+              <span>Pase</span>
+            </a>
             <a routerLink="/misiones" routerLinkActive="activo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round">

@@ -763,53 +763,49 @@ export class DatosService {
   }
 
   // ---------- Panel del docente ----------
-  // Todo pasa por funciones `security definer` que comprueban adentro que la
-  // sección o la actividad sea de un curso que él dicta. Cambiar un id en la
-  // petición no abre el curso de otro.
+  //
+  // Van por `/api/docente` y no por la Data API. PostgREST cachea el esquema y no
+  // ve una función nueva hasta que recarga, y ese refresco es de Neon: medido
+  // acá, una tardó 20 segundos y otras tres seguían invisibles quince minutos
+  // después. Para el panel de administración eso es inaceptable —el docente
+  // cambia algo, no funciona, y no puede hacer nada salvo esperar—, así que va
+  // por conexión directa. La seguridad no cambia: cada función comprueba adentro
+  // que la sección sea de un curso que él dicta.
+
+  private async panel(accion: string, datos: Record<string, unknown> = {}): Promise<any[]> {
+    const r = await fetch('/api/docente', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion, ...datos }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d?.error ?? 'No se pudo completar la operación.');
+    return d.filas ?? [];
+  }
 
   async seccionesQueDicto(asignaturaId: string, periodoId: string): Promise<SeccionDocente[]> {
-    const { data, error } = await this.db.rpc('secciones_que_dicto', {
-      p_asignatura: asignaturaId, p_periodo: periodoId,
-    });
-    if (error) throw error;
-    return (data ?? []) as SeccionDocente[];
+    return await this.panel('secciones', { asignatura: asignaturaId, periodo: periodoId });
   }
 
   async alumnosDelRamo(asignaturaId: string, periodoId: string): Promise<AlumnoDocente[]> {
-    const { data, error } = await this.db.rpc('docente_alumnos', {
-      p_asignatura: asignaturaId, p_periodo: periodoId,
-    });
-    if (error) throw error;
-    return (data ?? []) as AlumnoDocente[];
+    return await this.panel('alumnos', { asignatura: asignaturaId, periodo: periodoId });
   }
 
   async cambiarSeccion(matriculaId: string, seccionId: string): Promise<void> {
-    const { error } = await this.db.rpc('alumno_cambiar_seccion', {
-      p_matricula: matriculaId, p_seccion: seccionId,
-    });
-    if (error) throw error;
+    await this.panel('cambiar-seccion', { matricula: matriculaId, seccion: seccionId });
   }
 
   async activarAlumno(matriculaId: string, activa: boolean): Promise<void> {
-    const { error } = await this.db.rpc('alumno_activar', {
-      p_matricula: matriculaId, p_activa: activa,
-    });
-    if (error) throw error;
+    await this.panel('activar', { matricula: matriculaId, activa });
   }
 
   async reiniciarClave(matriculaId: string, clave: string): Promise<void> {
-    const { error } = await this.db.rpc('alumno_reiniciar_clave', {
-      p_matricula: matriculaId, p_clave: clave,
-    });
-    if (error) throw error;
+    await this.panel('clave', { matricula: matriculaId, clave });
   }
 
   async actividadesQueDicto(asignaturaId: string, periodoId: string): Promise<ActividadDocente[]> {
-    const { data, error } = await this.db.rpc('actividades_que_dicto', {
-      p_asignatura: asignaturaId, p_periodo: periodoId,
-    });
-    if (error) throw error;
-    return (data ?? []) as ActividadDocente[];
+    return await this.panel('actividades', { asignatura: asignaturaId, periodo: periodoId });
   }
 
   async guardarActividad(a: {
@@ -817,12 +813,11 @@ export class DatosService {
     codigo: string; titulo: string; descripcion: string | null;
     tipo: string; puntos: number; orden: number; activa: boolean;
   }): Promise<void> {
-    const { error } = await this.db.rpc('actividad_guardar', {
-      p_id: a.id, p_asignatura: a.asignaturaId, p_periodo: a.periodoId,
-      p_codigo: a.codigo, p_titulo: a.titulo, p_descripcion: a.descripcion,
-      p_tipo: a.tipo, p_puntos: a.puntos, p_orden: a.orden, p_activa: a.activa,
+    await this.panel('guardar-actividad', {
+      id: a.id, asignatura: a.asignaturaId, periodo: a.periodoId,
+      codigo: a.codigo, titulo: a.titulo, descripcion: a.descripcion,
+      tipo: a.tipo, puntos: a.puntos, orden: a.orden, activa: a.activa,
     });
-    if (error) throw error;
   }
 
   // ---------- Pase de batalla y posiciones ----------

@@ -98,6 +98,13 @@ export const routes: Routes = [
         loadComponent: () => import('./actividades.component').then(m => m.ActividadesComponent),
       },
       {
+        // Por código y no por id: el alumno llega desde su lista de actividades,
+        // y «/laboratorio/L1» es una dirección que se puede dictar en voz alta en
+        // clase. Cuál L1 es depende del ramo que tenga elegido.
+        path: 'laboratorio/:codigo', canActivate: [soloAlumno],
+        loadComponent: () => import('./laboratorio.component').then(m => m.LaboratorioComponent),
+      },
+      {
         path: 'diagnostico', canActivate: [soloAlumno],
         loadComponent: () => import('./diagnostico.component').then(m => m.DiagnosticoComponent),
       },

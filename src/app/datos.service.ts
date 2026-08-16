@@ -365,6 +365,38 @@ export interface Canje {
 }
 
 /** Todo lo de un alumno en un ramo, tal como lo devuelve `ficha_alumno()`. */
+/** Un bloque del enunciado de un laboratorio, ya convertido a HTML al subirlo. */
+export type BloqueLab =
+  | { tipo: 'html'; html: string }
+  | { tipo: 'caja'; id: string; formato: string; enunciado: string }
+  | { tipo: 'control'; numero: number; html: string }
+  | { tipo: 'aviso'; clase: 'alerta' | 'pista' | 'ojo'; html: string };
+
+export interface Laboratorio {
+  actividad_id: string;
+  codigo: string;
+  titulo: string;
+  descripcion: string | null;
+  puntos: number;
+  bloques: BloqueLab[];
+  minutos: number | null;
+  cajas: number;
+  controles: number;
+  respuestas: Record<string, string>;
+  tramo: number;
+  entregado_en: string | null;
+}
+
+export interface AvanceLab {
+  matricula_id: string;
+  alumno: string;
+  seccion: string;
+  respondidas: number;
+  de: number;
+  tramo: number;
+  entregado_en: string | null;
+}
+
 export interface Ficha {
   perfil: { id: string; nombre: string; avatar: string; creado_en: string };
   ramo: {
@@ -1059,6 +1091,48 @@ export class DatosService {
       .order('orden');
     if (error) throw error;
     return (data ?? []) as Actividad[];
+  }
+
+  // ---------- Laboratorios ----------
+  // Por conexión directa, no por la Data API: ver la cabecera de
+  // `api/laboratorio.mjs`. El enunciado y el avance vienen juntos en una sola
+  // llamada, porque de nada sirve uno sin el otro.
+
+  private async lab(accion: string, datos: Record<string, unknown> = {}): Promise<any[]> {
+    const r = await fetch('/api/laboratorio', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion, ...datos }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d?.error ?? 'No se pudo completar la operación.');
+    return d.filas ?? [];
+  }
+
+  async laboratorio(matriculaId: string, codigo: string): Promise<Laboratorio | null> {
+    const [fila] = await this.lab('ver', { matricula: matriculaId, codigo });
+    return (fila?.r ?? null) as Laboratorio | null;
+  }
+
+  async guardarLaboratorio(
+    matriculaId: string, codigo: string,
+    respuestas: Record<string, string>, tramo: number,
+  ): Promise<void> {
+    await this.lab('guardar', { matricula: matriculaId, codigo, respuestas, tramo });
+  }
+
+  async entregarLaboratorio(matriculaId: string, codigo: string): Promise<any> {
+    const [fila] = await this.lab('entregar', { matricula: matriculaId, codigo });
+    return fila?.r;
+  }
+
+  /** Cómo va el curso en un laboratorio. Solo devuelve las secciones que dicta. */
+  async avancesLaboratorio(
+    asignaturaId: string, periodoId: string, codigo: string,
+  ): Promise<AvanceLab[]> {
+    return await this.lab('avances',
+      { asignatura: asignaturaId, periodo: periodoId, codigo }) as AvanceLab[];
   }
 
   /** Otorga o descuenta puntos sobre una matrícula. Solo pasa el RLS si dicta esa sección. */

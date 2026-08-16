@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActividadDocente, DatosService } from './datos.service';
+import { AvanceLab, ActividadDocente, DatosService } from './datos.service';
 import { DocenteStore } from './docente.store';
 
 /**
@@ -13,7 +14,7 @@ import { DocenteStore } from './docente.store';
  */
 @Component({
   selector: 'app-docente-actividades',
-  imports: [FormsModule],
+  imports: [FormsModule, DatePipe],
   template: `
     <div class="encabezado">
       <h1>Actividades y laboratorios</h1>
@@ -54,7 +55,13 @@ import { DocenteStore } from './docente.store';
                 <td>{{ etiqueta(a.tipo) }}</td>
                 <td class="der num">{{ a.puntos }}</td>
                 <td class="der num">{{ a.entregas }}</td>
-                <td class="der">
+                <td class="der" style="white-space:nowrap">
+                  @if (a.tipo === 'laboratorio') {
+                    <button class="boton contorno chico" style="margin-right:6px"
+                            (click)="verAvance(a)">
+                      {{ viendo() === a.codigo ? 'Ocultar' : 'Avance' }}
+                    </button>
+                  }
                   <!-- La etiqueta mira las dos cosas: que el formulario apunte a
                        esta fila Y que esté abierto. Solo lo primero dejaba el
                        botón diciendo «Cerrar» después de guardar, con el
@@ -68,6 +75,52 @@ import { DocenteStore } from './docente.store';
           </table>
         }
       </div>
+
+      @if (viendo(); as codigo) {
+        <div class="tarjeta" style="margin-top:18px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;
+                      gap:14px;flex-wrap:wrap">
+            <h2>Avance en {{ codigo }}</h2>
+            @if (!cargandoAvance()) {
+              <span class="insignia celeste">
+                {{ entregados() }} de {{ avance().length }} entregados
+              </span>
+            }
+          </div>
+          <p class="chico suave" style="margin-top:2px">
+            Solo aparece quien ya abrió el laboratorio. El tramo es hasta qué punto de
+            control dice haber llegado: tú lo validas en sala, esto no lo comprueba.
+          </p>
+
+          @if (cargandoAvance()) {
+            <p class="suave" style="margin-top:14px">Cargando…</p>
+          } @else if (avance().length === 0) {
+            <div class="aviso dato" style="margin-top:14px">Todavía no lo abre nadie.</div>
+          } @else {
+            <table style="margin-top:14px">
+              <tr>
+                <th>Alumno</th><th>Sección</th><th class="der">Respuestas</th>
+                <th class="der">Tramo</th><th>Entrega</th>
+              </tr>
+              @for (x of avance(); track x.matricula_id) {
+                <tr>
+                  <td>{{ x.alumno }}</td>
+                  <td>{{ x.seccion }}</td>
+                  <td class="der num">{{ x.respondidas }}/{{ x.de }}</td>
+                  <td class="der num">{{ x.tramo }}</td>
+                  <td>
+                    @if (x.entregado_en) {
+                      <span class="insignia verde">{{ x.entregado_en | date:'dd/MM HH:mm' }}</span>
+                    } @else {
+                      <span class="insignia amarilla">Trabajando</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </table>
+          }
+        </div>
+      }
 
       @if (abierto()) {
         <div class="tarjeta" style="margin-top:18px">
@@ -147,6 +200,9 @@ export class DocenteActividadesComponent {
   protected docente = inject(DocenteStore);
 
   lista = signal<ActividadDocente[]>([]);
+  avance = signal<AvanceLab[]>([]);
+  viendo = signal<string | null>(null);
+  cargandoAvance = signal(false);
   abierto = signal(false);
   cargando = signal(true);
   guardando = signal(false);
@@ -160,6 +216,8 @@ export class DocenteActividadesComponent {
 
   entregasDelAbierto = computed(() =>
     this.lista().find(a => a.id === this.form().id)?.entregas ?? 0);
+
+  entregados = computed(() => this.avance().filter(x => !!x.entregado_en).length);
 
   constructor() {
     this.cargar();
@@ -213,6 +271,28 @@ export class DocenteActividadesComponent {
     });
     this.abierto.set(true);
     this.error.set(''); this.hecho.set('');
+  }
+
+  /** Cómo va el curso en un laboratorio. Se pide al abrirlo, no al cargar la
+   *  pantalla: son tantas consultas como laboratorios haya y casi siempre miras
+   *  uno solo, el que estás dictando. */
+  async verAvance(a: ActividadDocente): Promise<void> {
+    if (this.viendo() === a.codigo) { this.viendo.set(null); return; }
+    const r = this.docente.ramo();
+    if (!r) return;
+    this.viendo.set(a.codigo);
+    this.avance.set([]);
+    this.cargandoAvance.set(true);
+    this.error.set('');
+    try {
+      this.avance.set(
+        await this.datos.avancesLaboratorio(r.asignatura_id, r.periodo_id, a.codigo));
+    } catch (e: any) {
+      this.error.set(e?.message ?? 'No se pudo cargar el avance.');
+      this.viendo.set(null);
+    } finally {
+      this.cargandoAvance.set(false);
+    }
   }
 
   async guardar(): Promise<void> {

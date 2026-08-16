@@ -107,6 +107,8 @@ export class ActividadesComponent {
   ruta(a: Actividad): string {
     // Se enruta por tipo, no por código: el código solo es único dentro de una
     // asignatura y un periodo, así que cada ramo tiene el suyo.
-    return a.tipo === 'diagnostico' ? '/diagnostico' : '/actividades';
+    return a.tipo === 'diagnostico' ? '/diagnostico'
+         : a.tipo === 'laboratorio' ? `/laboratorio/${a.codigo}`
+         : '/actividades';
   }
 }

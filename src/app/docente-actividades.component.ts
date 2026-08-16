@@ -55,8 +55,12 @@ import { DocenteStore } from './docente.store';
                 <td class="der num">{{ a.puntos }}</td>
                 <td class="der num">{{ a.entregas }}</td>
                 <td class="der">
+                  <!-- La etiqueta mira las dos cosas: que el formulario apunte a
+                       esta fila Y que esté abierto. Solo lo primero dejaba el
+                       botón diciendo «Cerrar» después de guardar, con el
+                       formulario ya cerrado. -->
                   <button class="boton contorno chico" (click)="editar(a)">
-                    {{ form().id === a.id ? 'Cerrar' : 'Editar' }}
+                    {{ form().id === a.id && abierto() ? 'Cerrar' : 'Editar' }}
                   </button>
                 </td>
               </tr>

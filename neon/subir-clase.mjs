@@ -140,11 +140,41 @@ const SEGUNDOS_POR_SLIDE = 8;
 const segundosMinimos = Number(args['segundos-minimos'] ?? slides.length * SEGUNDOS_POR_SLIDE);
 const ruta = `clases/${args.sigla}/${args.periodo}/${args.codigo}.html`;
 
-const publicadaDesde = args['publicar-en']
-  ? new Date(args['publicar-en']).toISOString()
-  : args.publicar
-    ? new Date().toISOString()
-    : null;
+/**
+ * «2026-09-17 08:30» en hora de Santiago → el instante real, en UTC.
+ *
+ * Existe para no tener que acordarse de si Chile está en horario de verano. El
+ * cambio es el primer domingo de septiembre, justo en medio del semestre, y una
+ * clase programada con el desfase equivocado se habilita una hora antes o
+ * después sin que nadie lo note hasta que un alumno reclama.
+ *
+ * No se calcula el desfase: se prueban los dos y se comprueba cuál, al volver a
+ * formatearlo **en Santiago**, devuelve exactamente la hora pedida. Si ninguno
+ * calza —una hora que no existe por el salto— revienta en vez de adivinar.
+ */
+function chileAIso(local) {
+  const m = String(local).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/);
+  if (!m) throw new Error(`--hora-chile debe ser «AAAA-MM-DD HH:MM», llegó «${local}»`);
+  const [, Y, M, D, h, min] = m.map(Number);
+  const formato = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const pedida = `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}`;
+  for (const desfase of [3, 4]) {
+    const d = new Date(Date.UTC(Y, M - 1, D, h + desfase, min));
+    if (formato.format(d).replace('T', ' ') === pedida) return d.toISOString();
+  }
+  throw new Error(`«${local}» no existe en Santiago (¿cayó en el salto de horario?)`);
+}
+
+const publicadaDesde = args['hora-chile']
+  ? chileAIso(args['hora-chile'])
+  : args['publicar-en']
+    ? new Date(args['publicar-en']).toISOString()
+    : args.publicar
+      ? new Date().toISOString()
+      : null;
 
 console.log(`Archivo      ${basename(args.archivo)} (${(html.length / 1024).toFixed(0)} KB)`);
 console.log(`Clase        ${args.sigla} ${args.periodo} · ${args.codigo} · ${nombre}`);

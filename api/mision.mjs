@@ -62,20 +62,26 @@ export default async function handler(req, res) {
       return json(res, 200, { ...previo[0], generada: false });
     }
 
-    // El término se elige con la identidad del alumno, no con el rol generador.
-    // No es un rodeo: la política de `mision_banco` ya dice «los términos de mis
-    // ramos», así que el RLS hace el filtro solo y el rol generador se queda con
-    // un único permiso —registrar la misión— en vez de poder recorrer la nómina.
-    const contexto = await comoUsuario(usuarioId, (s) =>
-      s`select b.termino, b.definicion, b.fuente, a.nombre as asignatura
-          from public.mision_banco b
-          join public.asignaturas  a on a.id = b.asignatura_id
-         where b.activo
-         order by random() limit 1`);
-    const ctx = contexto[0];
+    // El término y el perfil salen con la identidad del alumno, no con el rol
+    // generador: así el RLS hace el filtro solo y ese rol se queda con un único
+    // permiso —registrar la misión— en vez de poder recorrer la nómina.
+    //
+    // `termino_para_mision` no elige al azar del banco completo: se limita a las
+    // clases que el alumno **abrió**, evita lo que ya se le preguntó y devuelve
+    // su perfil para calibrar la dificultad. Sin eso, un alumno de la semana 2
+    // podía recibir una pregunta sobre Kafka, que ve en noviembre.
+    const elegido = await comoUsuario(usuarioId, (s) =>
+      s`select public.termino_para_mision(${matricula}::uuid) as t`);
+    const ctx = elegido[0]?.t;
     if (!ctx) {
+      // Dos causas distintas y el alumno merece saber cuál: o no ha abierto
+      // ninguna clase, o su asignatura todavía no tiene banco cargado.
+      const [hay] = await comoUsuario(usuarioId, (s) =>
+        s`select count(*)::int as n from public.mision_banco where activo`);
       return json(res, 503, {
-        error: 'Todavía no hay términos habilitados para tu ramo. Avísale al docente.',
+        error: (hay?.n ?? 0) === 0
+          ? 'Tu asignatura todavía no tiene banco de términos. Avísale al docente.'
+          : 'Abre una clase primero: las misiones solo preguntan por materia que ya viste.',
       });
     }
 

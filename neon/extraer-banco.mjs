@@ -24,7 +24,7 @@
  * Sin `--escribir` solo informa lo que haría.
  */
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { join, basename, relative } from 'node:path';
 import { neon } from '@neondatabase/serverless';
 
 const args = Object.fromEntries(
@@ -90,20 +90,44 @@ function extraerDeDeck(html, codigo) {
 
 // ============================== Programa ==============================
 
-const archivos = (await readdir(CARPETA))
+/**
+ * Recorre la carpeta, entrando en subcarpetas: los decks de Arquitectura viven
+ * en una carpeta por sesión, no en un directorio plano como los de Cloud Native.
+ *
+ * Se saltan dos cosas a propósito: los **apuntes docentes**, que no son material
+ * del alumno, y todo lo que cuelgue de `fuentes/`, que son las versiones de
+ * trabajo del mismo deck y duplicarían cada término.
+ */
+async function decks(dir) {
+  const salida = [];
+  for (const e of await readdir(dir, { withFileTypes: true })) {
+    if (e.name.startsWith('.')) continue;
+    const ruta = join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name.toLowerCase() === 'fuentes') continue;
+      salida.push(...await decks(ruta));
+    } else if (e.name.endsWith('.html') && !/apunte/i.test(e.name)) {
+      salida.push(ruta);
+    }
+  }
+  return salida;
+}
+
+const archivos = (await decks(CARPETA))
   .filter((f) => f.endsWith('.html'))
   .sort((a, b) => {
-    const n = (x) => (x.startsWith('S') ? 0 : parseInt(x.match(/^D(\d+)/)?.[1] ?? '999', 10));
+    const n = (x) => { const b2 = basename(x);
+      return b2.startsWith('S') ? 0 : parseInt(b2.match(/^D(\d+)/)?.[1] ?? '999', 10); };
     return n(a) - n(b);
   });
 
 const todos = [];
 for (const f of archivos) {
   const codigo = basename(f).match(/^(S\d+|D\d+)/)?.[1] ?? basename(f, '.html');
-  const html = await readFile(join(CARPETA, f), 'utf8');
+  const html = await readFile(f, 'utf8');
   const hallados = extraerDeDeck(html, codigo);
   todos.push(...hallados);
-  console.log(`${codigo.padEnd(4)} ${String(hallados.length).padStart(3)} términos  ${basename(f)}`);
+  console.log(`${codigo.padEnd(4)} ${String(hallados.length).padStart(3)} términos  ${relative(CARPETA, f)}`);
 }
 
 // Un término puede repetirse entre decks. Se queda la primera aparición —la

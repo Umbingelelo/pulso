@@ -229,6 +229,44 @@ export interface AlumnoNomina {
 }
 
 /** Lo que dicta el docente: una asignatura en un periodo. */
+/** Un alumno visto por su docente: incluye correo, que la nómina normal no trae. */
+export interface AlumnoDocente {
+  matricula_id: string;
+  perfil_id: string;
+  nombre: string;
+  correo: string;
+  avatar: string;
+  seccion_id: string;
+  seccion: string;
+  activa: boolean;
+  creado_en: string;
+  puntos: number;
+  experiencia: number;
+  clases_abiertas: number;
+  clases_terminadas: number;
+  diagnostico: boolean;
+  ultimo_ingreso: string | null;
+}
+
+export interface SeccionDocente {
+  id: string;
+  codigo: string;
+  activa: boolean;
+  matriculados: number;
+}
+
+export interface ActividadDocente {
+  id: string;
+  codigo: string;
+  titulo: string;
+  descripcion: string | null;
+  tipo: 'diagnostico' | 'laboratorio' | 'entrega';
+  puntos: number;
+  orden: number;
+  activa: boolean;
+  entregas: number;
+}
+
 export interface RamoDocente {
   asignatura_id: string;
   periodo_id: string;
@@ -720,6 +758,69 @@ export class DatosService {
       p_puntos_abrir: datos.puntosAbrir ?? null,
       p_puntos_actividad: datos.puntosActividad ?? null,
       p_puntos_terminar: datos.puntosTerminar ?? null,
+    });
+    if (error) throw error;
+  }
+
+  // ---------- Panel del docente ----------
+  // Todo pasa por funciones `security definer` que comprueban adentro que la
+  // sección o la actividad sea de un curso que él dicta. Cambiar un id en la
+  // petición no abre el curso de otro.
+
+  async seccionesQueDicto(asignaturaId: string, periodoId: string): Promise<SeccionDocente[]> {
+    const { data, error } = await this.db.rpc('secciones_que_dicto', {
+      p_asignatura: asignaturaId, p_periodo: periodoId,
+    });
+    if (error) throw error;
+    return (data ?? []) as SeccionDocente[];
+  }
+
+  async alumnosDelRamo(asignaturaId: string, periodoId: string): Promise<AlumnoDocente[]> {
+    const { data, error } = await this.db.rpc('docente_alumnos', {
+      p_asignatura: asignaturaId, p_periodo: periodoId,
+    });
+    if (error) throw error;
+    return (data ?? []) as AlumnoDocente[];
+  }
+
+  async cambiarSeccion(matriculaId: string, seccionId: string): Promise<void> {
+    const { error } = await this.db.rpc('alumno_cambiar_seccion', {
+      p_matricula: matriculaId, p_seccion: seccionId,
+    });
+    if (error) throw error;
+  }
+
+  async activarAlumno(matriculaId: string, activa: boolean): Promise<void> {
+    const { error } = await this.db.rpc('alumno_activar', {
+      p_matricula: matriculaId, p_activa: activa,
+    });
+    if (error) throw error;
+  }
+
+  async reiniciarClave(matriculaId: string, clave: string): Promise<void> {
+    const { error } = await this.db.rpc('alumno_reiniciar_clave', {
+      p_matricula: matriculaId, p_clave: clave,
+    });
+    if (error) throw error;
+  }
+
+  async actividadesQueDicto(asignaturaId: string, periodoId: string): Promise<ActividadDocente[]> {
+    const { data, error } = await this.db.rpc('actividades_que_dicto', {
+      p_asignatura: asignaturaId, p_periodo: periodoId,
+    });
+    if (error) throw error;
+    return (data ?? []) as ActividadDocente[];
+  }
+
+  async guardarActividad(a: {
+    id: string | null; asignaturaId: string; periodoId: string;
+    codigo: string; titulo: string; descripcion: string | null;
+    tipo: string; puntos: number; orden: number; activa: boolean;
+  }): Promise<void> {
+    const { error } = await this.db.rpc('actividad_guardar', {
+      p_id: a.id, p_asignatura: a.asignaturaId, p_periodo: a.periodoId,
+      p_codigo: a.codigo, p_titulo: a.titulo, p_descripcion: a.descripcion,
+      p_tipo: a.tipo, p_puntos: a.puntos, p_orden: a.orden, p_activa: a.activa,
     });
     if (error) throw error;
   }

@@ -113,6 +113,21 @@ export const routes: Routes = [
         path: 'curso', canActivate: [soloDocente],
         loadComponent: () => import('./docente.component').then(m => m.DocenteComponent),
       },
+      {
+        path: 'curso/clases', canActivate: [soloDocente],
+        loadComponent: () =>
+          import('./docente-clases.component').then(m => m.DocenteClasesComponent),
+      },
+      {
+        path: 'curso/actividades', canActivate: [soloDocente],
+        loadComponent: () =>
+          import('./docente-actividades.component').then(m => m.DocenteActividadesComponent),
+      },
+      {
+        path: 'curso/alumnos', canActivate: [soloDocente],
+        loadComponent: () =>
+          import('./docente-alumnos.component').then(m => m.DocenteAlumnosComponent),
+      },
       // La ficha es de los dos: el docente llega con el id de la matrícula desde
       // la nómina, el alumno entra sin id y ve la de su ramo elegido. Quién puede
       // ver cuál lo decide `ficha_alumno()` en la base, no un guard de acá.

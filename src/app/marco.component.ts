@@ -2,6 +2,7 @@ import { Component, computed, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import { DatosService } from './datos.service';
+import { DocenteStore } from './docente.store';
 import { PerfilStore } from './perfil.store';
 
 /**
@@ -21,13 +22,36 @@ import { PerfilStore } from './perfil.store';
 
         <nav class="menu">
           @if (perfil.esDocente()) {
-            <a routerLink="/curso" routerLinkActive="activo">
+            <a routerLink="/curso" routerLinkActive="activo" [routerLinkActiveOptions]="{exact:true}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M9 9v11"/>
+              </svg>
+              <span>Resumen</span>
+            </a>
+            <a routerLink="/curso/clases" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 5.5h18v11H3z"/><path d="M12 16.5V21"/><path d="M8 21h8"/>
+                <path d="M7.5 9.5h6"/><path d="M7.5 12.5h9"/>
+              </svg>
+              <span>Clases</span>
+            </a>
+            <a routerLink="/curso/actividades" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 5h9.5v15H5.5V5H9"/><path d="M9 3.5h5V6H9z"/>
+                <path d="M8.5 11.5l1.8 1.8 3.7-3.7"/><path d="M8.5 16.5h7"/>
+              </svg>
+              <span>Actividades</span>
+            </a>
+            <a routerLink="/curso/alumnos" routerLinkActive="activo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.3 2.9-5.4 6.5-5.4S15.5 16.7 15.5 20"/>
                 <path d="M17 11.5a2.6 2.6 0 1 0 0-5.2"/><path d="M18.5 20c0-2.4-.9-4-2.4-4.9"/>
               </svg>
-              <span>Curso</span>
+              <span>Alumnos</span>
             </a>
           } @else {
             <a routerLink="/inicio" routerLinkActive="activo">
@@ -110,6 +134,17 @@ import { PerfilStore } from './perfil.store';
 
         <div class="pie">
           @if (perfil.esDocente()) {
+            @if (docente.ramos().length > 1) {
+              <label class="selector-ramo">
+                <span class="etiqueta">Ramo</span>
+                <select [value]="docente.ramoId()"
+                        (change)="docente.elegir($any($event.target).value)">
+                  @for (r of docente.ramos(); track r.asignatura_id + r.periodo_id) {
+                    <option [value]="docente.clave(r)">{{ r.sigla }} · {{ r.periodo }}</option>
+                  }
+                </select>
+              </label>
+            }
             <div class="usuario-lateral">
               <img [src]="avatar()" alt="">
               <div class="datos">
@@ -168,6 +203,7 @@ import { PerfilStore } from './perfil.store';
 })
 export class MarcoComponent {
   protected perfil = inject(PerfilStore);
+  protected docente = inject(DocenteStore);
   private datos = inject(DatosService);
   private avatares = inject(AvatarService);
   private router = inject(Router);

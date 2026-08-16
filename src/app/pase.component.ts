@@ -139,7 +139,9 @@ import { PerfilStore } from './perfil.store';
           <span class="chico suave">Los diez primeros lugares de tu asignatura</span>
         </div>
 
-        @if (podio().length === 0) {
+        @if (errorTabla()) {
+          <div class="aviso malo" style="margin-top:14px">{{ errorTabla() }}</div>
+        } @else if (podio().length === 0) {
           <div class="aviso dato" style="margin-top:14px">
             Todavía nadie ha sumado experiencia. Haz tu misión del día y encabeza la tabla.
           </div>
@@ -198,6 +200,8 @@ export class PaseComponent {
   /** Arranca en 0 para que la barra se llene al montar, no que aparezca llena. */
   llenado = signal(0);
   tituloPuesto = signal<string | null>(null);
+  error = signal('');
+  errorTabla = signal('');
 
   miMatricula = computed(() => this.perfil.ramo()?.matricula_id ?? '');
   proximo = computed(() => (this.pase()?.nivel ?? 0) + 1);
@@ -235,13 +239,20 @@ export class PaseComponent {
       const nuevo = await this.datos.sincronizarPase(ramo.matricula_id);
       if (nuevo?.nuevos?.length) this.celebrar.set(nuevo.nuevos);
 
-      const [p, t] = await Promise.all([
+      // Por separado y a prueba de fallos: si el ranking se cae, el pase igual
+      // tiene que verse. Con un `Promise.all` un 404 en la tabla dejaba la
+      // pantalla entera en blanco diciendo «no hay pase configurado», que además
+      // es mentira y manda a buscar el problema al lugar equivocado.
+      const [rp, rt] = await Promise.allSettled([
         this.datos.miPase(ramo.matricula_id),
         this.datos.posiciones(ramo.matricula_id),
       ]);
+      const p = rp.status === 'fulfilled' ? rp.value : null;
+      if (rp.status === 'rejected') this.error.set('No se pudo cargar tu pase.');
       this.pase.set(p);
-      this.tabla.set(t);
-      const mio = t.find(x => x.soy_yo)?.titulo ?? null;
+      if (rt.status === 'fulfilled') this.tabla.set(rt.value);
+      else this.errorTabla.set('No se pudo cargar la tabla de posiciones.');
+      const mio = this.tabla().find(x => x.soy_yo)?.titulo ?? null;
       this.tituloPuesto.set(
         mio ? (p?.recompensas.find(r => r.cosmetico?.valor === mio)?.cosmetico?.id ?? null) : null);
 

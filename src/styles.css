@@ -543,3 +543,12 @@ tr:last-child td{ border-bottom:none; }
   .pase-barra i{ transition:none; }
   .escalon.actual .premio{ animation:none; }
 }
+
+/* Los iconos de la tienda pasaron de emoji a SVG de Lucide: el emoji dependía de
+   la fuente del sistema, se veía distinto en cada equipo y no se podía teñir. */
+.articulo .icono{
+  display:grid; place-items:center;
+  width:42px; height:42px; border-radius:12px;
+  background:var(--celeste-suave); color:var(--azul);
+}
+.articulo .icono svg{ width:22px; height:22px; }

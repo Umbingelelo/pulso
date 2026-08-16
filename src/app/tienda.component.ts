@@ -2,6 +2,8 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Articulo, Canje, Categoria, DatosService } from './datos.service';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { ICONOS } from './iconos';
 import { PerfilStore } from './perfil.store';
 
 const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
@@ -69,7 +71,7 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
           @for (a of visibles(); track a.id) {
             <div class="articulo" [class.agotado]="!disponible(a)">
               <div class="cabeza">
-                <span class="icono">{{ a.icono || '🎁' }}</span>
+                <span class="icono" [innerHTML]="trazo(a.icono)" aria-hidden="true"></span>
                 @if (a.precio === null) {
                   <span class="insignia">Próximamente</span>
                 } @else {
@@ -138,7 +140,7 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
           @for (c of canjes(); track c.id) {
             <tr>
               <td>
-                {{ c.icono }} {{ c.articulo }}
+                {{ c.articulo }}
                 @if (c.nota_alumno) { <div class="chico suave">«{{ c.nota_alumno }}»</div> }
                 @if (c.comentario_docente) {
                   <div class="chico" style="color:var(--texto-suave)">
@@ -163,6 +165,28 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
 })
 export class TiendaComponent {
   private datos = inject(DatosService);
+  private limpiador = inject(DomSanitizer);
+
+  /**
+   * El trazo del icono, envuelto en su `<svg>`.
+   *
+   * Va por `innerHTML` y no por un `<svg>` en la plantilla porque el nombre del
+   * icono viene de la base: el docente agrega un premio y elige cuál usar, sin
+   * que nadie toque el componente. Angular borra los `<path>` de un innerHTML
+   * salvo que se marquen como confiables, y el resultado sería un cuadrado vacío;
+   * el contenido no viene del usuario sino de un archivo generado desde Lucide.
+   */
+  private cache = new Map<string, SafeHtml>();
+
+  trazo(nombre: string | null): SafeHtml {
+    const clave = nombre && ICONOS[nombre] ? nombre : 'sparkles';
+    if (!this.cache.has(clave)) {
+      this.cache.set(clave, this.limpiador.bypassSecurityTrustHtml(
+        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">${ICONOS[clave]}</svg>`));
+    }
+    return this.cache.get(clave)!;
+  }
   protected perfil = inject(PerfilStore);
 
   protected readonly categorias = CATEGORIAS;

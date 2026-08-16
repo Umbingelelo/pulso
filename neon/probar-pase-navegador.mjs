@@ -14,7 +14,7 @@ import { mkdtemp, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os'; import { join } from 'node:path';
 import { neon } from '@neondatabase/serverless';
 
-const BASE = 'https://pulso-rust.vercel.app';
+const BASE = process.env.BASE ?? 'https://pulso-rust.vercel.app';
 let chrome = null;
 for (const c of [process.env.CHROME, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
                  '/usr/bin/google-chrome'].filter(Boolean)) {
@@ -66,7 +66,7 @@ try {
 
   console.log('1. El pase');
   rev('sin errores de JavaScript', errs, []);
-  rev('12 misiones = nivel 7', await p.evaluate(()=>document.querySelector('.pase-nivel b')?.textContent), '7');
+  rev('12 misiones (300 XP) = nivel 8', await p.evaluate(()=>document.querySelector('.pase-nivel b')?.textContent), '8');
   rev('pinta la escalera completa', await p.evaluate(()=>document.querySelectorAll('.escalon').length), 17);
   rev('marca lo desbloqueado', await p.evaluate(()=>document.querySelectorAll('.escalon.abierto').length) > 0, true);
   rev('celebra lo recién ganado', /Desbloqueaste/.test(await p.evaluate(()=>document.body.innerText)), true);

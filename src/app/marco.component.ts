@@ -21,7 +21,12 @@ import { PerfilStore } from './perfil.store';
         </div>
 
         <nav class="menu">
-          @if (perfil.esDocente()) {
+          <!-- Hasta que el perfil resuelva no se dibuja ningún menú. `esDocente`
+               arranca en false, así que sin esta guarda el docente veía el menú
+               de alumno un segundo antes de que se cambiara solo. -->
+          @if (!perfil.resuelto()) {
+            <span class="cargando-menu" aria-hidden="true"></span>
+          } @else if (perfil.esDocente()) {
             <a routerLink="/curso" routerLinkActive="activo" [routerLinkActiveOptions]="{exact:true}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round">

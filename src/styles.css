@@ -552,3 +552,7 @@ tr:last-child td{ border-bottom:none; }
   background:var(--celeste-suave); color:var(--azul);
 }
 .articulo .icono svg{ width:22px; height:22px; }
+
+/* Marcador del menú mientras se resuelve quién entró: ocupa el alto de un par de
+   enlaces para que la barra no dé un salto cuando aparecen. */
+.cargando-menu{ display:block; height:96px; }

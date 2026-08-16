@@ -271,6 +271,81 @@ Usa un perfil temporal que borra al terminar, así que no toca el tuyo. Si tu Ch
 la nómina del docente, que es el precio de tenerla: si molesta, `matriculas.activa = false` la saca de
 los promedios pero también la deja fuera de la prueba.
 
+## Laboratorios
+
+Un laboratorio es una actividad de tipo `laboratorio` con cuerpo: el enunciado, las cajas donde el
+alumno escribe y los puntos de control que tú validas en sala. Se escriben en Markdown en la carpeta
+de la asignatura y se publican con un script.
+
+### El formato
+
+Encabezado con `codigo`, `titulo`, `descripcion`, `minutos`, `puntos` y `orden`, y después el
+enunciado con cinco bloques propios, todos cerrados con `:::`:
+
+| Bloque | Para qué |
+|---|---|
+| `:::caja{1.2 corta}` | Donde el alumno responde. `corta` o `codigo` |
+| `:::control{1}` | Punto de control: el alumno declara que llegó, tú lo validas en sala |
+| `:::alerta` | Un aviso |
+| `:::pista` | Una ayuda |
+| `:::ojo` | Algo que mirar |
+
+**El identificador de una caja no se cambia después de publicar.** Es la llave con la que se guarda esa
+respuesta: si cambia, lo que el alumno ya escribió queda huérfano —la caja aparece vacía y su texto
+sigue en la base sin que nadie lo lea— y eso no da error en ninguna parte. El publicador avisa cuando
+detecta respuestas guardadas en cajas que ya no existen.
+
+### Publicarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/subir-laboratorio.mjs --archivo ../Desarrollo_Cloud_Native/Laboratorios/L1-*.md \
+  --sigla DSY1107 --periodo 2026-2            # valida e informa
+node neon/subir-laboratorio.mjs --archivo … --escribir   # y ahora sí
+```
+
+Sin `--escribir` no toca nada: dice cuántos bloques, cuántas cajas y con qué identificadores quedó.
+Vale la pena mirarlo, porque de ahí salió que un `split` mal usado se estaba comiendo el 95% del
+enunciado sin quejarse.
+
+El enunciado se convierte a HTML y se parte en bloques **al subirlo**, no en el navegador: así el
+alumno no baja un intérprete de Markdown y, sobre todo, no hay que adivinar dónde va cada caja dentro
+del texto ya convertido.
+
+### Cómo lo vive el alumno
+
+Se guarda solo mientras escribe, dos segundos después de la última tecla, y también al salir de la
+pantalla o cerrar la pestaña. Un laboratorio son dos horas de trabajo: pedirle que se acuerde de
+apretar «Guardar» es garantizar que alguien va a perderlo todo.
+
+Entregar es una sola vez —paga los puntos y cierra la edición— así que pide confirmación y avisa
+cuántas cajas quedan en blanco. No se exige responderlas todas, porque hay laboratorios que se cortan
+por tiempo, pero sí que haya al menos una: entregar en blanco por accidente sería irreversible desde
+su lado.
+
+### Probarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/probar-laboratorio.mjs --codigo L1                              # la lógica
+node neon/probar-laboratorio-navegador.mjs https://pulso-rust.vercel.app  # el navegador
+```
+
+**La lógica** llama a las mismas funciones de Postgres que llama `/api/laboratorio`, con la misma
+identidad y el mismo rol con RLS. Además del camino feliz comprueba lo que duele: que no se entregue
+en blanco, que no se pueda seguir escribiendo después de entregar, que no se entregue dos veces —serían
+puntos duplicados— y que no se vea el laboratorio de otra matrícula.
+
+**El navegador** cubre lo único que la anterior no puede: que el guardado automático de verdad viaje.
+Es la parte donde una falla silenciosa le cuesta al alumno dos horas —escribe, se ve bien, y no salió
+nada—. Escribe, espera, y va a mirar la fila en Postgres; después escribe en otra caja y se sale de la
+pantalla de inmediato, que es la ventana donde se pierde texto.
+
+De ahí salieron los dos errores que tenía esto: que `trim()` en Postgres quita **solo espacios**, así
+que una caja con un Enter contaba como respondida y dejaba entregar en blanco; y que el `.trim()` de
+JavaScript sí lo considera vacío, así que la cuenta del docente y la del alumno no coincidían. Las dos
+salen ahora de `tiene_texto()`.
+
 ## Agregar una asignatura o un semestre
 
 El desplegable del registro se llena desde la base, así que no hay que tocar código. El SQL, con el
@@ -292,10 +367,12 @@ npm run build
 **Se despliega con `git push`.** El proyecto tiene la integración de Git de Vercel: cada push a `main`
 construye y publica en producción solo.
 
-> **No uses `npx vercel deploy --prod`.** Se probó el 11 de agosto de 2026 y produjo un despliegue que
-> respondía **404** en todas las rutas, pese a que el build en Vercel terminó bien; además se quedó
-> con el alias de producción y tumbó el sitio hasta promover a mano el despliegue del push. El de la
-> integración de Git, con el mismo commit, quedó correcto. Si alguna vez pasa de nuevo:
+> **No uses `npx vercel deploy --prod`. Pasó dos veces.** El 11 y el 16 de agosto de 2026 produjo un
+> despliegue que respondía **404 en todas las rutas** —incluida la raíz— pese a que el build en Vercel
+> terminó bien y el estado quedó en `Ready`; además se llevó el alias de producción y tumbó el sitio
+> hasta promover a mano el anterior. La diferencia está en el log: el bueno dice `Cloning
+> github.com/Umbingelelo/pulso`, el roto dice `Downloading 204 deployment files`. Mismo commit, mismo
+> build, distinto resultado. Si vuelve a pasar:
 >
 > ```bash
 > npx vercel ls pulso                    # busca el despliegue bueno
@@ -311,8 +388,8 @@ variables de entorno del proyecto en Vercel y, para desarrollo, en `.env.local`,
 | Ruta | Quién entra |
 |---|---|
 | `/registro`, `/ingresar` | Solo sin sesión |
-| `/inicio`, `/clases`, `/actividades`, `/diagnostico`, `/ramos`, `/perfil`, `/puntos`, `/tienda` | Alumnos |
-| `/curso` | Docentes |
+| `/inicio`, `/clases`, `/actividades`, `/laboratorio/:codigo`, `/diagnostico`, `/ramos`, `/perfil`, `/puntos`, `/tienda` | Alumnos |
+| `/curso`, `/curso/clases`, `/curso/actividades`, `/curso/alumnos` | Docentes |
 | `/ficha/:matriculaId` | Los dos: el alumno la suya, el docente las de sus secciones |
 
 Y fuera de Angular, servidas por funciones:
@@ -322,5 +399,7 @@ Y fuera de Angular, servidas por funciones:
 | `/api/auth/*` | Ingreso, registro, refresco y cierre de sesión |
 | `/api/clase?id=…` | Sirve el deck de una clase, tras comprobar sesión y matrícula |
 | `/api/clase-avance` | Recibe el avance dentro del deck y paga los puntos |
+| `/api/laboratorio` | Leer, guardar y entregar un laboratorio |
+| `/api/docente` | Las operaciones del panel del docente |
 | `/.well-known/jwks.json` | La llave pública con la que Neon valida los tokens |
 | `/db/*` | Reescritura a la Data API de Neon |

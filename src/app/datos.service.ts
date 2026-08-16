@@ -206,11 +206,11 @@ export interface Posicion {
   matricula_id: string;
   nombre: string;
   avatar: string;
-  seccion: string;
+  titulo: string | null;
   xp: number;
   lugar: number;
   orden: number;
-  titulo: string | null;
+  soy_yo: boolean;
 }
 
 export interface AlumnoNomina {
@@ -747,18 +747,22 @@ export class DatosService {
   }
 
   /**
-   * La tabla del ramo. Se piden 40 filas y no 10: los empatados comparten lugar,
-   * así que «los diez primeros lugares» pueden ser muchas más filas, y el propio
-   * alumno puede venir más abajo. Recortar acá dejaría fuera su posición.
+   * La tabla del ramo, por `tabla_posiciones()`.
+   *
+   * No sale de una vista sino de una función `security definer`, y no es un
+   * rodeo: el RLS dice que un alumno ve su matrícula y su perfil, así que una
+   * vista devolvería una sola fila. La alternativa era relajar las políticas de
+   * `perfiles` y `matriculas` para toda la app; esto expone las cuatro columnas
+   * del ranking y nada más.
+   *
+   * Se piden 40 filas y no 10 porque los empatados comparten lugar: «los diez
+   * primeros lugares» pueden ser muchas más filas, y el propio alumno puede venir
+   * más abajo.
    */
-  async posiciones(asignaturaId: string, periodoId: string): Promise<Posicion[]> {
-    const { data, error } = await this.db
-      .from('posiciones')
-      .select('matricula_id, nombre, avatar, seccion, xp, lugar, orden, titulo')
-      .eq('asignatura_id', asignaturaId)
-      .eq('periodo_id', periodoId)
-      .order('orden')
-      .limit(40);
+  async posiciones(matriculaId: string): Promise<Posicion[]> {
+    const { data, error } = await this.db.rpc('tabla_posiciones', {
+      p_matricula: matriculaId, p_limite: 40,
+    });
     if (error) throw error;
     return (data ?? []) as Posicion[];
   }

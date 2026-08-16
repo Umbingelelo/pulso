@@ -147,7 +147,7 @@ import { PerfilStore } from './perfil.store';
           <div style="margin-top:14px">
             @for (q of podio(); track q.matricula_id) {
               <div class="puesto surge"
-                   [class.yo]="q.matricula_id === miMatricula()"
+                   [class.yo]="q.soy_yo"
                    [class.podio-1]="q.lugar === 1"
                    [class.podio-2]="q.lugar === 2"
                    [class.podio-3]="q.lugar === 3"
@@ -216,8 +216,8 @@ export class PaseComponent {
   /** Si el alumno no está en el podio, se le muestra su fila aparte, solo a él. */
   yoAparte = computed(() => {
     const mia = this.miMatricula();
-    if (this.podio().some(p => p.matricula_id === mia)) return null;
-    return this.tabla().find(p => p.matricula_id === mia) ?? null;
+    if (this.podio().some(p => p.soy_yo)) return null;
+    return this.tabla().find(p => p.soy_yo) ?? null;
   });
 
   constructor() {
@@ -237,15 +237,13 @@ export class PaseComponent {
 
       const [p, t] = await Promise.all([
         this.datos.miPase(ramo.matricula_id),
-        this.datos.posiciones(ramo.asignatura_id, ramo.periodo_id),
+        this.datos.posiciones(ramo.matricula_id),
       ]);
       this.pase.set(p);
       this.tabla.set(t);
+      const mio = t.find(x => x.soy_yo)?.titulo ?? null;
       this.tituloPuesto.set(
-        t.find(x => x.matricula_id === ramo.matricula_id)?.titulo
-          ? (p?.recompensas.find(r => r.cosmetico?.valor
-              === t.find(x => x.matricula_id === ramo.matricula_id)?.titulo)?.cosmetico?.id ?? null)
-          : null);
+        mio ? (p?.recompensas.find(r => r.cosmetico?.valor === mio)?.cosmetico?.id ?? null) : null);
 
       // El llenado se aplica después de pintar, para que la transición tenga
       // desde dónde salir. Sin este respiro el navegador une los dos estados y
@@ -266,7 +264,7 @@ export class PaseComponent {
     try {
       await this.datos.equipar(ramo.matricula_id, r.cosmetico.id);
       this.tituloPuesto.set(r.cosmetico.id);
-      this.tabla.set(await this.datos.posiciones(ramo.asignatura_id, ramo.periodo_id));
+      this.tabla.set(await this.datos.posiciones(ramo.matricula_id));
     } finally {
       this.equipando.set(null);
     }

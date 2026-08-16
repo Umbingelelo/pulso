@@ -21,9 +21,10 @@ import { PerfilStore } from './perfil.store';
         </div>
 
         <nav class="menu">
-          <!-- Hasta que el perfil resuelva no se dibuja ningún menú. `esDocente`
+          <!-- Hasta que el perfil resuelva no se dibuja ningún menú: esDocente
                arranca en false, así que sin esta guarda el docente veía el menú
-               de alumno un segundo antes de que se cambiara solo. -->
+               de alumno un segundo antes de que se cambiara solo.
+               (Sin acentos graves acá: esto vive dentro de un template literal.) -->
           @if (!perfil.resuelto()) {
             <span class="cargando-menu" aria-hidden="true"></span>
           } @else if (perfil.esDocente()) {

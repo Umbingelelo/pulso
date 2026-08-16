@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, effect, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import { DatosService } from './datos.service';
@@ -204,6 +204,7 @@ import { PerfilStore } from './perfil.store';
 export class MarcoComponent {
   protected perfil = inject(PerfilStore);
   protected docente = inject(DocenteStore);
+
   private datos = inject(DatosService);
   private avatares = inject(AvatarService);
   private router = inject(Router);
@@ -217,6 +218,12 @@ export class MarcoComponent {
 
   constructor() {
     this.perfil.cargar();
+    // El selector de ramo del docente vive en esta barra, así que sus ramos hay
+    // que pedirlos acá: si solo los cargara la pantalla que los usa, el selector
+    // saldría vacío hasta que entrara a alguna sección.
+    effect(() => {
+      if (this.perfil.esDocente()) this.docente.cargar();
+    });
   }
 
   cambiarRamo(matriculaId: string): void {

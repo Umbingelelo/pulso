@@ -71,10 +71,12 @@ import { PerfilStore } from './perfil.store';
             <div class="premio" [attr.data-rareza]="u.rareza">
               @if (u.tipo === 'avatar') {
                 <div class="aro"><img [src]="u.valor" [alt]="u.nombre"></div>
+                <p class="nombre">{{ u.nombre }}</p>
               } @else {
+                <!-- En un título, el valor y el nombre son el mismo texto:
+                     mostrarlo dos veces no agrega nada y le quita fuerza. -->
                 <div class="titulo-premio">«{{ u.valor }}»</div>
               }
-              <p class="nombre">{{ u.nombre }}</p>
               @if (u.descripcion) { <p class="chico suave">{{ u.descripcion }}</p> }
               <span class="insignia" [class]="'insignia ' + claseRareza(u.rareza)">
                 {{ nombreRareza(u.rareza) }}
@@ -261,8 +263,9 @@ import { PerfilStore } from './perfil.store';
     .pieza.falta{ opacity:.42; filter:grayscale(1); }
     .pieza.puesto{ border-color:var(--verde); background:var(--verde-suave); }
 
-    .insignia.morada{ background:#EDE9FE; color:#5B21B6; }
-    .insignia.dorada{ background:#FEF3C7; color:#92400E; }
+    .insignia.morada { background:#EDE9FE; color:#5B21B6; }
+    .insignia.dorada { background:#FEF3C7; color:#92400E; }
+    .insignia.magenta{ background:#FCE7F3; color:#9D174D; }
 
     /* Sin movimiento: se conserva el color, que es la información, y se quita el
        movimiento, que es el adorno. El premio aparece igual y en el acto. */
@@ -323,8 +326,17 @@ export class GachaComponent {
     this.perfil.cargar().then(() => this.cargar());
   }
 
+  /**
+   * El color de la insignia tiene que ser el mismo que el del aviso.
+   *
+   * Mítica salía dorada como legendaria, contradiciendo el magenta con que se
+   * anuncia: el alumno ve un pulso magenta y a los dos segundos una etiqueta
+   * dorada, y las dos rarezas más altas vuelven a confundirse entre sí, que es
+   * justo lo que el color quería evitar.
+   */
   claseRareza(r: string): string {
-    return r === 'mitica' || r === 'legendaria' ? 'dorada'
+    return r === 'mitica' ? 'magenta'
+         : r === 'legendaria' ? 'dorada'
          : r === 'epica' ? 'morada'
          : r === 'rara' ? 'celeste'
          : r === 'poco_comun' ? 'verde'

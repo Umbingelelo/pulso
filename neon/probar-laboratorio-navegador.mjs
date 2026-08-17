@@ -40,7 +40,7 @@ const pausa = (ms) => new Promise(r => setTimeout(r, ms));
 // ---------- Dejar la pizarra limpia ----------
 
 const [m] = await d`
-  select mt.id as matricula, a.id as actividad
+  select mt.id as matricula, a.id as actividad, a.titulo
     from public.matriculas mt
     join public.perfiles   p on p.id = mt.perfil_id
     join public.usuarios   u on u.id = p.id
@@ -51,17 +51,28 @@ const [m] = await d`
    where lower(u.correo) = 'alumno.prueba@duocuc.cl' and a.codigo = ${CODIGO}`;
 if (!m) throw new Error(`El alumno de prueba no tiene el laboratorio ${CODIGO}`);
 
-const [{ id: piso }] = await d`select coalesce(max(id),0) as id
-   from public.movimientos_puntos where matricula_id = ${m.matricula}`;
+// Por marca de agua **y** por motivo. La marca sola no alcanza: una corrida que
+// se muera después de entregar deja sus puntos ahí, y la siguiente toma su marca
+// por encima de ellos, con lo que quedan sumando para siempre sin que ninguna
+// limpieza los vea. Y por motivo sola tampoco: el trigger escribe el título de
+// la actividad, no su código. Ver la nota larga en `probar-laboratorio.mjs`.
+const marca = async () => {
+  const [r] = await d`select coalesce(max(id),0) as id
+     from public.movimientos_puntos where matricula_id = ${m.matricula}`;
+  return r.id;
+};
+let piso = await marca();
 const limpiar = async () => {
   await d`delete from public.laboratorio_avance
            where matricula_id = ${m.matricula} and actividad_id = ${m.actividad}`;
   await d`delete from public.resultados_actividad
            where matricula_id = ${m.matricula} and actividad_id = ${m.actividad}`;
   await d`delete from public.movimientos_puntos
-           where matricula_id = ${m.matricula} and id > ${piso}`;
+           where matricula_id = ${m.matricula}
+             and (id > ${piso} or motivo = ${m.titulo})`;
 };
 await limpiar();
+piso = await marca();
 
 const perfil = await mkdtemp(join(tmpdir(), 'pulso-'));
 const nav = await puppeteer.launch({ executablePath: chrome, headless: true,

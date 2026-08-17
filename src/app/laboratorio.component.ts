@@ -179,24 +179,44 @@ import { PerfilStore } from './perfil.store';
     /* El enunciado es prosa larga: se le da medida de lectura y aire, no el
        ancho completo de la pantalla. */
     .enunciado{ max-width:76ch; line-height:1.7; }
-    .enunciado :is(h2,h3,h4){ margin:30px 0 10px; line-height:1.3; }
-    .enunciado h2{ font-size:21px; }
-    .enunciado h3{ font-size:17px; }
-    .enunciado > div > :first-child{ margin-top:0; }
-    .enunciado p, .enunciado ul, .enunciado ol{ margin:12px 0; }
-    .enunciado li{ margin:5px 0; }
-    .enunciado hr{ border:0; border-top:1px solid var(--borde); margin:28px 0; }
-    .enunciado code{
+
+    /* ── Por qué ::ng-deep, que está deprecado ──
+       El enunciado entra por [innerHTML], y Angular **no le pone** el atributo
+       «_ngcontent» a lo que se inyecta así: sólo lo lleva lo que está escrito
+       en la plantilla. Sin ::ng-deep estas reglas se compilan a
+       «.enunciado pre[_ngcontent-x]», que no calza con nada, y **ninguna se
+       aplicaba**. En producción eso se veía como bloques de código sin fondo,
+       títulos sin aire y, sobre todo, un «pre» sin overflow-x: una sola línea
+       larga de curl empujaba la página setecientos píxeles hacia el lado.
+       Va con :host delante para que no se escape del componente — el otro
+       camino, ViewEncapsulation.None, suelta todo esto al resto de la app, y
+       una clase de nombre común como «.enunciado» ya nos costó una vez. */
+    :host ::ng-deep .enunciado :is(h2,h3,h4){ margin:30px 0 10px; line-height:1.3; }
+    :host ::ng-deep .enunciado h2{ font-size:21px; }
+    :host ::ng-deep .enunciado h3{ font-size:17px; }
+    :host ::ng-deep .enunciado > div > :first-child{ margin-top:0; }
+    :host ::ng-deep .enunciado :is(p,ul,ol){ margin:12px 0; }
+    :host ::ng-deep .enunciado li{ margin:5px 0; }
+    :host ::ng-deep .enunciado hr{ border:0; border-top:1px solid var(--borde); margin:28px 0; }
+    :host ::ng-deep .enunciado code{
       background:var(--fondo); border:1px solid var(--borde); border-radius:5px;
       padding:1px 5px; font-size:13px;
     }
-    .enunciado pre{
+    :host ::ng-deep .enunciado pre{
       background:var(--azul-900); color:#E8EEFF; border-radius:var(--r-chico);
       padding:14px 16px; overflow-x:auto; font-size:13px; line-height:1.55; margin:14px 0;
+      /* Un «pre» sin esto se estira hasta donde llegue su línea más larga y
+         arrastra la página entera con él. Los laboratorios están llenos de
+         comandos de una línea que no caben. */
+      max-width:100%;
     }
-    .enunciado pre code{ background:none; border:0; padding:0; color:inherit; font-size:inherit; }
-    .enunciado table{ width:100%; }
-    .enunciado blockquote{
+    :host ::ng-deep .enunciado pre code{
+      background:none; border:0; padding:0; color:inherit; font-size:inherit;
+    }
+    /* Las tablas del enunciado sí pueden ser más anchas que la medida de
+       lectura: se les da su propio desplazamiento en vez de encoger la letra. */
+    :host ::ng-deep .enunciado table{ width:100%; }
+    :host ::ng-deep .enunciado blockquote{
       margin:14px 0; padding-left:14px; border-left:3px solid var(--borde); color:var(--texto-suave);
     }
 
@@ -205,8 +225,11 @@ import { PerfilStore } from './perfil.store';
       border-radius:var(--r-chico); padding:13px 16px; margin:18px 0; font-size:14px;
     }
     .nota svg{ width:18px; height:18px; flex:none; margin-top:2px; }
-    .nota > div > :first-child{ margin-top:0; }
-    .nota > div > :last-child{ margin-bottom:0; }
+    /* min-width:0 porque es un hijo de flex: sin eso no baja de su ancho
+       mínimo de contenido y un «pre» adentro revienta el aviso hacia el lado. */
+    .nota > div{ min-width:0; flex:1; }
+    :host ::ng-deep .nota > div > :first-child{ margin-top:0; }
+    :host ::ng-deep .nota > div > :last-child{ margin-bottom:0; }
     .nota.alerta{ background:var(--amarillo-suave); color:#8A4B08; }
     .nota.pista { background:var(--celeste-suave); color:#075985; }
     .nota.ojo   { background:var(--fondo);         color:var(--texto); }
@@ -229,8 +252,8 @@ import { PerfilStore } from './perfil.store';
     .caja .rotulo{ display:flex; align-items:center; gap:7px; }
     .caja .rotulo .tilde{ width:15px; height:15px; color:var(--verde); }
     .caja .pedido{ margin:6px 0 10px; }
-    .caja .pedido > :first-child{ margin-top:0; }
-    .caja .pedido > :last-child{ margin-bottom:0; }
+    :host ::ng-deep .caja .pedido > :first-child{ margin-top:0; }
+    :host ::ng-deep .caja .pedido > :last-child{ margin-bottom:0; }
     .caja textarea{ width:100%; resize:vertical; }
     .caja textarea.codigo{
       font-family:ui-monospace, SFMono-Regular, Menlo, monospace;

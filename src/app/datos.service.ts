@@ -411,6 +411,21 @@ export type BloqueLab =
   | { tipo: 'control'; numero: number; html: string }
   | { tipo: 'aviso'; clase: 'alerta' | 'pista' | 'ojo'; html: string };
 
+/**
+ * La sugerencia del modelo sobre una caja.
+ *
+ * Ninguno de los tres veredictos dice «incorrecto», a propósito: esto sugiere, no
+ * corrige, y **no toca los puntos ni la entrega**.
+ */
+export interface Revision {
+  veredicto: 'logrado' | 'parcial' | 'incompleto';
+  mensaje: string;
+  hash?: string;
+  en?: string;
+  /** Vino de la caché porque el texto no cambió: no se volvió a llamar al modelo. */
+  cacheada?: boolean;
+}
+
 export interface Laboratorio {
   actividad_id: string;
   codigo: string;
@@ -422,6 +437,8 @@ export interface Laboratorio {
   cajas: number;
   controles: number;
   respuestas: Record<string, string>;
+  /** Lo que el modelo sugirió, por identificador de caja. */
+  revisiones: Record<string, Revision>;
   tramo: number;
   entregado_en: string | null;
 }
@@ -1164,6 +1181,29 @@ export class DatosService {
   async entregarLaboratorio(matriculaId: string, codigo: string): Promise<any> {
     const [fila] = await this.lab('entregar', { matricula: matriculaId, codigo });
     return fila?.r;
+  }
+
+  /**
+   * Le pide al modelo una sugerencia sobre una caja.
+   *
+   * No usa `this.lab()` porque su contrato es distinto: cuando el modelo falla,
+   * el servidor responde **200 con `fallo`** en vez de un error. Es deliberado —
+   * una sugerencia que no llegó no es un error de la aplicación— y por eso acá se
+   * devuelve `{ fallo }` en vez de reventar. La pantalla lo muestra como aviso en
+   * esa caja y nada más se entera: se sigue escribiendo y se sigue entregando.
+   */
+  async revisarCaja(
+    matriculaId: string, codigo: string, caja: string, respuesta: string,
+  ): Promise<{ revision?: Revision; fallo?: string }> {
+    const r = await fetch('/api/laboratorio', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'revisar', matricula: matriculaId, codigo, caja, respuesta }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { fallo: d?.error ?? 'No se pudo pedir la sugerencia.' };
+    return d as { revision?: Revision; fallo?: string };
   }
 
   /** Cómo va el curso en un laboratorio. Solo devuelve las secciones que dicta. */

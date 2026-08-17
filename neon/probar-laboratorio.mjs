@@ -219,14 +219,61 @@ rev('el tramo no retrocede', v2.tramo, 1);
 
 rev('todavía no hay puntos', await saldo(), antes);
 
+// ---------- Las sugerencias no impiden nada ----------
+// Esta sección existe por una razón sola: el alumno pidió que la revisión por IA
+// **nunca** sea un impedimento para entregar. Eso no se sostiene con buenas
+// intenciones, se sostiene comprobándolo.
+
+console.log('\nLas sugerencias');
+const guardarRevision = (id, veredicto) => comoAlumno(alumno.id, (s) =>
+  s`select public.laboratorio_revisar_guardar(
+      ${m.matricula}::uuid, ${CODIGO}, ${id}, ${veredicto},
+      ${'mensaje de prueba para ' + id}, ${'hash-' + id}) as r`);
+
+const [{ r: unaRev }] = await guardarRevision(idsDeCaja[0], 'incompleto');
+rev('se guarda una sugerencia', unaRev?.veredicto, 'incompleto');
+
+const [{ r: conRev }] = await comoAlumno(alumno.id, (s) =>
+  s`select public.mi_laboratorio(${m.matricula}::uuid, ${CODIGO}) as r`);
+rev('viene con el laboratorio', conRev.revisiones[idsDeCaja[0]]?.veredicto, 'incompleto');
+rev('y trae su hash para no volver a llamar al modelo',
+  conRev.revisiones[idsDeCaja[0]]?.hash, `hash-${idsDeCaja[0]}`);
+
+// Guardar respuestas no puede borrar las sugerencias: son dos columnas del mismo
+// jsonb y un `set` mal escrito se las llevaría sin que nadie lo note.
+await comoAlumno(alumno.id, (s) =>
+  s`select public.laboratorio_guardar(${m.matricula}::uuid, ${CODIGO},
+      ${JSON.stringify(escritas)}::jsonb, 1)`);
+const [{ r: trasGuardar }] = await comoAlumno(alumno.id, (s) =>
+  s`select public.mi_laboratorio(${m.matricula}::uuid, ${CODIGO}) as r`);
+rev('seguir escribiendo no las borra',
+  trasGuardar.revisiones[idsDeCaja[0]]?.veredicto, 'incompleto');
+
+await debeFallar('una caja inventada se rechaza', alumno.id, (s) =>
+  s`select public.laboratorio_revisar_guardar(${m.matricula}::uuid, ${CODIGO},
+      'no-existe', 'logrado', 'x', 'y')`, 'no existe en este laboratorio');
+await debeFallar('un veredicto inventado se rechaza', alumno.id, (s) =>
+  s`select public.laboratorio_revisar_guardar(${m.matricula}::uuid, ${CODIGO},
+      ${idsDeCaja[0]}, 'reprobado', 'x', 'y')`, 'Veredicto desconocido');
+// Todas en «incompleto»: el peor caso posible para el alumno. Tiene que poder
+// entregar exactamente igual, y eso lo comprueba la sección siguiente.
+for (const id of idsDeCaja) await guardarRevision(id, 'incompleto');
+const [{ r: todasMal }] = await comoAlumno(alumno.id, (s) =>
+  s`select public.mi_laboratorio(${m.matricula}::uuid, ${CODIGO}) as r`);
+rev('quedan todas en incompleto',
+  Object.values(todasMal.revisiones).every((x) => x.veredicto === 'incompleto'), true);
+
 // ---------- Entregar ----------
 
 console.log('\nEntregar');
 const [{ r: entrega }] = await comoAlumno(alumno.id, (s) =>
   s`select public.laboratorio_entregar(${m.matricula}::uuid, ${CODIGO}) as r`);
 rev('entregado', entrega?.entregado, true);
+// La garantía: con las 16 sugerencias en «incompleto», entregar da lo mismo que
+// sin ninguna. Ni cuenta distinto, ni paga menos, ni se queja.
+rev('con todas las sugerencias en incompleto, entrega igual', entrega?.entregado, true);
 rev('cuenta las respondidas', entrega?.respondidas, m.cajas);
-rev('pagó los puntos', await saldo() - antes, m.puntos);
+rev('pagó los puntos completos', await saldo() - antes, m.puntos);
 
 const [{ r: v3 }] = await comoAlumno(alumno.id, (s) =>
   s`select public.mi_laboratorio(${m.matricula}::uuid, ${CODIGO}) as r`);
@@ -244,6 +291,12 @@ await debeFallar('no se entrega dos veces', alumno.id, (s) =>
   'Ya lo habías entregado');
 rev('los puntos no se duplicaron', await saldo() - antes, m.puntos);
 
+// Entregar cierra la edición pero no el aprendizaje: la sugerencia es la única
+// retroalimentación que va a recibir sobre lo que escribió, así que se puede
+// pedir después. Es la diferencia con `laboratorio_guardar`, que sí se cierra.
+const [{ r: revTras }] = await guardarRevision(idsDeCaja[1], 'logrado');
+rev('sí se puede pedir sugerencia después de entregar', revTras?.veredicto, 'logrado');
+
 // ---------- Lo que no es suyo ----------
 
 console.log('\nLo que no es suyo');
@@ -255,6 +308,9 @@ if (otra) {
   await debeFallar('no escribe en el de otro', alumno.id, (s) =>
     s`select public.laboratorio_guardar(${otra.id}::uuid, ${CODIGO}, '{}'::jsonb, 0)`,
     'no es tuya');
+  await debeFallar('no revisa la caja de otro', alumno.id, (s) =>
+    s`select public.laboratorio_revisar_guardar(${otra.id}::uuid, ${CODIGO},
+        ${idsDeCaja[0]}, 'logrado', 'x', 'y')`, 'no es tuya');
 }
 const [{ r: inexistente }] = await comoAlumno(alumno.id, (s) =>
   s`select public.mi_laboratorio(${m.matricula}::uuid, 'NO-EXISTE') as r`);

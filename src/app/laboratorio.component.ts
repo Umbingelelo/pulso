@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, OnDestroy } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { BloqueLab, DatosService, Laboratorio } from './datos.service';
+import { BloqueLab, DatosService, Laboratorio, Revision } from './datos.service';
 import { ICONOS } from './iconos';
 import { PerfilStore } from './perfil.store';
 
@@ -122,6 +122,46 @@ import { PerfilStore } from './perfil.store';
                           [disabled]="!!l.entregado_en"
                           [value]="respuestas()[b.id] || ''"
                           (input)="escribir(b.id, $any($event.target).value)"></textarea>
+
+                <!-- La sugerencia no bloquea nada: el botón no deshabilita la caja
+                     ni el de entregar, y si el modelo falla queda un aviso gris y
+                     todo lo demás sigue igual. Se puede pedir incluso después de
+                     entregar: la caja queda en solo lectura, pero es la única
+                     retroalimentación que va a recibir. -->
+                <div class="sugerir">
+                  <button class="boton contorno chico"
+                          [disabled]="revisando() === b.id || !(respuestas()[b.id] || '').trim()"
+                          (click)="pedirSugerencia(b.id)">
+                    @if (revisando() === b.id) {
+                      Revisando…
+                    } @else if (revisiones()[b.id]) {
+                      Revisar de nuevo
+                    } @else {
+                      ¿Voy bien?
+                    }
+                  </button>
+                  @if (!(respuestas()[b.id] || '').trim()) {
+                    <span class="chico suave">Escribe algo y te digo si vas bien.</span>
+                  }
+                </div>
+
+                @if (falloRevision()[b.id]; as f) {
+                  <div class="aviso dato chico" style="margin-top:10px">
+                    No pude pedir la sugerencia ahora ({{ f }}). Puedes seguir
+                    escribiendo y entregar igual: esto no afecta tus puntos.
+                  </div>
+                }
+
+                @if (revisiones()[b.id]; as r) {
+                  <div class="sugerencia" [class]="'sugerencia ' + r.veredicto">
+                    <div class="cabeza">
+                      <svg viewBox="0 0 24 24" [innerHTML]="icono(iconoDeVeredicto(r.veredicto))"></svg>
+                      <strong>{{ rotuloDeVeredicto(r.veredicto) }}</strong>
+                      <span class="chico suave">sugerencia · no cambia tus puntos</span>
+                    </div>
+                    <p>{{ r.mensaje }}</p>
+                  </div>
+                }
               </div>
             }
           }
@@ -255,6 +295,26 @@ import { PerfilStore } from './perfil.store';
     :host ::ng-deep .caja .pedido > :first-child{ margin-top:0; }
     :host ::ng-deep .caja .pedido > :last-child{ margin-bottom:0; }
     .caja textarea{ width:100%; resize:vertical; }
+
+    .sugerir{ display:flex; align-items:center; gap:10px; margin-top:9px; flex-wrap:wrap; }
+
+    /* La sugerencia se ve como una nota al margen y no como una corrección: el
+       borde es al costado, no un marco, y ni el «incompleto» usa rojo. Un rojo de
+       error diría «esto está mal» sobre algo que solo sugiere, y sería un
+       impedimento psicológico aunque técnicamente no bloquee nada. */
+    .sugerencia{
+      margin-top:11px; padding:11px 13px 12px; border-radius:var(--r-chico);
+      border-left:3px solid var(--borde); background:var(--fondo); font-size:14px;
+    }
+    .sugerencia .cabeza{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+    .sugerencia .cabeza svg{ width:16px; height:16px; flex:none; }
+    .sugerencia p{ margin:6px 0 0; line-height:1.6; }
+    .sugerencia.logrado{ border-left-color:var(--verde); background:var(--verde-suave); }
+    .sugerencia.logrado .cabeza svg{ color:var(--verde); }
+    .sugerencia.parcial{ border-left-color:#D89A2A; background:var(--amarillo-suave); }
+    .sugerencia.parcial .cabeza svg{ color:#B8791A; }
+    .sugerencia.incompleto{ border-left-color:var(--celeste); background:var(--celeste-suave); }
+    .sugerencia.incompleto .cabeza svg{ color:#0369A1; }
     .caja textarea.codigo{
       font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size:13px; line-height:1.55; white-space:pre; overflow-wrap:normal; overflow-x:auto;
@@ -273,6 +333,12 @@ export class LaboratorioComponent implements OnDestroy {
 
   lab = signal<Laboratorio | null>(null);
   respuestas = signal<Record<string, string>>({});
+  /** Lo que el modelo sugirió, por caja. */
+  revisiones = signal<Record<string, Revision>>({});
+  /** El id de la caja que se está revisando, para su botón y nada más. */
+  revisando = signal('');
+  /** Por caja: por qué no se pudo pedir la sugerencia. Nunca bloquea nada. */
+  falloRevision = signal<Record<string, string>>({});
   cargando = signal(true);
   entregando = signal(false);
   confirmando = signal(false);
@@ -315,6 +381,7 @@ export class LaboratorioComponent implements OnDestroy {
       const l = await this.datos.laboratorio(this.matricula, this.codigo);
       this.lab.set(l);
       this.respuestas.set({ ...(l?.respuestas ?? {}) });
+      this.revisiones.set({ ...(l?.revisiones ?? {}) });
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo cargar el laboratorio.');
     } finally {
@@ -333,6 +400,56 @@ export class LaboratorioComponent implements OnDestroy {
 
   iconoDeAviso(clase: string): string {
     return clase === 'alerta' ? 'triangle-alert' : clase === 'pista' ? 'lightbulb' : 'eye';
+  }
+
+  iconoDeVeredicto(v: string): string {
+    return v === 'logrado' ? 'check' : v === 'parcial' ? 'lightbulb' : 'eye';
+  }
+
+  /** Ninguno dice «incorrecto»: esto sugiere, y sugerir no es reprobar. */
+  rotuloDeVeredicto(v: string): string {
+    return v === 'logrado' ? 'Vas bien'
+         : v === 'parcial' ? 'Te falta una parte'
+         : 'Vuelve a mirarlo';
+  }
+
+  /**
+   * Pide la sugerencia de una caja.
+   *
+   * Se manda el texto **de la pantalla** y no el guardado: el guardado automático
+   * espera dos segundos, y si esperáramos a que viaje, el alumno pediría
+   * sugerencia sobre lo que escribió hace dos frases.
+   *
+   * Nada de lo que pase acá toca `guardar()` ni `entregar()`. Un fallo se anota
+   * en `falloRevision` para esa caja y ahí muere.
+   */
+  async pedirSugerencia(id: string): Promise<void> {
+    const texto = (this.respuestas()[id] ?? '').trim();
+    if (!texto || this.revisando()) return;
+
+    this.revisando.set(id);
+    this.falloRevision.set({ ...this.falloRevision(), [id]: '' });
+    try {
+      const r = await this.datos.revisarCaja(this.matricula, this.codigo, id, texto);
+      if (r.revision) {
+        this.revisiones.set({ ...this.revisiones(), [id]: r.revision });
+        const sinFallo = { ...this.falloRevision() };
+        delete sinFallo[id];
+        this.falloRevision.set(sinFallo);
+      } else {
+        this.falloRevision.set({
+          ...this.falloRevision(),
+          [id]: r.fallo ?? 'el modelo no respondió',
+        });
+      }
+    } catch (e: any) {
+      this.falloRevision.set({
+        ...this.falloRevision(),
+        [id]: e?.message ?? 'no hubo conexión',
+      });
+    } finally {
+      this.revisando.set('');
+    }
   }
 
   escribir(id: string, texto: string): void {

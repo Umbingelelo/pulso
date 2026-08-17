@@ -348,14 +348,82 @@ cuántas cajas quedan en blanco. No se exige responderlas todas, porque hay labo
 por tiempo, pero sí que haya al menos una: entregar en blanco por accidente sería irreversible desde
 su lado.
 
+### La sugerencia por IA
+
+Al lado de cada caja hay un botón **«¿Voy bien?»**. El alumno escribe, lo aprieta, y el modelo le dice
+si lo que hizo capta la idea. Tres veredictos, y ninguno dice «incorrecto»: **Vas bien**, **Te falta una
+parte**, **Vuelve a mirarlo**.
+
+**Nunca es un impedimento, y eso está sostenido donde no se puede romper por accidente.** Cuatro cosas:
+
+- `laboratorio_entregar` **no mira** la columna de revisiones. Ni las exige, ni las cuenta, ni cambia de
+  mensaje. La función que paga los puntos no sabe que existen.
+- El botón no deshabilita la caja ni el de entregar.
+- Si el modelo falla, se cae o tarda, el servidor responde **200 con `fallo`** —no un error— y la caja
+  muestra un aviso gris. No hay camino en que una falla del modelo impida entregar.
+- El vocabulario no reprueba, y ni el peor veredicto usa rojo. Un rojo de error diría «esto está mal»
+  sobre algo que solo sugiere, y sería un impedimento psicológico aunque técnicamente no bloquee nada.
+
+Se puede pedir **después de entregar**. Entregar cierra la edición, no el aprendizaje: es la única
+retroalimentación que ese alumno va a recibir sobre lo que escribió. Por eso
+`laboratorio_revisar_guardar` no comprueba `entregado_en`, a diferencia de `laboratorio_guardar`.
+
+#### Qué se le manda al modelo
+
+**El laboratorio completo**, no el enunciado de la caja sola. No es derroche: la caja 1.5 de L1 pregunta
+por qué apareció una línea en la terminal donde corre `libros.mjs`, y para juzgar eso hay que haber visto
+el bloque de código de ese microservicio y el `fetch` al 3001 que están unos párrafos antes. Van también
+**las otras respuestas del propio alumno**, porque la caja 3.1 dice «responde de nuevo la pregunta del
+principio, y si cambiaste de opinión dilo»: sin ver la 0.1, eso no se puede validar.
+
+El enunciado entero de L1 son unos **11.400 tokens**, así que revisar sus 21 cajas para 30 alumnos cuesta
+del orden de **medio dólar**. L0 sale en once centavos. No hay nada que optimizar.
+
+#### Nada de reglas deterministas
+
+Acá no hay un `if` que compruebe que la respuesta «empiece con `HTTP/1.1`». El juicio **es** el criterio,
+y una regla lo empobrece: con el laboratorio entero en contexto el modelo puede hacer algo que ninguna
+regla puede, que es ver si lo que el alumno pegó corresponde a **ese** paso y no a otro. Lo único
+determinista es el esquema de salida, que es forma y no contenido.
+
+A cambio, el modelo se equivoca de vez en cuando. Por eso el veredicto es una sugerencia que no toca los
+puntos: es lo que hace que equivocarse salga barato.
+
+#### El mensaje no da la respuesta
+
+Es la regla que sostiene todo lo demás, porque si el modelo explica el concepto el alumno puede escribir
+de vuelta lo que le acaban de decir. La instrucción le permite tres cosas —nombrar dónde volver a mirar,
+señalar una contradicción sin corregirla, hacer una pregunta— y le **prohíbe afirmar un hecho técnico
+sobre el tema de la caja, aunque sea para corregirlo**.
+
+Eso costó dos vueltas. La primera versión decía «nunca le des la respuesta» y el modelo la soplaba
+entera en cuatro de siete casos: «base64 no es cifrado, solo codifica; la firma da integridad, no
+secreto». Lo que funcionó fue el ejemplo de lo prohibido junto al de lo permitido, incluyendo el caso
+tramposo —corregirlo *es* dársela—. En la misma vuelta salieron dos cosas más: el modelo escribía en
+voseo argentino («revisá», «mirá») y una vez trató al alumno de **«weón»**. Las tres están ahora en la
+instrucción y las tres se comprueban en cada mensaje de la prueba.
+
 ### Probarlo
 
 ```bash
 node neon/probar-compilador.mjs                                          # el Markdown
 set -a; . ./.env.local; set +a
+node neon/probar-revision.mjs --codigo L1                                  # el criterio de la IA
 node neon/probar-laboratorio.mjs --codigo L1                              # la lógica
 node neon/probar-laboratorio-navegador.mjs https://pulso-rust.vercel.app  # el navegador
 ```
+
+**El criterio** llama al modelo de verdad —no hay forma de probar un juicio sin el que juzga— pero no
+escribe nada. No vigila que acierte siempre, porque no lo va a hacer: vigila lo que sí tiene que ser
+cierto todas las veces. Que una respuesta en blanco o disparatada **no salga «logrado»**, que una buena
+no salga «incompleto», que el mensaje **no sople la respuesta**, y que el contexto traiga de verdad el
+laboratorio completo con la caja marcada en su lugar. Con `--caja 2.5` prueba una sola, para iterar la
+instrucción sin pagar las demás.
+
+Una lección de esa prueba: su primera versión revisaba los soplones en **un** caso de muestra y dio
+«todo bien» mientras el modelo soplaba en cuatro de siete. Pasó por la razón equivocada. Ahora la
+revisión corre sobre todos los mensajes — y la del soplón solo cuando el alumno **no** dio con la
+respuesta, porque si ya la escribió él, repetírsela no le enseña nada.
 
 **El compilador** no toca la base ni necesita `.env.local`: compila texto y mira lo que sale. Su
 criterio no es «compila», es **«se queja de lo que tiene que quejarse»**: cada caso de la tabla de
@@ -363,7 +431,9 @@ arriba es una prueba que exige el rechazo. Después compila los laboratorios de 
 `../Desarrollo_Cloud_Native/Laboratorios/`, que es la red de seguridad para no rechazar de más.
 
 **La lógica** llama a las mismas funciones de Postgres que llama `/api/laboratorio`, con la misma
-identidad y el mismo rol con RLS. Además del camino feliz comprueba lo que duele: que no se entregue
+identidad y el mismo rol con RLS. Entre otras cosas comprueba la garantía del párrafo de arriba: que con
+las 21 sugerencias en «incompleto» la entrega dé exactamente lo mismo, que seguir escribiendo no las
+borre, y que se pueda pedir una después de entregar. Además del camino feliz comprueba lo que duele: que no se entregue
 en blanco, que no se pueda seguir escribiendo después de entregar, que no se entregue dos veces —serían
 puntos duplicados— y que no se vea el laboratorio de otra matrícula. Y revisa el enunciado **ya
 guardado**: que no queden `:::` sueltos, que los formatos y las clases sean de los que el navegador

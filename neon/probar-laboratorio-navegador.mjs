@@ -247,6 +247,46 @@ try {
   rev('la pantalla lo marca alcanzado',
     await p.evaluate(() => !!document.querySelector('.control.alcanzado')), true);
 
+  // ══════════ La sugerencia por IA ══════════
+  // Lo que se prueba acá no es que el modelo acierte —eso lo hace
+  // `probar-revision.mjs`— sino que la sugerencia **no impida nada**: que aparezca
+  // sin bloquear la caja, y que con una sugerencia puesta se pueda entregar igual.
+  console.log('\nLa sugerencia por IA');
+  const hayBoton = await p.evaluate(() => {
+    const b = [...document.querySelectorAll('.caja .sugerir button')]
+      .find((x) => !x.disabled);
+    if (!b) return false; b.click(); return true;
+  });
+  rev('hay un botón por caja y se puede apretar', hayBoton, true);
+
+  if (hayBoton) {
+    // El modelo se demora; y si no llega, tiene que quedar el aviso gris.
+    const llego = await p.waitForFunction(
+      () => !!document.querySelector('.caja .sugerencia, .caja .aviso.dato.chico'),
+      { timeout: 60000 }).then(() => true).catch(() => false);
+    rev('responde con una sugerencia o con un aviso, nunca en silencio', llego, true);
+
+    const est = await p.evaluate(() => {
+      const s = document.querySelector('.caja .sugerencia');
+      return {
+        hay: !!s,
+        veredicto: s ? [...s.classList].find((c) => c !== 'sugerencia') : null,
+        dice: s?.textContent?.includes('no cambia tus puntos') ?? false,
+        // La garantía: la caja se sigue escribiendo y el botón de entregar sigue vivo.
+        cajaEditable: ![...document.querySelectorAll('.caja textarea')].some((t) => t.disabled),
+        puedeEntregar: [...document.querySelectorAll('button')]
+          .some((x) => x.textContent.trim().startsWith('Entregar') && !x.disabled),
+      };
+    });
+    if (est.hay) {
+      rev('el veredicto es uno de los tres',
+        ['logrado', 'parcial', 'incompleto'].includes(est.veredicto), true);
+      rev('y dice que no cambia los puntos', est.dice, true);
+    }
+    rev('la caja sigue editable después de la sugerencia', est.cajaEditable, true);
+    rev('y el botón de entregar sigue habilitado', est.puedeEntregar, true);
+  }
+
   // ══════════ Entregar ══════════
   console.log('\nEntregar');
   const [{ p: antes }] = await d`select coalesce(sum(puntos),0)::int as p

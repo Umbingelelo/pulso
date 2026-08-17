@@ -16,6 +16,7 @@
 import { cuerpo, json, mensajeDeError } from '../lib/db.mjs';
 import { comoUsuario } from '../lib/identidad.mjs';
 import { parsearCookies, leerRefresco } from '../lib/sesion.mjs';
+import { huella, revisar } from '../lib/revision-lab.mjs';
 
 const ACCIONES = {
   ver: (s, d) =>
@@ -36,6 +37,60 @@ const ACCIONES = {
         ${d.asignatura}::uuid, ${d.periodo}::uuid, ${d.codigo})`,
 };
 
+/**
+ * La sugerencia del modelo sobre una caja.
+ *
+ * Va fuera del mapa `ACCIONES` porque aquello es SQL puro y esto son tres pasos:
+ * leer el enunciado de la base, preguntarle al modelo, guardar lo que dijo.
+ *
+ * ── Lo que el navegador NO manda ──
+ *
+ * El enunciado. Lo busca el servidor con `mi_laboratorio`, que además comprueba
+ * que la matrícula sea suya. Si el enunciado viniera del cliente, un alumno se
+ * inventaría uno fácil y se aprobaría lo que quisiera.
+ *
+ * ── Y no vive en su propio archivo ──
+ *
+ * Por el techo de doce funciones serverless del plan: ver la cabecera de
+ * `api/docente.mjs`, donde el modo reunión aprendió lo mismo a la mala.
+ */
+async function accionRevisar(usuarioId, d) {
+  const [fila] = await comoUsuario(usuarioId, (s) =>
+    s`select public.mi_laboratorio(${d.matricula}::uuid, ${d.codigo}) as r`);
+  const lab = fila?.r;
+  if (!lab) return { estado: 404, cuerpo: { error: 'No encontré ese laboratorio en tu ramo.' } };
+
+  const caja = (lab.bloques ?? []).find((b) => b.tipo === 'caja' && b.id === d.caja);
+  if (!caja) return { estado: 400, cuerpo: { error: `La caja «${d.caja}» no existe.` } };
+
+  // El texto que se revisa es el que manda el navegador, no el guardado: el
+  // guardado automático espera dos segundos, y si esperáramos a que viaje, el
+  // alumno pediría sugerencia sobre lo que escribió hace dos frases.
+  const respuesta = typeof d.respuesta === 'string' ? d.respuesta : '';
+  if (!respuesta.trim()) {
+    return { estado: 400, cuerpo: { error: 'Escribe algo antes de pedir sugerencia.' } };
+  }
+
+  // Si no cambió nada desde la última vez, se devuelve lo mismo sin pagar de nuevo.
+  const marca = await huella(respuesta, caja.enunciado);
+  const previa = (lab.revisiones ?? {})[d.caja];
+  if (previa?.hash === marca) {
+    return { estado: 200, cuerpo: { revision: { ...previa, cacheada: true } } };
+  }
+
+  const r = await revisar({ lab, cajaId: d.caja, respuesta });
+
+  await comoUsuario(usuarioId, (s) =>
+    s`select public.laboratorio_revisar_guardar(
+        ${d.matricula}::uuid, ${d.codigo}, ${d.caja},
+        ${r.veredicto}, ${r.mensaje}, ${marca}) as r`);
+
+  return {
+    estado: 200,
+    cuerpo: { revision: { veredicto: r.veredicto, mensaje: r.mensaje, hash: marca, cacheada: false } },
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Método no permitido' });
 
@@ -43,6 +98,19 @@ export default async function handler(req, res) {
   if (!usuarioId) return json(res, 401, { error: 'Sin sesión' });
 
   const datos = await cuerpo(req);
+
+  if (datos.accion === 'revisar') {
+    try {
+      const { estado, cuerpo: salida } = await accionRevisar(usuarioId, datos);
+      return json(res, estado, salida);
+    } catch (e) {
+      // Que el modelo falle no es un error de la aplicación: es una sugerencia
+      // que no llegó. Se devuelve 200 con el motivo para que la pantalla lo
+      // muestre como aviso en esa caja y nada más se entere.
+      return json(res, 200, { fallo: mensajeDeError(e) });
+    }
+  }
+
   const consulta = ACCIONES[datos.accion];
   if (!consulta) return json(res, 400, { error: 'Acción desconocida' });
 

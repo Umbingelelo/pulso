@@ -70,7 +70,7 @@ const [alumno] = await dueno`
 if (!alumno) throw new Error(`No existe ${CORREO}.`);
 
 const [m] = await dueno`
-  select mt.id as matricula, a.id as actividad, a.puntos, l.cajas, l.controles
+  select mt.id as matricula, a.id as actividad, a.titulo, a.puntos, l.cajas, l.controles
     from public.matriculas mt
     join public.secciones  s on s.id = mt.seccion_id
     join public.actividades a on a.asignatura_id = s.asignatura_id
@@ -82,10 +82,18 @@ if (!m) throw new Error(`El alumno de prueba no tiene el laboratorio ${CODIGO}.`
 /**
  * Deja la matrícula como estaba.
  *
- * Los movimientos se borran por marca de agua y no por motivo: el trigger escribe
- * el **título** de la actividad, no su código, así que un filtro por «L1» no
- * calzaba con nada y cada corrida le dejaba cien puntos regalados al alumno de
- * prueba. Lo que hay después de la marca es lo que hizo esta corrida y nada más.
+ * Se borra por dos criterios, y hacen falta los dos.
+ *
+ * **Por marca de agua**, porque un filtro por «L1» no calza con nada: el trigger
+ * escribe el **título** de la actividad, no su código, y por eso cada corrida le
+ * dejaba cien puntos regalados al alumno de prueba. Lo que hay después de la
+ * marca es lo que hizo esta corrida y nada más.
+ *
+ * **Y por motivo**, porque la marca sola no alcanza: si una corrida se muere
+ * después de entregar —una tubería cortada con `| head` basta— sus puntos quedan
+ * ahí, y la corrida siguiente calcula su marca **por encima** de ellos. Desde ese
+ * momento son inalcanzables: quedan sumando para siempre y ninguna limpieza los
+ * ve. Ya pasó. El título de la actividad es lo único que los identifica.
  */
 const marca = async () => {
   const [r] = await dueno`select coalesce(max(id),0) as id
@@ -100,9 +108,13 @@ const limpiar = async () => {
   await dueno`delete from public.resultados_actividad
                where matricula_id = ${m.matricula} and actividad_id = ${m.actividad}`;
   await dueno`delete from public.movimientos_puntos
-               where matricula_id = ${m.matricula} and id > ${piso}`;
+               where matricula_id = ${m.matricula}
+                 and (id > ${piso} or motivo = ${m.titulo})`;
 };
 await limpiar();
+// La marca se vuelve a tomar después de barrer: si esta corrida arrastró lo que
+// dejó una anterior, el «saldo de antes» tiene que ser el ya limpio.
+piso = await marca();
 
 const saldo = async () => {
   const [r] = await dueno`select coalesce(sum(puntos),0)::int as p
@@ -127,6 +139,42 @@ rev('sin entregar', lab?.entregado_en, null);
 const idsDeCaja = lab.bloques.filter((b) => b.tipo === 'caja').map((b) => b.id);
 rev('los identificadores no se repiten', new Set(idsDeCaja).size, idsDeCaja.length);
 rev('ninguna caja sin identificador', idsDeCaja.every((x) => !!x), true);
+
+// ---------- El enunciado que quedó guardado ----------
+// `probar-compilador.mjs` ya revisa el Markdown antes de subir. Esto revisa lo
+// que hay **en la base**, que es otra cosa: una fila puede venir de una versión
+// vieja del compilador, o de una subida a mano. Y un enunciado roto no falla en
+// ninguna parte: llega así a la pantalla del alumno.
+
+console.log('\nEl enunciado');
+const contenido = (b) => b.html ?? b.enunciado ?? '';
+rev('todos los bloques son de un tipo conocido',
+  lab.bloques.filter((b) => !['html', 'caja', 'control', 'aviso'].includes(b.tipo)), []);
+rev('ningún bloque llegó vacío',
+  lab.bloques.filter((b) => !contenido(b).trim()).map((b) => b.tipo), []);
+rev('los formatos de caja son de los que el navegador dibuja',
+  lab.bloques.filter((b) => b.tipo === 'caja' && !['corta', 'codigo'].includes(b.formato))
+    .map((b) => `${b.id}=${b.formato}`), []);
+rev('los avisos son de una clase que el navegador dibuja',
+  lab.bloques.filter((b) => b.tipo === 'aviso' && !['alerta', 'pista', 'ojo'].includes(b.clase))
+    .map((b) => b.clase), []);
+// Un `:::` que sobrevive al compilador es un marcador que no se entendió y se
+// fue de paseo como prosa. El alumno lo ve escrito tal cual en la pantalla.
+rev('no quedó ningún ::: suelto en la prosa',
+  lab.bloques.filter((b) => /<p>\s*:::/.test(contenido(b))).length, 0);
+
+// El tramo es **un** número y la pantalla marca alcanzado todo control con
+// `numero <= tramo`. Con un salto el alumno nunca llega al último; con un
+// repetido, marcar uno marca los dos.
+const numerosDeControl = lab.bloques.filter((b) => b.tipo === 'control').map((b) => b.numero);
+rev('los controles van correlativos desde 1',
+  numerosDeControl, numerosDeControl.map((_, i) => i + 1));
+
+// Las columnas `cajas` y `controles` son las que dibujan la barra de progreso y
+// las que cuenta el panel del docente. Si se despegan de los bloques, la barra
+// nunca llega al 100% y nadie se entera de por qué.
+rev('la columna «cajas» calza con los bloques', idsDeCaja.length, m.cajas);
+rev('la columna «controles» calza con los bloques', numerosDeControl.length, m.controles);
 
 // ---------- Entregar en blanco ----------
 // Antes del camino feliz: si dejara entregar vacío, el alumno perdería su único

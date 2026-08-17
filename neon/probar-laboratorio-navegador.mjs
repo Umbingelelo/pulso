@@ -21,6 +21,9 @@ import { neon } from '@neondatabase/serverless';
 const BASE = process.argv[2] ?? 'https://pulso-rust.vercel.app';
 const CODIGO = process.argv.includes('--codigo')
   ? process.argv[process.argv.indexOf('--codigo') + 1] : 'L1';
+/** `--foto ruta.png` deja el enunciado entero en una imagen, para mirarlo con ojos. */
+const FOTO = process.argv.includes('--foto')
+  ? process.argv[process.argv.indexOf('--foto') + 1] : null;
 
 let chrome = null;
 for (const c of [process.env.CHROME, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -112,20 +115,70 @@ try {
 
   // ══════════ El enunciado se ve ══════════
   console.log('\nEl enunciado');
-  const vista = await p.evaluate(() => ({
-    cajas: document.querySelectorAll('.caja textarea').length,
-    notas: document.querySelectorAll('.nota').length,
-    controles: document.querySelectorAll('.control').length,
-    // Que el Markdown se haya convertido: si llegara crudo no habría ni un h2.
-    titulos: document.querySelectorAll('.enunciado h2').length > 0,
-    codigo: document.querySelectorAll('.enunciado pre').length > 0,
-  }));
-  const [enBase] = await d`select cajas, controles from public.laboratorios
+  const vista = await p.evaluate(() => {
+    const enunciado = document.querySelector('.enunciado');
+    return {
+      cajas: document.querySelectorAll('.caja textarea').length,
+      notas: document.querySelectorAll('.nota').length,
+      controles: document.querySelectorAll('.control').length,
+      // Que el Markdown se haya convertido: si llegara crudo no habría ni un h2.
+      titulos: document.querySelectorAll('.enunciado h2').length > 0,
+      codigo: document.querySelectorAll('.enunciado pre').length > 0,
+      tablas: document.querySelectorAll('.enunciado table').length,
+      listas: document.querySelectorAll('.enunciado ul, .enunciado ol').length,
+      enlaces: document.querySelectorAll('.enunciado a').length,
+      // Lo que se le queda pegado a un enunciado mal compilado. Se busca en el
+      // texto que ve el alumno, no en el HTML: dentro de un <pre> el ::: puede
+      // ser legítimo —hay laboratorios que enseñan esta misma sintaxis—.
+      crudo: (() => {
+        const c = enunciado.cloneNode(true);
+        c.querySelectorAll('pre, code').forEach((x) => x.remove());
+        return (c.textContent.match(/:::\S*/g) ?? []).slice(0, 5);
+      })(),
+      // Las clases y los formatos que el navegador de verdad supo dibujar: si
+      // llegara uno que no conoce, la nota queda sin color y la caja de código
+      // sin su textarea ancha, y nadie se entera.
+      clases: [...new Set([...document.querySelectorAll('.nota')]
+        .map((x) => [...x.classList].filter((c) => c !== 'nota').join('')))].sort(),
+      anchas: document.querySelectorAll('.caja textarea.codigo').length,
+    };
+  });
+  const [enBase] = await d`select cajas, controles, bloques from public.laboratorios
      where actividad_id = ${m.actividad}`;
   rev('tantas cajas como dice la base', vista.cajas, enBase.cajas);
   rev('tantos controles como dice la base', vista.controles, enBase.controles);
   rev('los avisos se dibujan', vista.notas > 0, true);
   rev('el Markdown quedó convertido', vista.titulos && vista.codigo, true);
+  rev('las tablas y las listas también', vista.tablas > 0 && vista.listas > 0, true);
+  rev('los enlaces quedaron enlaces', vista.enlaces > 0, true);
+  // La falla que motivó todo esto: un marcador que el compilador no entendió se
+  // va de paseo como prosa y se le imprime tal cual al alumno.
+  rev('no hay ningún ::: escrito en la pantalla', vista.crudo, []);
+  rev('las clases de aviso son las que el navegador conoce',
+    vista.clases.filter((c) => !['alerta', 'pista', 'ojo'].includes(c)), []);
+  rev('las cajas de código salen anchas', vista.anchas,
+    enBase.bloques.filter((b) => b.tipo === 'caja' && b.formato === 'codigo').length);
+
+  // Que el enunciado esté bien compilado no sirve de nada si se dibuja mal, y
+  // eso ninguna prueba de las de arriba lo nota: las cajas se cuentan igual, el
+  // guardado viaja igual, la consola no dice nada. Esto pasó de verdad —una
+  // regla global de `.enunciado`, pensada para las preguntas de alternativa, le
+  // ganaba a los estilos del componente y dejaba el laboratorio de costado— y
+  // estuvo así desde que se publicó el primero.
+  const ancho = await p.evaluate(() => ({
+    documento: document.documentElement.scrollWidth,
+    ventana: document.documentElement.clientWidth,
+    enunciado: getComputedStyle(document.querySelector('.enunciado')).display,
+  }));
+  rev('el enunciado se apila hacia abajo, no de lado', ancho.enunciado, 'block');
+  rev('la página no se desplaza de lado',
+    ancho.documento <= ancho.ventana + 1 ? 'cabe' : `${ancho.documento}px en ${ancho.ventana}px`,
+    'cabe');
+
+  if (FOTO) {
+    await p.screenshot({ path: FOTO, fullPage: true });
+    console.log(`  · enunciado completo en ${FOTO}`);
+  }
 
   // ══════════ Se guarda solo ══════════
   console.log('\nSe guarda solo');

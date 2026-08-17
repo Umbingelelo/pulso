@@ -295,6 +295,31 @@ respuesta: si cambia, lo que el alumno ya escribió queda huérfano —la caja a
 sigue en la base sin que nadie lo lea— y eso no da error en ninguna parte. El publicador avisa cuando
 detecta respuestas guardadas en cajas que ya no existen.
 
+### Una línea con `:::` que no se entiende es un error
+
+Es la regla que ordena todo lo demás, y está en `neon/laboratorio-md.mjs`. Antes no era así: el
+escáner miraba línea por línea sin recordar nada y lo que no calzaba caía a prosa **sin decir nada**.
+Un `:::pists` mal escrito se le imprimía tal cual al alumno. Una caja indentada dentro de una lista,
+o con un espacio antes de la llave, **se perdía entera** —y con ella la respuesta que iba ahí—. Una
+caja dentro de un aviso también. Y un laboratorio que *documentara* esta misma sintaxis en un bloque
+de código quedaba con el código destrozado y una caja fantasma en medio. Ninguna fallaba: todas
+llegaban a la pantalla del alumno.
+
+Así que el vocabulario es cerrado y se revisa al subir, con el número de línea del archivo:
+
+| Se rechaza | Por qué |
+|---|---|
+| `:::nota`, `:::pists` | Sólo existen las cinco de la tabla de arriba |
+| `:::caja {1.2}`, `  :::caja{1.2}` | Espacio antes de la llave o indentación: la caja se perdía |
+| Una caja o un aviso dentro de otro | Los bloques no se anidan; el de afuera cerraba donde no era |
+| `:::caja{1.2 larga}` | Los formatos son `corta` y `codigo`, que son los que el navegador dibuja |
+| Un identificador repetido o ausente | Es la llave de la respuesta |
+| Controles `1, 3` o `1, 1` | El avance es **un** número: con un salto el alumno nunca llega al último |
+| `puntos: 100 pts`, `descripción:` | Publicaba con cero puntos, o con la descripción en el suelo |
+
+Y lo que va dentro de una cerca de ` ``` ` o `~~~` se respeta tal cual: ahí `:::caja{9.9}` es texto
+que el alumno tiene que leer, no una caja.
+
 ### Publicarlo
 
 ```bash
@@ -304,9 +329,9 @@ node neon/subir-laboratorio.mjs --archivo ../Desarrollo_Cloud_Native/Laboratorio
 node neon/subir-laboratorio.mjs --archivo … --escribir   # y ahora sí
 ```
 
-Sin `--escribir` no toca nada: dice cuántos bloques, cuántas cajas y con qué identificadores quedó.
-Vale la pena mirarlo, porque de ahí salió que un `split` mal usado se estaba comiendo el 95% del
-enunciado sin quejarse.
+Sin `--escribir` no toca nada: dice cuántos bloques, cuántas cajas y con qué identificadores quedó, o
+la lista completa de problemas con su línea. Vale la pena mirarlo, porque de ahí salió que un `split`
+mal usado se estaba comiendo el 95% del enunciado sin quejarse.
 
 El enunciado se convierte a HTML y se parte en bloques **al subirlo**, no en el navegador: así el
 alumno no baja un intérprete de Markdown y, sobre todo, no hay que adivinar dónde va cada caja dentro
@@ -326,15 +351,24 @@ su lado.
 ### Probarlo
 
 ```bash
+node neon/probar-compilador.mjs                                          # el Markdown
 set -a; . ./.env.local; set +a
 node neon/probar-laboratorio.mjs --codigo L1                              # la lógica
 node neon/probar-laboratorio-navegador.mjs https://pulso-rust.vercel.app  # el navegador
 ```
 
+**El compilador** no toca la base ni necesita `.env.local`: compila texto y mira lo que sale. Su
+criterio no es «compila», es **«se queja de lo que tiene que quejarse»**: cada caso de la tabla de
+arriba es una prueba que exige el rechazo. Después compila los laboratorios de verdad de
+`../Desarrollo_Cloud_Native/Laboratorios/`, que es la red de seguridad para no rechazar de más.
+
 **La lógica** llama a las mismas funciones de Postgres que llama `/api/laboratorio`, con la misma
 identidad y el mismo rol con RLS. Además del camino feliz comprueba lo que duele: que no se entregue
 en blanco, que no se pueda seguir escribiendo después de entregar, que no se entregue dos veces —serían
-puntos duplicados— y que no se vea el laboratorio de otra matrícula.
+puntos duplicados— y que no se vea el laboratorio de otra matrícula. Y revisa el enunciado **ya
+guardado**: que no queden `:::` sueltos, que los formatos y las clases sean de los que el navegador
+dibuja, que los controles vayan correlativos y que las columnas `cajas` y `controles` calcen con los
+bloques —de ahí salen la barra de progreso y el conteo del panel del docente—.
 
 **El navegador** cubre lo único que la anterior no puede: que el guardado automático de verdad viaje.
 Es la parte donde una falla silenciosa le cuesta al alumno dos horas —escribe, se ve bien, y no salió

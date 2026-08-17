@@ -186,8 +186,8 @@ export interface Pase {
   xp_para_subir: number;
   xp_total_pase: number;
   completo: boolean;
+  /** El XP que sobró después del nivel 30. Es informativo: no se canjea por nada. */
   xp_sobrante: number;
-  puntos_por_sobrante: number;
   recompensas: Recompensa[];
 }
 
@@ -425,6 +425,10 @@ export interface Cosmetico {
   rareza_orden: number;
   tengo: boolean;
   equipado: boolean;
+  /** Es recompensa del pase, así que **no sale en el gacha**: se gana subiendo de nivel. */
+  del_pase: boolean;
+  /** En qué nivel del pase de su ramo toca, si es del pase. */
+  nivel_pase: number | null;
 }
 
 export interface TiradaGacha {

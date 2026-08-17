@@ -123,6 +123,7 @@ import { PerfilStore } from './perfil.store';
               <div class="coleccion">
                 @for (c of grupo.items; track c.id) {
                   <div class="pieza" [class.falta]="!c.tengo" [class.puesto]="c.equipado"
+                       [class.del-pase]="c.del_pase && !c.tengo"
                        [title]="c.nombre + (c.descripcion ? ' · ' + c.descripcion : '')">
                     @if (c.tipo === 'avatar') {
                       <img [src]="c.valor" [alt]="c.nombre" loading="lazy">
@@ -130,6 +131,13 @@ import { PerfilStore } from './perfil.store';
                       <div class="chapa">{{ c.valor }}</div>
                     }
                     <p class="chico">{{ c.nombre }}</p>
+                    <!-- Decirlo importa: si no, un alumno puede quedarse tirando
+                         durante semanas esperando algo que el gacha no entrega. -->
+                    @if (c.del_pase && !c.tengo) {
+                      <span class="chico solo-pase">
+                        Pase{{ c.nivel_pase ? ' · nivel ' + c.nivel_pase : '' }}
+                      </span>
+                    }
                     @if (c.tengo && c.tipo !== 'marco') {
                       <button class="boton contorno chico" [disabled]="c.equipado || poniendo() === c.id"
                               (click)="ponerse(c)">
@@ -263,6 +271,14 @@ import { PerfilStore } from './perfil.store';
     .pieza.falta{ opacity:.42; filter:grayscale(1); }
     .pieza.puesto{ border-color:var(--verde); background:var(--verde-suave); }
 
+    /* Lo del pase que todavía no tiene: se ve, pero se distingue de lo que sí
+       puede salir tirando. Un punteado en vez de un borde lleno. */
+    .pieza.del-pase{ border-style:dashed; }
+    .solo-pase{
+      padding:2px 7px; border-radius:20px; font-weight:600;
+      background:var(--celeste-suave); color:#075985;
+    }
+
     .insignia.morada { background:#EDE9FE; color:#5B21B6; }
     .insignia.dorada { background:#FEF3C7; color:#92400E; }
     .insignia.magenta{ background:#FCE7F3; color:#9D174D; }
@@ -283,6 +299,7 @@ export class GachaComponent {
   protected readonly filtros = [
     { id: '', nombre: 'Todo' },
     { id: 'falta', nombre: 'Me falta' },
+    { id: 'sacables', nombre: 'Puedo sacarlo' },
     { id: 'titulo', nombre: 'Títulos' },
     { id: 'avatar', nombre: 'Caras' },
   ];
@@ -305,6 +322,9 @@ export class GachaComponent {
   private visibles = computed(() => {
     const f = this.filtro();
     if (f === 'falta') return this.todos().filter(c => !c.tengo);
+    // Lo que de verdad puede salir de una tirada: sin lo que ya tiene y sin lo
+    // que es del pase. Es la lista que responde «¿me sirve seguir tirando?».
+    if (f === 'sacables') return this.todos().filter(c => !c.tengo && !c.del_pase);
     if (f) return this.todos().filter(c => c.tipo === f);
     return this.todos();
   });

@@ -60,8 +60,12 @@ import { PerfilStore } from './perfil.store';
             </div>
             <div class="sub" style="margin-top:8px">
               @if (p.completo) {
-                Pase completo. Lo que sigas ganando se convierte en puntos:
-                llevas <strong>{{ p.puntos_por_sobrante }}</strong>.
+                <!-- Antes decía que el XP sobrante «se convierte en puntos» y
+                     nadie los pagaba nunca: no hay un solo movimiento de puntos
+                     en la lógica del pase. El sobrante se informa porque es
+                     cierto; lo que se quitó es la promesa. -->
+                Pase completo, con <strong>{{ p.xp_sobrante }}</strong> de XP de sobra.
+                Las tiradas y los cosméticos que ganaste son tuyos.
               } @else {
                 Te faltan <strong>{{ p.xp_para_subir - p.xp_nivel }}</strong>
                 para el nivel {{ p.nivel + 1 }}

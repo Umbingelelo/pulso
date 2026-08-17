@@ -509,6 +509,51 @@ Los doce «avatares» que existían antes eran **estilos de DiceBear** —el cos
 `bigSmile` y el dibujo lo generaba el navegador—. Al subir la colección quedan `activo = false`: no se
 borran, porque hay alumnos que ya se los ganaron y `alumno_cosmeticos` apunta al id.
 
+### Lo del pase no sale en el gacha
+
+Un cosmético que es recompensa del pase **no entra al pozo**. Eso no se marca con una columna
+`exclusivo` que alguien tenga que acordarse de poner: se deriva de `pase_recompensas`. Asignarlo a un
+nivel **es** hacerlo exclusivo, y quitarlo de ahí lo devuelve al pozo. Una columna aparte podría quedar
+en desacuerdo con la realidad —marcada exclusiva y sin nivel, o al revés— y ese desacuerdo no falla en
+ninguna parte: simplemente un premio del pase empieza a salir tirando y deja de ser un premio.
+
+El reparto lo hace `neon/repartir-pase.mjs`. Hoy son **30 frases y 30 imágenes** exclusivas —de 108 y
+220— más los 3 marcos, que quedan solo en el pase.
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/repartir-pase.mjs              # informa y no toca nada
+node neon/repartir-pase.mjs --escribir
+```
+
+**Al azar, pero siempre el mismo azar.** La elección se ve aleatoria y no cambia entre corridas: el
+sorteo va con una semilla derivada del id del pase y del nivel. Importa porque esto se corre cada vez
+que se suben cosméticos nuevos, y con azar de verdad cada corrida reordenaría la escalera: un alumno
+vería cambiar el premio del nivel 19, y peor, la exclusividad se movería de un cosmético a otro y
+devolvería al gacha algo que alguien ya ganó como premio del pase.
+
+**El pase llega hasta legendaria, no hasta mítica.** Los cuatro títulos míticos se quedan solo en el
+gacha. El pase es el camino garantizado —se llega al 30 trabajando— y si además diera lo más raro del
+pozo, el 1% del gacha dejaría de significar algo. Lo garantizado sube hasta legendaria; lo mítico sigue
+siendo suerte.
+
+En la colección los del pase se ven igual, con borde punteado y la etiqueta del nivel en que tocan. Y
+hay un filtro **«Puedo sacarlo»** que deja solo lo que de verdad puede salir de una tirada: sin eso, un
+alumno puede quedarse tirando semanas esperando algo que el gacha no entrega.
+
+### Ni el pase ni el gacha pagan puntos
+
+Los puntos son de las actividades y se gastan en la tienda. El pase reparte XP, niveles, cosméticos y
+tiradas; el gacha reparte cosméticos. Son dos economías y mezclarlas le quita sentido a las dos.
+
+Había una mentira concreta: `mi_pase` devolvía `puntos_por_sobrante` —«lo que sigas ganando se
+convierte en puntos: llevas N»— y **nadie los pagaba nunca**. No hay un solo `insert` sobre
+`movimientos_puntos` en toda la lógica del pase. El alumno llegaba al nivel 30, la pantalla le prometía
+puntos, y su saldo no se movía. Se fue eso y también la columna `xp_por_punto`, que era la tasa de una
+conversión que no existe: dejarla puesta es dejar la trampa para que alguien vuelva a creerle.
+
+El sobrante se sigue informando, porque es cierto y se ve en la barra. Lo que se quitó es la promesa.
+
 ### Subirlos
 
 ```bash

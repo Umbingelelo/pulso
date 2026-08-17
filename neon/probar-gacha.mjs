@@ -167,6 +167,53 @@ if (ajeno) {
     s`select public.equipar_cosmetico(${m.id}::uuid, ${ajeno.id}::uuid)`, 'Todavía no has ganado eso');
 }
 
+// ---------- Lo del pase no sale en el gacha ----------
+// Un premio del pase que además salga tirando deja de ser un premio, y el alumno
+// que se esforzó por llegar al nivel 30 ve a otro con lo mismo por suerte.
+
+console.log('\nLo del pase es del pase');
+const delPase = await d`select distinct cosmetico_id from public.pase_recompensas
+   where cosmetico_id is not null`;
+const idsPase = new Set(delPase.map((r) => r.cosmetico_id));
+rev('hay cosméticos asignados al pase', idsPase.size > 0, `${idsPase.size}`);
+
+const [pozoGacha] = await d`
+  select count(*)::int as n from public.cosmeticos c
+   where c.activo and exists (select 1 from public.pase_recompensas pr
+                               where pr.cosmetico_id = c.id)`;
+rev('la colección los sigue mostrando, marcados', pozoGacha.n > 0, `${pozoGacha.n}`);
+
+// La comprobación que importa: se marca todo como no-obtenido y se tira muchas
+// veces; ninguno de los del pase puede aparecer.
+const [{ n: sacables }] = await d`
+  select count(*)::int as n from public.cosmeticos c
+   where c.activo
+     and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)`;
+console.log(`  · ${sacables} sacables en el gacha · ${idsPase.size} solo en el pase`);
+
+// ---------- Ni el gacha ni el pase pagan puntos ----------
+// Los puntos son de las actividades y se gastan en la tienda. Que el gacha o el
+// pase los repartieran haría que dos economías separadas se mezclaran, y que
+// alguien pudiera farmear la tienda tirando.
+
+console.log('\nNi el gacha ni el pase pagan puntos');
+const puntosDe = async () => {
+  const [r] = await d`select coalesce(sum(puntos),0)::int as p
+     from public.movimientos_puntos where matricula_id = ${m.id}`;
+  return r.p;
+};
+const puntosAntes = await puntosDe();
+
+// Por `como()` y no como dueño: `mi_pase` comprueba que la matrícula sea suya.
+const [{ r: sinPuntos }] = await como(alumno.id, (s) =>
+  s`select public.mi_pase(${m.id}::uuid) as r`);
+rev('mi_pase ya no promete puntos por el XP sobrante',
+  sinPuntos === null || !('puntos_por_sobrante' in sinPuntos),
+  JSON.stringify(Object.keys(sinPuntos ?? {})));
+rev('la columna xp_por_punto ya no existe',
+  (await d`select count(*)::int as n from information_schema.columns
+     where table_schema='public' and table_name='pases' and column_name='xp_por_punto'`)[0].n === 0);
+
 // ---------- El sorteo respeta los pesos ----------
 //
 // Se tira muchas veces sobre una matrícula que se limpia después. Como el gacha
@@ -178,15 +225,23 @@ await d`insert into public.movimientos_tiradas (matricula_id, cantidad, motivo)
         values (${m.id}, ${N}, ${MOTIVO})`;
 
 const cuenta = {};
+const salieronDelPase = [];
 for (let i = 0; i < N; i++) {
   const [{ r }] = await como(alumno.id, (s) => s`select public.gacha_tirar(${m.id}::uuid) as r`);
   cuenta[r.rareza] = (cuenta[r.rareza] ?? 0) + 1;
+  if (idsPase.has(r.id)) salieronDelPase.push(r.nombre);
   // Devolver lo que salió, para que el pozo no se agote y el reparto se mida
   // sobre la distribución de verdad.
   await d`delete from public.alumno_cosmeticos
            where matricula_id = ${m.id} and cosmetico_id = ${r.id}`;
   if ((i + 1) % 1000 === 0) console.log(`  … ${i + 1}`);
 }
+
+rev('ninguna de las tiradas entregó algo del pase',
+  salieronDelPase.length === 0,
+  salieronDelPase.slice(0, 4).join(', '));
+rev('y el saldo de puntos no se movió ni un punto', await puntosDe() === puntosAntes,
+  `quedó en ${await puntosDe()}, estaba en ${puntosAntes}`);
 
 const sumaPesos = pesos.reduce((s, p) => s + p.peso, 0);
 let desviacionMayor = 0;

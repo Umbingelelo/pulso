@@ -150,7 +150,13 @@ try {
   rev('los avisos se dibujan', vista.notas > 0, true);
   rev('el Markdown quedó convertido', vista.titulos && vista.codigo, true);
   rev('las tablas y las listas también', vista.tablas > 0 && vista.listas > 0, true);
-  rev('los enlaces quedaron enlaces', vista.enlaces > 0, true);
+  // Condicional a propósito: no todo laboratorio tiene enlaces —L1 se reescribió
+  // sin ninguno— y exigirlos siempre convierte una prueba en un ruido que se
+  // aprende a ignorar. Lo que importa es que **si** el enunciado trae enlaces,
+  // lleguen como enlaces y no como texto.
+  const conEnlaces = JSON.stringify(enBase.bloques).includes('<a href');
+  if (conEnlaces) rev('los enlaces quedaron enlaces', vista.enlaces > 0, true);
+  else console.log('  · este enunciado no tiene enlaces, no hay nada que comprobar');
   // La falla que motivó todo esto: un marcador que el compilador no entendió se
   // va de paseo como prosa y se le imprime tal cual al alumno.
   rev('no hay ningún ::: escrito en la pantalla', vista.crudo, []);
@@ -189,11 +195,20 @@ try {
   rev('avisa que hay algo sin guardar',
     await p.evaluate(() => document.body.textContent.includes('Sin guardar')), true);
 
-  // Los dos segundos del temporizador más el viaje.
-  await pausa(5000);
-  const [g1] = await d`select respuestas from public.laboratorio_avance
-     where matricula_id = ${m.matricula} and actividad_id = ${m.actividad}`;
+  // Se espera **a que llegue**, no una cantidad fija de segundos.
+  //
+  // Antes eran cinco segundos secos: dos del temporizador más el viaje a São
+  // Paulo. Alcanzaba casi siempre, y cuando no, la prueba decía que el guardado
+  // automático estaba roto cuando lo único lento era la red. Una prueba que falla
+  // por azar es peor que no tenerla: se aprende a ignorarla y el día que la falla
+  // es de verdad, nadie la mira.
   const llave = primera?.replace('Respuesta ', '');
+  let g1 = null;
+  for (let i = 0; i < 30 && g1?.respuestas?.[llave] !== 'Escrito desde el navegador'; i++) {
+    await pausa(1000);
+    [g1] = await d`select respuestas from public.laboratorio_avance
+       where matricula_id = ${m.matricula} and actividad_id = ${m.actividad}`;
+  }
   rev('llegó a la base sin apretar nada', g1?.respuestas?.[llave], 'Escrito desde el navegador');
   rev('la pantalla dice guardado',
     await p.evaluate(() => document.body.textContent.includes('Guardado')), true);

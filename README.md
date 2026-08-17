@@ -527,6 +527,13 @@ series con derechos: en `public/` quedarían publicadas a nombre del repositorio
 el mismo problema que ya se resolvió con los decks. Viven en el store **`pulso-cosmeticos`**, que es
 público —un `<img>` tiene que poder leerlas sin token— y separado de `pulso-clases`, que es privado.
 
+Ese segundo store se autoriza con **`COSMETICOS_STORE_ID` y el token OIDC**, no con una llave de
+escritura: el OIDC dura poco y se renueva solo, así que no queda un secreto de larga vida en el disco.
+Para que funcione, la conexión del store en Vercel tiene que cubrir **All Environments** — si deja
+fuera *development*, el cargador falla con «OIDC is enabled for this project, but not for the
+development environment». Y el prefijo de la conexión tiene que ser `COSMETICOS`: con el `BLOB` por
+omisión choca con el token de los decks y Vercel no deja conectarla.
+
 ### Probarlo
 
 ```bash

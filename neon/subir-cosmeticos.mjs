@@ -45,6 +45,35 @@ if (!args.titulos && !args.avatares) {
 const ESCRIBIR = !!args.escribir;
 const TEMPORADA = args.temporada ?? '2026-2';
 
+/**
+ * A qué store de Blob se escribe, y con qué credencial.
+ *
+ * Hay dos y hacen falta los dos: `pulso-clases` es **privado** —el material de
+ * clase no puede quedar a un clic de cualquiera— y `pulso-cosmeticos` es
+ * **público**, porque un `<img>` tiene que poder leer la cara del alumno sin token
+ * ni sesión. Por eso acá no sirve el `BLOB_READ_WRITE_TOKEN` por omisión:
+ * escribiría en el store equivocado, y además el privado rechaza los objetos
+ * públicos.
+ *
+ * Se identifica el store con `COSMETICOS_STORE_ID` y se autoriza con el
+ * **token OIDC** que `vercel env pull` deja en el entorno. Es lo que evita tener
+ * que guardar una llave de escritura en `.env.local`: el OIDC dura poco y se
+ * renueva solo, así que no hay un secreto de larga vida dando vueltas en el disco.
+ *
+ * Para que funcione, la conexión del store en Vercel tiene que cubrir
+ * **All Environments**: si deja fuera development, esto falla con «OIDC is enabled
+ * for this project, but not for the development environment».
+ */
+const STORE = process.env.COSMETICOS_STORE_ID;
+const TOKEN = process.env.COSMETICOS_READ_WRITE_TOKEN;
+const DESTINO = TOKEN ? { token: TOKEN } : STORE ? { storeId: STORE } : null;
+if (args.avatares && !DESTINO) {
+  console.error('Falta COSMETICOS_STORE_ID (o COSMETICOS_READ_WRITE_TOKEN).');
+  console.error('Conecta `pulso-cosmeticos` al proyecto con prefijo COSMETICOS y All Environments,');
+  console.error('y después:  npx vercel env pull .env.local');
+  process.exit(1);
+}
+
 /** Cómo se llama en el archivo del docente → cómo se llama en la base. */
 const RAREZAS = {
   'común': 'comun', 'comun': 'comun',
@@ -114,7 +143,7 @@ if (args.avatares) {
   // Lo que ya está en Blob, para no volver a subir 220 archivos cada vez.
   let yaEstan = new Map();
   try {
-    const { blobs } = await list({ prefix: 'avatares/', limit: 1000 });
+    const { blobs } = await list({ prefix: 'avatares/', limit: 1000, ...DESTINO });
     yaEstan = new Map(blobs.map((b) => [b.pathname, b]));
   } catch (e) {
     if (ESCRIBIR) throw e;
@@ -142,6 +171,7 @@ if (args.avatares) {
         addRandomSuffix: false,
         contentType: extname(archivo).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg',
         allowOverwrite: true,
+        ...DESTINO,
       });
       url = r.url;
       subidos++;

@@ -318,6 +318,45 @@ export interface FilaResumenDiagnostico {
 export type Categoria = 'nota' | 'evaluacion' | 'plazo' | 'apoyo' | 'equipo' | 'comodin';
 export type EstadoCanje = 'solicitado' | 'aprobado' | 'entregado' | 'rechazado' | 'cancelado';
 
+/** El modo reunión, tal como lo ve el alumno de una sección. */
+export interface Reunion {
+  seccion: string;
+  en_reunion: boolean;
+  /** Porcentaje de descuento en la tienda mientras dure. 0 si no hay reunión. */
+  descuento: number;
+  desde: string | null;
+}
+
+/** Una sección del docente con el estado de su reunión, para los botones del panel. */
+export interface SeccionReunion {
+  seccion_id: string;
+  codigo: string;
+  matriculados: number;
+  en_reunion: boolean;
+  descuento: number;
+  desde: string | null;
+  minutos: number | null;
+}
+
+/**
+ * El precio que se le muestra al alumno durante una reunión.
+ *
+ * **Esto no es lo que se cobra.** Lo que se cobra lo calcula
+ * `public.precio_con_descuento` dentro de `solicitar_canje`, y esta función
+ * tiene que dar el mismo número: redondeo hacia abajo, nunca menos de 1. Si
+ * alguna vez cambia una, cambia la otra —`neon/probar-reunion.mjs` compara las
+ * dos justamente para que no se separen sin que nadie se entere—.
+ *
+ * Se calcula acá y no viene de la base porque `vitrina` se lee por la Data API,
+ * y agregarle una columna la dejaría invisible mientras PostgREST no refresque
+ * su caché del esquema: la tienda se quedaría sin precios por un rato
+ * impredecible.
+ */
+export function precioConDescuento(precio: number, descuento: number): number {
+  if (!descuento || descuento <= 0) return precio;
+  return Math.max(1, Math.floor((precio * (100 - descuento)) / 100));
+}
+
 /** Un artículo tal como se ve desde la vitrina de un ramo. */
 export interface Articulo {
   id: string;
@@ -1141,5 +1180,42 @@ export class DatosService {
       .from('movimientos_puntos')
       .insert({ matricula_id: matriculaId, puntos, motivo });
     if (error) throw error;
+  }
+
+  // ---------- Modo reunión ----------
+  // Por conexión directa, no por la Data API: ver la cabecera de `api/reunion.mjs`.
+
+  private async reu(accion: string, datos: Record<string, unknown> = {}): Promise<any[]> {
+    const r = await fetch('/api/reunion', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion, ...datos }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d?.error ?? 'No se pudo completar la operación.');
+    return d.filas ?? [];
+  }
+
+  /** Para el alumno: si su profe está en reunión y con cuánto descuento. */
+  async miReunion(matriculaId: string): Promise<Reunion | null> {
+    const [fila] = await this.reu('ver', { matricula: matriculaId });
+    return (fila?.r ?? null) as Reunion | null;
+  }
+
+  /** Para el docente: sus secciones con el estado de reunión de cada una. */
+  async seccionesEnReunion(asignaturaId: string, periodoId: string): Promise<SeccionReunion[]> {
+    return await this.reu('secciones',
+      { asignatura: asignaturaId, periodo: periodoId }) as SeccionReunion[];
+  }
+
+  async iniciarReunion(seccionId: string, descuento = 30): Promise<any> {
+    const [fila] = await this.reu('iniciar', { seccion: seccionId, descuento });
+    return fila?.r;
+  }
+
+  async terminarReunion(seccionId: string): Promise<any> {
+    const [fila] = await this.reu('terminar', { seccion: seccionId });
+    return fila?.r;
   }
 }

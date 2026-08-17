@@ -1,10 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Articulo, Canje, Categoria, DatosService } from './datos.service';
+import { Articulo, Canje, Categoria, DatosService, precioConDescuento } from './datos.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ICONOS } from './iconos';
 import { PerfilStore } from './perfil.store';
+import { ReunionStore } from './reunion.store';
 
 const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
   { id: '',           nombre: 'Todo' },
@@ -45,6 +46,14 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
       </div>
     </div>
 
+    @if (descuento(); as d) {
+      <div class="aviso dato" style="margin-bottom:20px">
+        <strong>{{ d }}% de descuento mientras el profe está en reunión.</strong>
+        Es la compensación por la hora en que no puedes preguntarle. Se aplica solo a
+        tu sección y solo mientras dure: los precios vuelven a lo normal cuando termine.
+      </div>
+    }
+
     @if (aviso()) { <div class="aviso ok" style="margin-bottom:20px">{{ aviso() }}</div> }
     @if (error()) { <div class="aviso malo" style="margin-bottom:20px">{{ error() }}</div> }
 
@@ -74,6 +83,13 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
                 <span class="icono" [innerHTML]="trazo(a.icono)" aria-hidden="true"></span>
                 @if (a.precio === null) {
                   <span class="insignia">Próximamente</span>
+                } @else if (descuento() && cuesta(a) < a.precio) {
+                  <!-- El precio de lista tachado al lado del rebajado: sin verlo,
+                       el descuento es invisible y no compensa nada. -->
+                  <span class="precio">
+                    <s class="antes">{{ a.precio }}</s>
+                    {{ cuesta(a) }}<span class="pt">pts</span>
+                  </span>
                 } @else {
                   <span class="precio">{{ a.precio }}<span class="pt">pts</span></span>
                 }
@@ -137,6 +153,8 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
             <th>Artículo</th><th>Estado</th><th class="der">Puntos</th>
             <th class="der">Pedido</th><th></th>
           </tr>
+          <!-- «Puntos» es lo que se pagó de verdad, no el precio de lista: si un
+               canje se hizo con descuento, la fila tiene que poder explicarse. -->
           @for (c of canjes(); track c.id) {
             <tr>
               <td>
@@ -162,6 +180,12 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
       }
     </div>
   `,
+  styles: [`
+    .precio .antes{
+      margin-right:6px; font-size:.72em; font-weight:500;
+      color:var(--texto-suave); text-decoration-thickness:1.5px;
+    }
+  `],
 })
 export class TiendaComponent {
   private datos = inject(DatosService);
@@ -188,6 +212,10 @@ export class TiendaComponent {
     return this.cache.get(clave)!;
   }
   protected perfil = inject(PerfilStore);
+  private reuniones = inject(ReunionStore);
+
+  /** El descuento vigente, 0 si el profe no está en reunión. */
+  descuento = computed(() => this.reuniones.descuento());
 
   protected readonly categorias = CATEGORIAS;
 
@@ -237,9 +265,21 @@ export class TiendaComponent {
     }
   }
 
+  /**
+   * Lo que cuesta ahora, con el descuento de reunión si hay uno.
+   *
+   * Es solo para la pantalla: el precio que se cobra lo decide la base dentro de
+   * `solicitar_canje`. Acá se usa para todo lo que el alumno ve —el precio, si le
+   * alcanza, cuánto le falta— porque si no, la tienda le diría «te faltan 30
+   * puntos» por algo que con el descuento ya puede pagar.
+   */
+  cuesta(a: Articulo): number {
+    return a.precio === null ? 0 : precioConDescuento(a.precio, this.descuento());
+  }
+
   disponible(a: Articulo): boolean {
     if (a.precio === null) return false;
-    if (a.saldo < a.precio) return false;
+    if (a.saldo < this.cuesta(a)) return false;
     if (a.limite_por_alumno !== null && a.ya_canjeados >= a.limite_por_alumno) return false;
     if (a.stock !== null && a.colocados >= a.stock) return false;
     return true;
@@ -250,7 +290,7 @@ export class TiendaComponent {
     if (a.precio === null) return 'Todavía sin precio';
     if (a.limite_por_alumno !== null && a.ya_canjeados >= a.limite_por_alumno) return 'Ya lo usaste';
     if (a.stock !== null && a.colocados >= a.stock) return 'Agotado';
-    if (a.saldo < a.precio) return `Te faltan ${a.precio - a.saldo} puntos`;
+    if (a.saldo < this.cuesta(a)) return `Te faltan ${this.cuesta(a) - a.saldo} puntos`;
     return 'Canjear';
   }
 
@@ -267,10 +307,13 @@ export class TiendaComponent {
     this.guardando.set(true);
     this.error.set('');
     try {
+      const pagado = this.cuesta(a);
+      const rebaja = a.precio !== null && pagado < a.precio
+        ? ` (${this.descuento()}% menos por la reunión)` : '';
       await this.datos.solicitarCanje(ramo.matricula_id, a.id, this.nota);
       this.aviso.set(a.requiere_aprobacion
-        ? `Pediste «${a.nombre}». Te descontamos ${a.precio} puntos y queda esperando respuesta; si te la rechazan, se devuelven solos.`
-        : `Canjeaste «${a.nombre}» por ${a.precio} puntos. Ya es tuyo.`);
+        ? `Pediste «${a.nombre}». Te descontamos ${pagado} puntos${rebaja} y queda esperando respuesta; si te la rechazan, se devuelven solos.`
+        : `Canjeaste «${a.nombre}» por ${pagado} puntos${rebaja}. Ya es tuyo.`);
       this.eligiendo.set('');
       this.nota = '';
       await this.refrescar(ramo.matricula_id);

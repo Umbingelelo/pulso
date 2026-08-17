@@ -380,6 +380,76 @@ que una caja con un Enter contaba como respondida y dejaba entregar en blanco; y
 JavaScript sí lo considera vacío, así que la cuenta del docente y la del alumno no coincidían. Las dos
 salen ahora de `tiene_texto()`.
 
+## Modo reunión
+
+Hay bloques en que el profesor está en reunión y no puede atender consultas. Antes eso se avisaba de
+viva voz o no se avisaba, y el alumno lo descubría levantando la mano. Ahora se declara: en
+**Curso** hay un botón por sección, y al encenderlo pasan dos cosas a la vez.
+
+- A los alumnos **de esa sección** les aparece en la barra lateral que estás en reunión, con un aviso
+  de que ahora no puedes atender.
+- Su **tienda queda con 30% de descuento** mientras dure, como compensación por la hora en que no
+  van a poder preguntarte.
+
+No apaga nada más: ni las clases, ni las misiones, ni los laboratorios. Es un aviso más un descuento.
+La parte de «no hagan ruido» la sostiene la sala, no el software — bloquear pantallas castigaría justo
+a quien quiere seguir trabajando solo.
+
+### Por sección, no por asignatura
+
+Una reunión ocurre en un bloque, y en un bloque hay **una** sección en sala. El resto de las secciones
+de la misma asignatura está en su casa o en otro horario, así que regalarles el descuento no tendría
+nada que ver con lo que les pasa. La sección ya determina la asignatura y el periodo, así que
+`seccion_id` alcanza para las dos cosas.
+
+### El descuento se guarda en la reunión
+
+`descuento` es una columna de la fila y no una constante del código. Si el número cambia el semestre
+que viene, las reuniones de este semestre siguen diciendo lo que de verdad se cobró: un canje viejo
+tiene que poder explicarse con lo que había ese día.
+
+Por lo mismo, el movimiento de puntos anota el descuento en su motivo. Sin eso, el alumno mira «Mis
+puntos» un mes después, ve que algo de 200 le costó 140, y no hay nada que lo explique.
+
+### Dónde vive el precio
+
+En dos lados, y hay que saber por qué:
+
+| Dónde | Qué hace |
+|---|---|
+| `public.precio_con_descuento` | El precio que **se cobra**. Es la autoridad, y la usa `solicitar_canje` |
+| `precioConDescuento` en `datos.service.ts` | El precio que **se muestra** en la tienda |
+
+La pantalla no puede ser la autoridad, pero tampoco puede pedirle el número a la base: `vitrina` se
+lee por la Data API, y agregarle una columna la dejaría sin precios mientras PostgREST no refresque su
+caché del esquema —medido acá, entre veinte segundos y más de quince minutos—. Así que la fórmula está
+escrita dos veces, y `neon/probar-reunion.mjs` **compara las dos** sobre un rango de precios para que
+no se separen sin que nadie se entere.
+
+Redondea hacia abajo, a favor del alumno, y nunca baja de un punto: un artículo gratis por redondeo no
+es un descuento, es un error.
+
+### Probarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/probar-reunion.mjs                                            # la lógica
+node neon/probar-reunion-navegador.mjs https://pulso-rust.vercel.app     # el navegador
+```
+
+Un descuento toca el saldo de los alumnos, así que lo que se vigila no es cosmético: que el descuento
+**no se escape de la sección**; que se cobre lo que dice la pantalla; que encender dos veces no deje
+dos reuniones abiertas —«terminar» cerraría una sola y la sección se quedaría con el descuento puesto—;
+y sobre todo que **la devolución devuelva lo pagado y no el precio de lista**, porque canjear con
+descuento y cancelar sin él sería una máquina de fabricar puntos que nadie notaría hasta que un alumno
+tuviera el doble que el resto.
+
+### Lo que falta
+
+**Nada la cierra sola.** Si te olvidas de apretar «Terminar reunión», esa sección se queda con el 30%
+puesto indefinidamente. El panel muestra cuántos minutos lleva encendida y lo dice en la tarjeta, pero
+es un aviso, no un límite.
+
 ## Agregar una asignatura o un semestre
 
 El desplegable del registro se llena desde la base, así que no hay que tocar código. El SQL, con el

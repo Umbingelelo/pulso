@@ -4,6 +4,7 @@ import { AvatarService } from './avatar.service';
 import { DatosService } from './datos.service';
 import { DocenteStore } from './docente.store';
 import { PerfilStore } from './perfil.store';
+import { ReunionStore } from './reunion.store';
 
 /**
  * Estructura de las pantallas con sesión: barra lateral azul a la izquierda,
@@ -138,6 +139,25 @@ import { PerfilStore } from './perfil.store';
           }
         </nav>
 
+        <!-- El aviso de reunión va acá arriba, pegado a la marca y antes de
+             cualquier menú: si estuviera abajo con los datos del usuario, el
+             alumno que llega a preguntar no lo vería nunca. -->
+        @if (reuniones.enReunion()) {
+          <div class="en-reunion" role="status">
+            <div class="fila">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+              </svg>
+              <strong>El profe está en reunión</strong>
+            </div>
+            <p>Ahora no puede atender consultas. Sigue trabajando y anótalas para después.</p>
+            @if (reuniones.descuento(); as d) {
+              <a routerLink="/tienda" class="premio">Tienda con {{ d }}% de descuento</a>
+            }
+          </div>
+        }
+
         <div class="pie">
           @if (perfil.esDocente()) {
             @if (docente.ramos().length > 1) {
@@ -206,10 +226,31 @@ import { PerfilStore } from './perfil.store';
       </main>
     </div>
   `,
+  styles: [`
+    /* La barra lateral es azul oscuro, así que el aviso se hace ver con un
+       amarillo cálido en vez de con un rojo de error: el profe en reunión no es
+       una falla, es una situación. */
+    .en-reunion{
+      margin:0 12px 14px; padding:11px 13px; border-radius:10px;
+      background:rgba(251,191,36,.14); border:1px solid rgba(251,191,36,.42);
+      color:#FDE9B8; font-size:12.5px; line-height:1.45;
+    }
+    .en-reunion .fila{ display:flex; align-items:center; gap:7px; }
+    .en-reunion svg{ width:15px; height:15px; flex:none; color:#FBBF24; }
+    .en-reunion strong{ color:#FDE9B8; font-size:13px; }
+    .en-reunion p{ margin:5px 0 0; opacity:.82; }
+    .en-reunion .premio{
+      display:block; margin-top:9px; padding:6px 9px; border-radius:7px;
+      background:rgba(251,191,36,.2); color:#FFF6E0; font-weight:600; text-align:center;
+      text-decoration:none;
+    }
+    .en-reunion .premio:hover{ background:rgba(251,191,36,.32); }
+  `],
 })
 export class MarcoComponent {
   protected perfil = inject(PerfilStore);
   protected docente = inject(DocenteStore);
+  protected reuniones = inject(ReunionStore);
 
   private datos = inject(DatosService);
   private avatares = inject(AvatarService);

@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import {
   Actividad, AlumnoNomina, Canje, DatosService, FilaResumenDiagnostico, RamoDocente,
+  SeccionReunion,
 } from './datos.service';
 
 /**
@@ -47,6 +48,81 @@ import {
         </div>
         @if (ramo(); as r) {
           <p class="chico suave" style="margin-top:10px">{{ r.asignatura }}</p>
+        }
+      </div>
+
+      <!-- ============ Modo reunión ============ -->
+      <!-- Va arriba, antes de las cifras: es lo único de esta pantalla que se
+           aprieta con prisa, entre que suena la reunión y hay que entrar. -->
+      <div class="tarjeta" style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+          <h2>Modo reunión</h2>
+          @if (enReunion().length) {
+            <span class="insignia amarilla">
+              En reunión: {{ enReunion().join(' · ') }}
+            </span>
+          }
+        </div>
+        <p class="chico suave" style="margin:8px 0 0">
+          Enciéndelo para la sección que está en sala. A esos alumnos les aparece en su barra que
+          estás en reunión, y su tienda queda con <strong>{{ DESCUENTO }}% de descuento</strong>
+          mientras dure, como compensación. No les bloquea nada más.
+        </p>
+
+        @if (errorReunion()) {
+          <div class="aviso malo" style="margin-top:12px">{{ errorReunion() }}</div>
+        }
+        @if (hechoReunion()) {
+          <div class="aviso ok" style="margin-top:12px">{{ hechoReunion() }}</div>
+        }
+
+        @if (seccionesReunion().length === 0) {
+          <div class="aviso dato" style="margin-top:14px">
+            Este ramo todavía no tiene secciones cargadas.
+          </div>
+        } @else {
+          <table style="margin-top:14px">
+            <tr>
+              <th>Sección</th><th>Estado</th><th class="der">Alumnos</th><th></th>
+            </tr>
+            @for (s of seccionesReunion(); track s.seccion_id) {
+              <tr>
+                <td><strong>{{ s.codigo }}</strong></td>
+                <td>
+                  @if (s.en_reunion) {
+                    <span class="insignia amarilla">En reunión</span>
+                    <div class="chico suave">
+                      desde {{ s.desde | date:'HH:mm' }}
+                      @if (s.minutos !== null) { · {{ s.minutos }} min } ·
+                      −{{ s.descuento }}% en la tienda
+                    </div>
+                  } @else {
+                    <span class="insignia verde">Disponible</span>
+                  }
+                </td>
+                <td class="der num">{{ s.matriculados }}</td>
+                <td class="der">
+                  @if (s.en_reunion) {
+                    <button class="boton chico" [disabled]="cambiando() === s.seccion_id"
+                            (click)="terminarReunion(s)">
+                      {{ cambiando() === s.seccion_id ? 'Terminando…' : 'Terminar reunión' }}
+                    </button>
+                  } @else {
+                    <button class="boton contorno chico" [disabled]="cambiando() === s.seccion_id"
+                            (click)="iniciarReunion(s)">
+                      {{ cambiando() === s.seccion_id ? 'Iniciando…' : 'Estoy en reunión' }}
+                    </button>
+                  }
+                </td>
+              </tr>
+            }
+          </table>
+          @if (enReunion().length) {
+            <p class="chico suave" style="margin:12px 0 0">
+              Acuérdate de terminarla al salir: mientras siga encendida, esa sección mantiene el
+              descuento.
+            </p>
+          }
         }
       </div>
 
@@ -279,6 +355,13 @@ export class DocenteComponent {
   error = signal('');
   hecho = signal('');
 
+  /** El descuento con el que se enciende. Se guarda en cada reunión, no es constante. */
+  protected readonly DESCUENTO = 30;
+  seccionesReunion = signal<SeccionReunion[]>([]);
+  cambiando = signal<string | null>(null);
+  errorReunion = signal('');
+  hechoReunion = signal('');
+
 
   ramo = computed(() => this.ramos().find(r => this.clave(r) === this.ramoId()) ?? null);
   secciones = computed(() => [...new Set(this.alumnos().map(a => a.seccion))].sort());
@@ -289,6 +372,8 @@ export class DocenteComponent {
   /** Cuántos rindieron: el resumen lo informa por sección, y todas traen el mismo total. */
   rendidos = computed(() => this.resumen()[0]?.rendidos ?? 0);
   porResolver = computed(() => this.canjes().filter(c => c.estado === 'solicitado'));
+  /** Los códigos de las secciones que están en reunión ahora, para el rótulo de arriba. */
+  enReunion = computed(() => this.seccionesReunion().filter(s => s.en_reunion).map(s => s.codigo));
 
   constructor() {
     this.cargar();
@@ -328,13 +413,15 @@ export class DocenteComponent {
 
     this.cargando.set(true);
     try {
-      const [alumnos, actividades, canjes] = await Promise.all([
+      const [alumnos, actividades, canjes, reuniones] = await Promise.all([
         this.datos.nomina(r.sigla, r.periodo),
         this.datos.actividadesDe(r.asignatura_id, r.periodo_id),
         this.datos.canjesDelRamo(r.asignatura_id, r.periodo_id),
+        this.datos.seccionesEnReunion(r.asignatura_id, r.periodo_id),
       ]);
       this.alumnos.set(alumnos);
       this.canjes.set(canjes);
+      this.seccionesReunion.set(reuniones);
 
       const diag = actividades.find(a => a.tipo === 'diagnostico') ?? null;
       this.diagnostico.set(diag);
@@ -344,6 +431,46 @@ export class DocenteComponent {
     } finally {
       this.cargando.set(false);
     }
+  }
+
+  // ---------- Modo reunión ----------
+  // Las dos operaciones son idempotentes en la base: encender lo encendido o
+  // apagar lo apagado devuelve el estado, no un error. Acá se aprovecha para no
+  // tener que deshabilitar botones con precisión de milisegundo.
+
+  async iniciarReunion(s: SeccionReunion): Promise<void> {
+    await this.cambiarReunion(s, true);
+  }
+
+  async terminarReunion(s: SeccionReunion): Promise<void> {
+    await this.cambiarReunion(s, false);
+  }
+
+  private async cambiarReunion(s: SeccionReunion, iniciar: boolean): Promise<void> {
+    if (this.cambiando()) return;
+    this.cambiando.set(s.seccion_id);
+    this.errorReunion.set(''); this.hechoReunion.set('');
+    try {
+      const r = iniciar
+        ? await this.datos.iniciarReunion(s.seccion_id, this.DESCUENTO)
+        : await this.datos.terminarReunion(s.seccion_id);
+      this.hechoReunion.set(iniciar
+        ? `${s.codigo} está en reunión. Sus alumnos ya lo ven y su tienda quedó con ${this.DESCUENTO}% de descuento.`
+        : `${s.codigo} salió de reunión${r?.minutos != null ? ` después de ${r.minutos} minutos` : ''}. Los precios volvieron a lo normal.`);
+      await this.refrescarReuniones();
+    } catch (e: any) {
+      this.errorReunion.set(e?.message ?? 'No se pudo cambiar el modo reunión.');
+    } finally {
+      this.cambiando.set(null);
+    }
+  }
+
+  /** Solo las reuniones: recargar el ramo entero por esto sería pedir cuatro consultas. */
+  private async refrescarReuniones(): Promise<void> {
+    const r = this.ramo();
+    if (!r) return;
+    this.seccionesReunion.set(
+      await this.datos.seccionesEnReunion(r.asignatura_id, r.periodo_id));
   }
 
   async resolver(c: Canje, estado: 'entregado' | 'rechazado'): Promise<void> {

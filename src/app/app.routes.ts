@@ -90,6 +90,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pase.component').then(m => m.PaseComponent),
       },
       {
+        path: 'gacha', canActivate: [soloAlumno],
+        loadComponent: () => import('./gacha.component').then(m => m.GachaComponent),
+      },
+      {
         path: 'misiones', canActivate: [soloAlumno],
         loadComponent: () => import('./misiones.component').then(m => m.MisionesComponent),
       },

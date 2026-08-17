@@ -404,6 +404,41 @@ export interface Canje {
 }
 
 /** Todo lo de un alumno en un ramo, tal como lo devuelve `ficha_alumno()`. */
+export type Rareza = 'comun' | 'poco_comun' | 'rara' | 'epica' | 'legendaria' | 'mitica';
+
+/**
+ * Un cosmético del pozo del gacha.
+ *
+ * `valor` es lo que se aplica al equiparlo, y depende del tipo: el **texto** del
+ * título, o la **URL** de la imagen de avatar.
+ */
+export interface Cosmetico {
+  id: string;
+  codigo: string;
+  tipo: 'titulo' | 'avatar' | 'marco' | 'color' | 'insignia';
+  nombre: string;
+  /** En los avatares, la serie de la que sale el personaje. */
+  descripcion: string | null;
+  valor: string;
+  rareza: Rareza;
+  rareza_nombre: string;
+  rareza_orden: number;
+  tengo: boolean;
+  equipado: boolean;
+}
+
+export interface TiradaGacha {
+  id: string;
+  codigo: string;
+  tipo: Cosmetico['tipo'];
+  nombre: string;
+  descripcion: string | null;
+  valor: string;
+  rareza: Rareza;
+  /** Cuántas tiradas quedan después de esta. */
+  restantes: number;
+}
+
 /** Un bloque del enunciado de un laboratorio, ya convertido a HTML al subirlo. */
 export type BloqueLab =
   | { tipo: 'html'; html: string }
@@ -734,11 +769,37 @@ export class DatosService {
     throw new Error('Tu cuenta quedó incompleta. Escríbele al docente para arreglarlo.');
   }
 
-  /** Guarda el avatar elegido, en formato "estilo:semilla". */
-  async guardarAvatar(clave: string): Promise<void> {
-    const u = this.usuario();
-    if (!u) throw new Error('Sin sesión');
-    const { error } = await this.db.from('perfiles').update({ avatar: clave }).eq('id', u.id);
+  // El avatar ya no se elige: se gana en el gacha y se pone con
+  // `equiparCosmetico`. La escritura directa de `perfiles.avatar` está cerrada en
+  // la base con un grant por columna, así que aunque alguien reconstruyera la
+  // llamada desde la consola del navegador, `pulso_app` no puede escribir ahí.
+
+  /** Todo el pozo de cosméticos, con lo que el alumno tiene marcado. */
+  async misCosmeticos(matriculaId: string): Promise<Cosmetico[]> {
+    const { data, error } = await this.db.rpc('mis_cosmeticos', { p_matricula: matriculaId });
+    if (error) throw error;
+    return (data ?? []) as Cosmetico[];
+  }
+
+  /** Cuántas tiradas le quedan. */
+  async misTiradas(matriculaId: string): Promise<number> {
+    const { data, error } = await this.db.rpc('mis_tiradas', { p_matricula: matriculaId });
+    if (error) throw error;
+    return Number(data ?? 0);
+  }
+
+  /** Gasta una tirada y devuelve lo que salió. Revienta si no le quedan. */
+  async tirarGacha(matriculaId: string): Promise<TiradaGacha> {
+    const { data, error } = await this.db.rpc('gacha_tirar', { p_matricula: matriculaId });
+    if (error) throw error;
+    return data as TiradaGacha;
+  }
+
+  /** Se pone un cosmético ya ganado. `null` saca el título puesto. */
+  async equiparCosmetico(matriculaId: string, cosmeticoId: string | null): Promise<void> {
+    const { error } = await this.db.rpc('equipar_cosmetico', {
+      p_matricula: matriculaId, p_cosmetico: cosmeticoId,
+    });
     if (error) throw error;
   }
 

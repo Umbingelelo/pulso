@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { AvatarService } from './avatar.service';
-import { DatosService } from './datos.service';
+import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
+import { Cosmetico, DatosService } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 @Component({
@@ -10,7 +10,7 @@ import { PerfilStore } from './perfil.store';
   template: `
     <div class="encabezado">
       <h1>Mi perfil</h1>
-      <p>Elige el avatar con el que apareces en Pulso.</p>
+      <p>Cómo apareces en Pulso, y las caras que te has ganado.</p>
     </div>
 
     <div class="rejilla dos" style="margin-bottom:20px">
@@ -53,36 +53,38 @@ import { PerfilStore } from './perfil.store';
 
     <div class="tarjeta">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
-        <h2>Elige tu avatar</h2>
-        <button class="boton contorno chico" type="button" (click)="otraTanda()">Mostrar otros</button>
+        <h2>Tus caras</h2>
+        <a class="boton contorno chico" routerLink="/gacha">Ir al gacha</a>
       </div>
 
-      <div class="galeria-avatares" style="margin-top:18px">
-        @for (clave of galeria(); track clave) {
-          <button type="button" class="opcion-avatar" [class.elegido]="clave === elegido()"
-                  (click)="elegido.set(clave)" [attr.aria-label]="'Avatar ' + clave">
-            <img [src]="miniatura(clave)" alt="">
-          </button>
-        }
-      </div>
-
-      <div style="display:flex;gap:12px;align-items:center;margin-top:22px;flex-wrap:wrap">
-        <button class="boton" type="button" (click)="guardar()"
-                [disabled]="guardando() || elegido() === actual()">
-          {{ guardando() ? 'Guardando…' : 'Guardar avatar' }}
-        </button>
-        @if (elegido() !== actual()) {
-          <button class="boton contorno" type="button" (click)="elegido.set(actual())">Deshacer</button>
-        }
-        @if (mensaje()) { <span class="insignia verde">{{ mensaje() }}</span> }
-      </div>
-
-      @if (error()) { <div class="aviso malo" style="margin-top:14px">{{ error() }}</div> }
-
-      <p class="chico suave" style="margin-top:22px">
-        Avatares generados con <a href="https://dicebear.com" target="_blank" rel="noopener">DiceBear</a>.
-        Estilos de Lisa Wischofsky, Pablo Stanley, Zoish y Davis Uche (CC BY 4.0), y de DiceBear (CC0).
+      <p class="chico suave" style="margin-top:8px">
+        La cara ya no se elige de una galería: <strong>se gana</strong>. Cada tirada del gacha puede
+        traerte un personaje nuevo, y acá te pones el que quieras de los que llevas.
       </p>
+
+      @if (cargando()) {
+        <p class="suave chico" style="margin-top:14px">Cargando…</p>
+      } @else if (mias().length === 0) {
+        <div class="aviso dato" style="margin-top:14px">
+          Todavía no te has ganado ninguna. Las tiradas se consiguen subiendo de nivel en el pase, y
+          se gastan en el <a routerLink="/gacha">gacha</a>. Mientras tanto te dibujamos una por
+          defecto: no la pierdes, solo se reemplaza cuando ganes la primera.
+        </div>
+      } @else {
+        <div class="galeria-avatares" style="margin-top:18px">
+          @for (c of mias(); track c.id) {
+            <button type="button" class="opcion-avatar" [class.elegido]="c.equipado"
+                    [disabled]="poniendo() === c.id" (click)="ponerse(c)"
+                    [attr.aria-label]="c.nombre + (c.descripcion ? ' de ' + c.descripcion : '')"
+                    [title]="c.nombre + (c.descripcion ? ' · ' + c.descripcion : '')">
+              <img [src]="c.valor" alt="" loading="lazy">
+            </button>
+          }
+        </div>
+      }
+
+      @if (mensaje()) { <span class="insignia verde" style="margin-top:16px;display:inline-block">{{ mensaje() }}</span> }
+      @if (error()) { <div class="aviso malo" style="margin-top:14px">{{ error() }}</div> }
     </div>
   `,
 })
@@ -91,44 +93,59 @@ export class PerfilComponent {
   private datos = inject(DatosService);
   private avatares = inject(AvatarService);
 
-  private tanda = signal(0);
-
-  actual = computed(() => this.perfil.perfil()?.avatar ?? 'thumbs:inicial');
-  elegido = signal('thumbs:inicial');
-  galeria = computed(() =>
-    this.avatares.galeria(`${this.perfil.perfil()?.nombre ?? 'pulso'}-${this.tanda()}`, 20)
-  );
-  vistaPrevia = computed(() => this.avatares.imagen(this.elegido(), 152));
-
-  guardando = signal(false);
+  /**
+   * Las caras que se ganó, no un catálogo.
+   *
+   * Antes acá había una galería de DiceBear con un botón «mostrar otros»: se
+   * elegía un dibujo cualquiera y listo. Ahora la cara se gana en el gacha, así
+   * que esta pantalla solo muestra lo que ya tiene y sirve para ponerse una.
+   *
+   * La puerta de atrás también está cerrada: `perfiles.avatar` dejó de tener grant
+   * de escritura para `pulso_app`, así que ni reconstruyendo la llamada a mano se
+   * puede poner una cara que no se haya ganado.
+   */
+  mias = signal<Cosmetico[]>([]);
+  cargando = signal(true);
+  poniendo = signal('');
   mensaje = signal('');
   error = signal('');
 
+  actual = computed(() => this.perfil.perfil()?.avatar ?? AVATAR_POR_DEFECTO);
+  vistaPrevia = computed(() => this.avatares.imagen(this.actual(), 152));
+
   constructor() {
-    this.perfil.cargar().then(() => this.elegido.set(this.actual()));
+    this.perfil.cargar().then(() => this.cargar());
   }
 
-  miniatura(clave: string): string {
-    return this.avatares.imagen(clave, 96);
-  }
-
-  otraTanda(): void {
-    this.tanda.update(n => n + 1);
-  }
-
-  async guardar(): Promise<void> {
-    this.guardando.set(true);
-    this.mensaje.set('');
-    this.error.set('');
+  private async cargar(): Promise<void> {
+    const ramo = this.perfil.ramo();
+    if (!ramo) { this.cargando.set(false); return; }
+    this.cargando.set(true);
     try {
-      await this.datos.guardarAvatar(this.elegido());
+      const todos = await this.datos.misCosmeticos(ramo.matricula_id);
+      this.mias.set(todos.filter(c => c.tipo === 'avatar' && c.tengo));
+    } catch (e: any) {
+      this.error.set(e?.message ?? 'No se pudieron cargar tus caras.');
+    } finally {
+      this.cargando.set(false);
+    }
+  }
+
+  async ponerse(c: Cosmetico): Promise<void> {
+    const ramo = this.perfil.ramo();
+    if (!ramo || this.poniendo() || c.equipado) return;
+    this.poniendo.set(c.id);
+    this.mensaje.set(''); this.error.set('');
+    try {
+      await this.datos.equiparCosmetico(ramo.matricula_id, c.id);
       await this.perfil.cargar(true);
-      this.mensaje.set('Avatar actualizado');
+      await this.cargar();
+      this.mensaje.set(`Ahora apareces como ${c.nombre}`);
       setTimeout(() => this.mensaje.set(''), 2600);
     } catch (e: any) {
-      this.error.set(e?.message ?? 'No se pudo guardar el avatar.');
+      this.error.set(e?.message ?? 'No se pudo poner esa cara.');
     } finally {
-      this.guardando.set(false);
+      this.poniendo.set('');
     }
   }
 }

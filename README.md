@@ -450,6 +450,99 @@ que una caja con un Enter contaba como respondida y dejaba entregar en blanco; y
 JavaScript sí lo considera vacío, así que la cuenta del docente y la del alumno no coincidían. Las dos
 salen ahora de `tiene_texto()`.
 
+## Gacha y cosméticos
+
+El pase reparte **tiradas**; el gacha es donde se gastan. Cada tirada entrega un cosmético: un
+**título** que se muestra bajo el nombre, o una **cara** para el perfil.
+
+### El sorteo es en dos pasos
+
+Primero se sortea **la rareza** con los pesos de `gacha_rarezas`, y después se elige **uniforme entre
+los cosméticos de esa rareza** que al alumno le faltan.
+
+| Rareza | Peso | Qué hay |
+|---|---|---|
+| Común | 30 % | 7 títulos + **todas las imágenes** |
+| Poco común | 28 % | 17 títulos |
+| Rara | 25 % | 28 títulos |
+| Épica | 12 % | 29 títulos |
+| Legendaria | 4 % | 15 títulos |
+| Mítica | 1 % | 4 títulos |
+
+La alternativa —un peso por ítem y un solo sorteo— parece más simple y está mal: con 220 imágenes
+comunes y 4 títulos míticos, el mítico saldría **una vez cada dos mil tiradas** y no lo vería nadie en
+todo el semestre. Con dos pasos es exactamente 1 de cada 100, y sigue siéndolo cuando se suban más
+imágenes.
+
+Y de paso resuelve lo de las imágenes: como dentro de una rareza el sorteo es uniforme, **las 220
+tienen exactamente la misma probabilidad entre sí**, hoy y cuando sean 400.
+
+**Sin repetidos.** Se sortea solo entre lo que falta, y la rareza solo entre las que todavía tienen
+algo — si no, al que ya tiene los cuatro míticos le saldría «rareza mítica» un 1 % de las veces y no
+habría nada que entregarle. La tirada se gasta **después** de que hay algo que dar.
+
+### La cara ya no se elige: se gana
+
+Antes el alumno abría una galería de DiceBear, elegía un dibujo y la app escribía `perfiles.avatar`
+por la Data API. Eso se acabó, y se cerró donde no se puede rodear: **un grant por columna**.
+
+```sql
+revoke update on public.perfiles from pulso_app;
+grant  update (nombre) on public.perfiles to pulso_app;
+```
+
+No es una validación del cliente ni una pantalla escondida: `pulso_app` **no puede escribir esa
+columna**. El único camino es `equipar_cosmetico`, que es `security definer` y comprueba que se haya
+ganado. Es el mismo mecanismo con que `clases.archivo` y `clases.pauta` quedan fuera del alcance de la
+API.
+
+Dos detalles que valen la pena:
+
+- **Las caras se ganan por matrícula pero se usan en todas.** El avatar vive en `perfiles` —es la cara
+  de la persona— así que basta con haberla ganado en cualquiera de sus ramos: sería absurdo que la que
+  se ganó en Cloud Native no la pueda usar en Arquitectura. Los títulos sí son por ramo, que es lo
+  correcto: hablan de lo que hizo en ese curso.
+- **A quien tenía un DiceBear no se le quita.** Su avatar sigue dibujándose hasta que gane una imagen.
+  Quitárselo de golpe lo dejaría con un cuadro vacío, que es un castigo por haber llegado temprano.
+
+Los doce «avatares» que existían antes eran **estilos de DiceBear** —el cosmético desbloqueaba
+`bigSmile` y el dibujo lo generaba el navegador—. Al subir la colección quedan `activo = false`: no se
+borran, porque hay alumnos que ya se los ganaron y `alumno_cosmeticos` apunta al id.
+
+### Subirlos
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/subir-cosmeticos.mjs --titulos ~/Downloads/titulos_perfil_rareza.txt \
+  --avatares ~/Downloads/iconos_pulso              # valida e informa
+node neon/subir-cosmeticos.mjs --titulos … --avatares … --escribir
+```
+
+Es idempotente: el `codigo` es estable —derivado del nombre del archivo o del número del título— así
+que volver a correrlo actualiza en vez de duplicar y **no le quita a nadie lo que ya se ganó**. Las
+imágenes que ya están en Blob no se vuelven a subir; se comparan por tamaño.
+
+**Las imágenes van a Vercel Blob, no a `public/`.** Este repositorio es público y son personajes de
+series con derechos: en `public/` quedarían publicadas a nombre del repositorio e indexables, que es
+el mismo problema que ya se resolvió con los decks. Viven en el store **`pulso-cosmeticos`**, que es
+público —un `<img>` tiene que poder leerlas sin token— y separado de `pulso-clases`, que es privado.
+
+### Probarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/probar-gacha.mjs [--tiradas 4000]
+```
+
+Un gacha es una promesa numérica: si la pantalla dice que un mítico sale 1 de cada 100 y en realidad
+sale 1 de cada 2.000, eso **no falla en ninguna parte** —los alumnos simplemente nunca ven uno y nadie
+sabe por qué—. Por eso el grueso de la prueba es contar: tira unos miles y compara la frecuencia
+observada contra los pesos declarados.
+
+Lo otro que vigila es la puerta: que `pulso_app` **no tenga** grant de `update` sobre `perfiles.avatar`
+y sí sobre `nombre`, y que un `update` directo lo rechace Postgres. Se comprueba el grant y no que la
+pantalla esconda el botón, porque el botón no es lo que lo impide.
+
 ## Modo reunión
 
 Hay bloques en que el profesor está en reunión y no puede atender consultas. Antes eso se avisaba de

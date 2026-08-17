@@ -76,6 +76,16 @@ import { ReunionStore } from './reunion.store';
               </svg>
               <span>Pase</span>
             </a>
+            <a routerLink="/gacha" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 9h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/>
+                <path d="M3 5.5h18V9H3z"/><path d="M12 5.5V21"/>
+                <path d="M12 5.5C10.5 3 8 3 8 4.6c0 1 1.4 1 4 .9"/>
+                <path d="M12 5.5c1.5-2.5 4-2.5 4-.9 0 1-1.4 1-4 .9"/>
+              </svg>
+              <span>Gacha</span>
+            </a>
             <a routerLink="/misiones" routerLinkActive="activo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round">

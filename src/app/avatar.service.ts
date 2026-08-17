@@ -22,12 +22,35 @@ export const ESTILOS_DISPONIBLES = Object.keys(ESTILOS);
 
 export const AVATAR_POR_DEFECTO = 'thumbs:inicial';
 
+/**
+ * Si lo guardado es una imagen subida y no un dibujo de DiceBear.
+ *
+ * Se mira el `https://` y no la extensión: las URL de Blob traen la ruta completa
+ * y a veces parámetros, y un `.jpg` al final no está garantizado.
+ */
+export function esImagenSubida(clave: string): boolean {
+  return typeof clave === 'string' && clave.startsWith('https://');
+}
+
 @Injectable({ providedIn: 'root' })
 export class AvatarService {
   private cache = new Map<string, string>();
 
-  /** Convierte "estilo:semilla" en un data URI listo para el src de un <img>. */
+  /**
+   * El `src` de un `<img>` para lo que sea que tenga guardado el alumno.
+   *
+   * Desde que las caras se ganan en el gacha, `perfiles.avatar` guarda **la URL de
+   * una imagen subida**. Pero los alumnos que se registraron antes tienen ahí un
+   * `"estilo:semilla"` de DiceBear, y esos siguen dibujándose: quitarles la cara de
+   * golpe los dejaría con un cuadro vacío hasta que se ganaran una, que es un
+   * castigo por haber llegado temprano.
+   *
+   * Lo que **ya no se puede** es elegir uno nuevo de DiceBear: eso lo cierra un
+   * grant por columna en la base, no esta función.
+   */
   imagen(clave: string, tamano = 96): string {
+    if (esImagenSubida(clave)) return clave;
+
     const memo = `${clave}|${tamano}`;
     const guardado = this.cache.get(memo);
     if (guardado) return guardado;

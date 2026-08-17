@@ -441,6 +441,20 @@ tr:last-child td{ border-bottom:none; }
   to  { opacity:1; transform:none; }
 }
 @keyframes aparecer{ from{ opacity:0 } to{ opacity:1 } }
+@keyframes girar{ to{ transform:rotate(360deg) } }
+
+/* Rueda para los botones que están esperando al servidor. Solo texto no basta:
+   «Entrando…» y «Entrar» se distinguen poco de reojo, y el momento en que hace
+   falta la señal es justo cuando la persona no sabe si su clic sirvió. */
+.rueda{
+  display:inline-block; width:14px; height:14px; margin-right:8px;
+  vertical-align:-2px; border-radius:50%;
+  border:2px solid currentColor; border-top-color:transparent;
+  animation:girar .7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce){
+  .rueda{ animation-duration:2.4s; }
+}
 @keyframes latir{
   0%,100%{ transform:scale(1) }
   50%    { transform:scale(1.06) }

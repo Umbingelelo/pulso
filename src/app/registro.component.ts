@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { Asignatura, DatosService, Periodo, Seccion } from './datos.service';
+import { PerfilStore } from './perfil.store';
 
 @Component({
   selector: 'app-registro',
@@ -87,6 +88,7 @@ import { Asignatura, DatosService, Periodo, Seccion } from './datos.service';
           }
 
           <button class="boton" type="submit" [disabled]="cargando() || !completo()">
+            @if (cargando()) { <span class="rueda" aria-hidden="true"></span> }
             {{ cargando() ? 'Creando…' : 'Crear mi cuenta' }}
           </button>
         </form>
@@ -101,6 +103,7 @@ import { Asignatura, DatosService, Periodo, Seccion } from './datos.service';
 })
 export class RegistroComponent {
   private datos = inject(DatosService);
+  private perfil = inject(PerfilStore);
   private router = inject(Router);
 
   nombre = '';
@@ -169,13 +172,20 @@ export class RegistroComponent {
         seccionId: this.seccionId,
       });
       // Con confirmación de correo desactivada la sesión queda abierta al instante.
-      if (conSesion) this.router.navigate(['/inicio']);
-      else this.enviado.set(true);
+      if (conSesion) {
+        // Esperada, igual que en el ingreso: soltar el botón mientras los guards
+        // resuelven deja el formulario en reposo con la cuenta ya creada, y la
+        // persona vuelve a apretar «Crear mi cuenta».
+        await this.perfil.cargar(true);
+        const abrio = await this.router.navigate(['/inicio']);
+        if (!abrio) throw new Error('Creamos tu cuenta, pero no pude abrir tu página. Recarga.');
+        return;   // sin apagar el cargando: la pantalla se va a destruir
+      }
+      this.enviado.set(true);
     } catch (e: any) {
       this.error.set(traducir(e?.message ?? 'No se pudo crear la cuenta.'));
-    } finally {
-      this.cargando.set(false);
     }
+    this.cargando.set(false);
   }
 }
 

@@ -444,6 +444,18 @@ y sobre todo que **la devolución devuelva lo pagado y no el precio de lista**, 
 descuento y cancelar sin él sería una máquina de fabricar puntos que nadie notaría hasta que un alumno
 tuviera el doble que el resto.
 
+### El techo de doce funciones
+
+Esto tuvo su propio `api/reunion.mjs` un rato, hasta que el despliegue empezó a fallar **sin decir
+nada**: el build compilaba y moría en «Deploying outputs…». El plan Hobby admite **doce funciones
+serverless** y ese archivo era la trece.
+
+No hay error legible, así que queda escrito: **antes de agregar un archivo a `api/`, cuenta los que
+hay.** Las cuatro acciones del modo reunión viven en `/api/docente`, que ya tenía la tabla de despacho,
+y ese endpoint declara ahora con `ABIERTAS` quién puede llamar a cada cosa —`reunion-ver` la llama el
+alumno y es la única que no exige ser docente—. Es una lista de lo permitido y no de lo prohibido, así
+que una acción nueva queda protegida por omisión.
+
 ### Lo que falta
 
 **Nada la cierra sola.** Si te olvidas de apretar «Terminar reunión», esa sección se queda con el 30%

@@ -1183,39 +1183,35 @@ export class DatosService {
   }
 
   // ---------- Modo reunión ----------
-  // Por conexión directa, no por la Data API: ver la cabecera de `api/reunion.mjs`.
-
-  private async reu(accion: string, datos: Record<string, unknown> = {}): Promise<any[]> {
-    const r = await fetch('/api/reunion', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion, ...datos }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d?.error ?? 'No se pudo completar la operación.');
-    return d.filas ?? [];
-  }
+  //
+  // Por conexión directa —las funciones son nuevas y PostgREST no las vería por un
+  // rato— pero **por `/api/docente`** y no por un endpoint propio: el plan Hobby
+  // admite doce funciones serverless y ya están las doce. La cabecera de
+  // `api/docente.mjs` cuenta cómo se descubrió, porque el despliegue falla sin
+  // decir una palabra.
+  //
+  // `reunion-ver` la llama el alumno y es la única acción de ese endpoint que no
+  // exige ser docente.
 
   /** Para el alumno: si su profe está en reunión y con cuánto descuento. */
   async miReunion(matriculaId: string): Promise<Reunion | null> {
-    const [fila] = await this.reu('ver', { matricula: matriculaId });
+    const [fila] = await this.panel('reunion-ver', { matricula: matriculaId });
     return (fila?.r ?? null) as Reunion | null;
   }
 
   /** Para el docente: sus secciones con el estado de reunión de cada una. */
   async seccionesEnReunion(asignaturaId: string, periodoId: string): Promise<SeccionReunion[]> {
-    return await this.reu('secciones',
+    return await this.panel('reunion-secciones',
       { asignatura: asignaturaId, periodo: periodoId }) as SeccionReunion[];
   }
 
   async iniciarReunion(seccionId: string, descuento = 30): Promise<any> {
-    const [fila] = await this.reu('iniciar', { seccion: seccionId, descuento });
+    const [fila] = await this.panel('reunion-iniciar', { seccion: seccionId, descuento });
     return fila?.r;
   }
 
   async terminarReunion(seccionId: string): Promise<any> {
-    const [fila] = await this.reu('terminar', { seccion: seccionId });
+    const [fila] = await this.panel('reunion-terminar', { seccion: seccionId });
     return fila?.r;
   }
 }

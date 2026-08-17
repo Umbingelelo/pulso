@@ -4,8 +4,8 @@
  *   set -a; . ./.env.local; set +a
  *   node neon/probar-reunion.mjs
  *
- * Llama a las mismas funciones que llama `/api/reunion`, con la misma identidad
- * y el mismo rol `pulso_app` con RLS aplicado.
+ * Llama a las mismas funciones que llaman las acciones `reunion-*` de
+ * `/api/docente`, con la misma identidad y el mismo rol `pulso_app` con RLS.
  *
  * ── Qué se vigila acá y por qué ──
  *
@@ -116,11 +116,25 @@ if (!art) throw new Error('No hay un artículo con precio, sin stock y con aprob
 console.log(`Ramo ${m.sigla} · sección ${m.seccion_codigo}`);
 console.log(`Artículo «${art.nombre}» · precio de lista ${art.precio}`);
 
+/**
+ * Deja la matrícula como estaba, y también lo que dejó una corrida que se murió.
+ *
+ * Todo lo que esta prueba escribe va **firmado**: los canjes con `NOTA` y los
+ * puntos con `MOTIVO`. No es decoración: una corrida que revienta a medio camino
+ * —un artículo que no se podía cancelar, por ejemplo— deja puntos regalados, y la
+ * corrida siguiente calcula su marca de agua **por encima** de ellos, con lo que
+ * quedan sumando para siempre y ninguna limpieza los ve. Ya pasó con el
+ * laboratorio; acá se caza por la firma y no solo por la marca.
+ */
+const NOTA = 'prueba de reunión';
+const MOTIVO = 'Prueba de modo reunión';
+
 const limpiar = async () => {
   await dueno`update public.reuniones set fin = now()
                where seccion_id = ${m.seccion} and fin is null`;
   await dueno`delete from public.canjes
-               where matricula_id = ${m.matricula} and articulo_id = ${art.id}`;
+               where matricula_id = ${m.matricula}
+                 and (articulo_id = ${art.id} or nota_alumno = ${NOTA})`;
 };
 await limpiar();
 const [{ id: piso }] = await dueno`select coalesce(max(id),0) as id
@@ -128,8 +142,12 @@ const [{ id: piso }] = await dueno`select coalesce(max(id),0) as id
 const limpiarTodo = async () => {
   await limpiar();
   await dueno`delete from public.movimientos_puntos
-               where matricula_id = ${m.matricula} and id > ${piso}`;
+               where matricula_id = ${m.matricula}
+                 and (id > ${piso} or motivo = ${MOTIVO} or motivo like ${'%por reunión)'})`;
 };
+// Barrer antes de medir: si esta corrida arrastró lo de una anterior, el «saldo de
+// antes» tiene que ser el ya limpio.
+await limpiarTodo();
 
 const saldo = async () => {
   const [r] = await dueno`select coalesce(sum(puntos),0)::int as p
@@ -141,7 +159,7 @@ const saldoOriginal = await saldo();
 
 // Que le alcance para canjear, pase lo que pase con su saldo real.
 await dueno`insert into public.movimientos_puntos (matricula_id, puntos, motivo)
-            values (${m.matricula}, ${art.precio * 3}, 'Prueba de modo reunión')`;
+            values (${m.matricula}, ${art.precio * 3}, ${MOTIVO})`;
 
 // ---------- Las dos fórmulas ----------
 
@@ -269,7 +287,7 @@ console.log('\nLa tienda');
 const esperado = precioEnPantalla(art.precio, DESCUENTO);
 const antes = await saldo();
 const [{ r: canje }] = await como(alumno.id, (s) =>
-  s`select public.solicitar_canje(${m.matricula}::uuid, ${art.id}::uuid, 'prueba de reunión') as r`);
+  s`select public.solicitar_canje(${m.matricula}::uuid, ${art.id}::uuid, ${NOTA}) as r`);
 const [fila] = await dueno`select precio_pagado, estado from public.canjes where id = ${canje}`;
 rev('cobra el precio rebajado, no el de lista', fila.precio_pagado, esperado);
 rev('y es el mismo que muestra la pantalla', fila.precio_pagado, esperado);
@@ -301,7 +319,7 @@ rev('y el descuento volvió a cero', r2.descuento, 0);
 
 const antes2 = await saldo();
 const [{ r: canje2 }] = await como(alumno.id, (s) =>
-  s`select public.solicitar_canje(${m.matricula}::uuid, ${art.id}::uuid, null) as r`);
+  s`select public.solicitar_canje(${m.matricula}::uuid, ${art.id}::uuid, ${NOTA}) as r`);
 const [fila2] = await dueno`select precio_pagado from public.canjes where id = ${canje2}`;
 rev('la tienda vuelve a cobrar el precio de lista', fila2.precio_pagado, art.precio);
 rev('y el saldo baja el precio entero', antes2 - await saldo(), art.precio);

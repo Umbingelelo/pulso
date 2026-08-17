@@ -283,16 +283,22 @@ tr:last-child td{ border-bottom:none; }
 .pregunta + .pregunta{ border-top:1px solid var(--borde); }
 .pregunta:last-child{ padding-bottom:4px; }
 
-.enunciado{ display:flex; gap:14px; align-items:flex-start; }
-.enunciado .numero{
+/* Van amarradas a `.pregunta` a propósito. Sueltas, `.enunciado` es un nombre
+   demasiado común: el laboratorio le pone esa misma clase a la tarjeta del
+   enunciado entero, y como esto es CSS global —no lo encapsula Angular— le
+   ganaba a los estilos del componente. El resultado era que el laboratorio se
+   dibujaba **de costado**: la prosa en una columna de 90px y los bloques de
+   código uno al lado del otro, dieciséis mil píxeles hacia la derecha. */
+.pregunta .enunciado{ display:flex; gap:14px; align-items:flex-start; }
+.pregunta .enunciado .numero{
   flex:none; min-width:34px; height:26px; padding:0 8px;
   display:grid; place-items:center;
   background:var(--celeste-suave); color:var(--azul);
   border-radius:7px; font-size:12.5px; font-weight:700; letter-spacing:.02em;
   margin-top:2px;
 }
-.enunciado .texto{ font-size:16px; font-weight:500; line-height:1.55; }
-.enunciado code{ font-weight:600; }
+.pregunta .enunciado .texto{ font-size:16px; font-weight:500; line-height:1.55; }
+.pregunta .enunciado code{ font-weight:600; }
 
 .pregunta pre{ margin:14px 0 0 48px; font-size:13.5px; }
 @media (max-width:640px){ .pregunta pre{ margin-left:0; } }

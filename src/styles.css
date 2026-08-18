@@ -534,7 +534,12 @@ tr:last-child td{ border-bottom:none; }
    vecinos. `object-fit:cover` la recorta en vez de deformarla, y el fondo se
    quita porque detrás de una foto no se ve y en los escalones abiertos asomaba
    un borde turquesa por las esquinas. */
-.escalon .premio.con-cara{ background:none; overflow:hidden; padding:0; }
+/* `display:block` y no el `grid` heredado: con una fila automática, la pista se
+   dimensiona al alto intrínseco de la imagen (68px para una de 225×350) y el
+   `height:100%` de abajo se vuelve cíclico — resuelve contra esos 68 en vez de
+   contra los 44 del cuadro, y la foto se sale. Con `block` el porcentaje tiene
+   contra qué resolver, que es la altura fija del contenedor. */
+.escalon .premio.con-cara{ display:block; background:none; overflow:hidden; padding:0; }
 .escalon.abierto .premio.con-cara{ background:none; }
 .escalon .premio .cara{
   display:block; width:100%; height:100%;

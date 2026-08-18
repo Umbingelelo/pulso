@@ -97,7 +97,7 @@ import { PerfilStore } from './perfil.store';
                    [class.actual]="r.nivel === proximo()"
                    [style.--i]="$index">
                 <div class="n">Nivel {{ r.nivel }}</div>
-                <div class="premio">
+                <div class="premio" [class.con-cara]="r.cosmetico?.tipo === 'avatar'">
                   <!-- La cara de verdad y no una silueta: desde que los avatares
                        son imágenes concretas, un icono genérico esconde justo lo
                        que el alumno está jugando por conseguir. -->

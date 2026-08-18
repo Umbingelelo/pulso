@@ -81,11 +81,21 @@ const vacias = pesos.filter((p) => !pozo.some((x) => x.rareza === p.rareza));
 rev('ninguna rareza con peso quedó sin ítems', vacias.length === 0,
   `${vacias.map((p) => p.nombre).join(', ')} — se sortearían y no habría qué entregar`);
 
-// Lo pedido para las imágenes: todas en la misma rareza, y por lo tanto con la
-// misma probabilidad entre sí, porque dentro de una rareza el sorteo es uniforme.
-const rarezasDeAvatar = pozo.filter((p) => p.tipo === 'avatar').map((p) => p.rareza);
-rev('las imágenes están todas en una sola rareza', new Set(rarezasDeAvatar).size <= 1,
-  `están en: ${[...new Set(rarezasDeAvatar)].join(', ')}`);
+// Lo pedido para las imágenes: todas con la misma probabilidad entre sí. Como
+// dentro de una rareza el sorteo es uniforme, eso equivale a que las del **pozo
+// del gacha** compartan rareza.
+//
+// Se miran solo las sacables, no todas las activas: las del pase están fuera del
+// sorteo, así que su rareza no afecta la probabilidad de nadie. René Puente es
+// legendaria por ser el premio final del semestre, y contarla acá haría fallar la
+// prueba por algo que no cambia ninguna probabilidad.
+const rarezasSacables = await d`
+  select distinct c.rareza from public.cosmeticos c
+   where c.activo and c.tipo = 'avatar'
+     and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)`;
+rev('las imágenes que se pueden sacar están todas en una sola rareza',
+  rarezasSacables.length <= 1,
+  `están en: ${rarezasSacables.map((r) => r.rareza).join(', ')}`);
 
 // ---------- La matrícula de prueba ----------
 

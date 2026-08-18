@@ -158,9 +158,16 @@ if (args.avatares) {
     const info = await stat(join(carpeta, archivo));
 
     // El nombre trae la serie y el personaje: `Attack on Titan - Eren Yeager`.
+    //
+    // Cuando no hay separador, antes se guardaba el nombre del archivo tal cual y
+    // quedaban cosas como «loco-rene» a la vista del alumno. Sin serie que sacar,
+    // al menos se limpia: guiones a espacios y cada palabra en mayúscula.
     const guion = sinExt.indexOf(' - ');
     const serie = guion > 0 ? sinExt.slice(0, guion).trim() : null;
-    const personaje = guion > 0 ? sinExt.slice(guion + 3).trim() : sinExt.trim();
+    const personaje = guion > 0
+      ? sinExt.slice(guion + 3).trim()
+      : sinExt.trim().replace(/[-_]+/g, ' ')
+          .replace(/\S+/g, (w) => w[0].toUpperCase() + w.slice(1));
 
     let url = yaEstan.get(ruta)?.url;
     if (url && yaEstan.get(ruta)?.size === info.size) {

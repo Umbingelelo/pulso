@@ -74,6 +74,20 @@ const ESCALERA = [
 const TIRADAS_CADA = 5;
 
 /**
+ * El premio final del semestre, fijado a mano.
+ *
+ * El nivel 30 del **último** pase no se sortea: es René Puente. Un pase entero
+ * tiene sentido si al final hay algo que se sabe cuál es y por lo que se llega
+ * —eso es lo que hace que valga la pena el nivel 29—, y un sorteo no puede dar
+ * eso porque nadie sabe qué le va a tocar.
+ *
+ * Los otros cinco pases mantienen su título legendario en el 30. Y por estar en
+ * `pase_recompensas`, René queda fuera del gacha automáticamente: no hay forma de
+ * conseguirlo por suerte.
+ */
+const FINAL = { codigo: 'avatar-loco-rene', nivel: 30 };
+
+/**
  * Azar reproducible.
  *
  * `xmur3` para convertir la semilla de texto en un número y `mulberry32` para
@@ -148,8 +162,27 @@ if (problemas.length) {
 const usados = new Set();
 const filas = [];
 
+const cosmeticoFinal = pozo.find((c) => c.codigo === FINAL.codigo);
+if (!cosmeticoFinal) {
+  console.error(`No existe el cosmético final «${FINAL.codigo}». ¿Se subió la colección?`);
+  process.exit(1);
+}
+// Fuera del sorteo: si además pudiera salir en otro nivel, dejaría de ser el final.
+usados.add(cosmeticoFinal.id);
+/** El último pase de cada asignatura: ahí va el final. */
+const ultimoDe = new Map();
+for (const p of pases) {
+  const previo = ultimoDe.get(p.sigla);
+  if (!previo || p.numero > previo.numero) ultimoDe.set(p.sigla, p);
+}
+
 for (const pase of pases) {
+  const esElUltimo = ultimoDe.get(pase.sigla)?.id === pase.id;
   for (const paso of ESCALERA) {
+    if (esElUltimo && paso.nivel === FINAL.nivel) {
+      filas.push({ pase, nivel: paso.nivel, cosmetico: cosmeticoFinal, tiradas: 0, final: true });
+      continue;
+    }
     const azar = generador(`${pase.id}|${paso.nivel}`);
     const candidatos = de(paso.tipo, paso.rareza ?? null)
       .filter((c) => paso.tipo === 'marco' || !usados.has(c.id));
@@ -180,7 +213,8 @@ for (const pase of pases) {
     const que = c
       ? `${c.tipo.padEnd(6)} ${c.rareza.padEnd(11)} ${c.nombre}${c.descripcion ? ` (${c.descripcion})` : ''}`
       : '—';
-    console.log(`  nivel ${String(f.nivel).padStart(2)}  ${que}${f.tiradas ? '  +1 tirada' : ''}`);
+    console.log(`  nivel ${String(f.nivel).padStart(2)}  ${que}${f.tiradas ? '  +1 tirada' : ''}` +
+      (f.final ? '   ← EL FINAL' : ''));
   }
 }
 

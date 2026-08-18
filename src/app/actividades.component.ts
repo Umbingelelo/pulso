@@ -25,7 +25,7 @@ import { PerfilStore } from './perfil.store';
           <div class="tarjeta">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
               <div>
-                <p class="etiqueta">{{ etiquetaTipo(a.tipo) }}</p>
+                <p class="etiqueta">{{ esOpcional(a) ? 'Desafío' : etiquetaTipo(a.tipo) }}</p>
                 <h2 style="margin-top:4px">{{ a.titulo }}</h2>
               </div>
               @if (hecha(a.id)) {

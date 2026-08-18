@@ -33,7 +33,9 @@ Por eso vive en `2026-02/Pulso`, al mismo nivel que las asignaturas y no dentro 
   Los que no tocan una nota ni un plazo se entregan al instante; el resto queda como solicitud y
   espera el visto bueno del docente, que puede aprobar o rechazar devolviendo los puntos
 - **Vista de docente**: se elige la asignatura y el periodo, y desde ahí la nómina por sección, los
-  promedios del diagnóstico, la bandeja de canjes por resolver, y otorgar o descontar puntos
+  promedios del diagnóstico, la bandeja de canjes por resolver, y otorgar o descontar puntos —en
+  «Resumen» y también en «Alumnos», que es donde se busca: es la pantalla que lleva el nombre y que
+  muestra la columna de puntos
 
 En la hoja de ruta: avance por laboratorio y planes de estudio personales.
 

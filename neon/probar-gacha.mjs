@@ -243,22 +243,51 @@ rev('ninguna de las tiradas entregó algo del pase',
 rev('y el saldo de puntos no se movió ni un punto', await puntosDe() === puntosAntes,
   `quedó en ${await puntosDe()}, estaba en ${puntosAntes}`);
 
+/**
+ * El margen se calcula, no se fija a ojo.
+ *
+ * La primera versión usaba un ±35% para todas las rarezas y **fallaba por azar**:
+ * con 600 tiradas la mítica se espera 6 veces, y ±35% son ±2,1 — más angosto que
+ * una sola desviación típica, así que una corrida normal la hacía fallar.
+ *
+ * Cada rareza es un binomial de `N` intentos con probabilidad `p`, así que su
+ * desviación típica es `√(N·p·(1−p))`. Se admiten cuatro: la probabilidad de que
+ * una corrida sana se salga de ahí es ínfima, y en cambio un peso mal aplicado se
+ * ve como el doble o el triple, no como un 20%. El piso de 3 evita que una
+ * esperanza chiquita deje un margen de cero.
+ *
+ * Una prueba que falla por azar es peor que no tenerla: se aprende a ignorarla, y
+ * el día que la falla es de verdad, nadie la mira.
+ */
 const sumaPesos = pesos.reduce((s, p) => s + p.peso, 0);
-let desviacionMayor = 0;
 for (const p of pesos) {
-  const esperado = (p.peso / sumaPesos) * N;
+  const prob = p.peso / sumaPesos;
+  const esperado = prob * N;
+  const sigma = Math.sqrt(N * prob * (1 - prob));
+  const margen = Math.max(4 * sigma, 3);
   const visto = cuenta[p.rareza] ?? 0;
-  // Margen generoso: con 4.000 tiradas, la mítica esperada son 40 y su desviación
-  // típica ~6, así que ±35% cubre el azar sin dejar pasar un peso mal aplicado
-  // —que se vería como un 10x, no como un 20%—.
-  const desvio = esperado ? Math.abs(visto - esperado) / esperado : 0;
-  desviacionMayor = Math.max(desviacionMayor, desvio);
   const pct = ((visto / N) * 100).toFixed(1);
-  const objetivo = ((p.peso / sumaPesos) * 100).toFixed(1);
-  rev(`${p.nombre.padEnd(11)} ${pct}% (esperado ${objetivo}%)`, desvio < 0.35,
-    `salió ${visto}, esperaba ~${Math.round(esperado)}`);
+  const objetivo = (prob * 100).toFixed(1);
+  rev(`${p.nombre.padEnd(11)} ${pct}% (esperado ${objetivo}%)`,
+    Math.abs(visto - esperado) <= margen,
+    `salió ${visto}, esperaba ${esperado.toFixed(1)} ± ${margen.toFixed(1)}`);
 }
-console.log(`  · desviación mayor: ${(desviacionMayor * 100).toFixed(1)}%`);
+console.log(`  · margen usado: cuatro desviaciones típicas sobre ${N} tiradas`);
+
+// Qué puede y qué no puede detectar esta corrida.
+//
+// Con pocas tiradas, el margen de una rareza rara llega a ser más grande que su
+// propia esperanza: ahí la prueba confirma que el sorteo no está roto, pero no
+// distinguiría un peso al doble. Decirlo es la diferencia entre una prueba que
+// mide y una que tranquiliza.
+const ciegas = pesos.filter((p) => {
+  const prob = p.peso / sumaPesos;
+  return Math.max(4 * Math.sqrt(N * prob * (1 - prob)), 3) >= prob * N;
+});
+if (ciegas.length) {
+  console.log(`  · con ${N} tiradas no distinguiría un peso al doble en: ` +
+    `${ciegas.map((p) => p.nombre).join(', ')}. Para eso, --tiradas 4000`);
+}
 
 // ---------- Dejarlo como estaba ----------
 

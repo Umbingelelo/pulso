@@ -2,7 +2,12 @@
  * El plazo de los puntos: hacer el laboratorio en su semana paga, después no.
  *
  *   set -a; . ./.env.local; set +a
- *   node neon/probar-plazo.mjs [--sigla ITY1102]
+ *   node neon/probar-plazo.mjs [--sigla DSY1107]
+ *
+ * La sigla por omisión es DSY1107 porque es la que tiene el par que esto necesita:
+ * un laboratorio opcional (X1) y el oficial que lo abre (L1). ITY1102 tiene un solo
+ * laboratorio y ningún desafío, así que ahí el caso 4 —el que justifica todo el
+ * diseño— no se podría probar.
  *
  * ── Qué se vigila ──
  *
@@ -32,7 +37,7 @@ const args = Object.fromEntries(
     return a;
   }, []),
 );
-const SIGLA = args.sigla ?? 'ITY1102';
+const SIGLA = args.sigla ?? 'DSY1107';
 const CORREO = args.correo ?? 'alumno.prueba@duocuc.cl';
 
 const dueno = neon(process.env.DATABASE_URL_OWNER);

@@ -463,7 +463,7 @@ node neon/probar-compilador.mjs                                          # el Ma
 set -a; . ./.env.local; set +a
 node neon/probar-revision.mjs --codigo L1                                  # el criterio de la IA
 node neon/probar-laboratorio.mjs --codigo L1                              # la lógica
-node neon/probar-plazo.mjs --sigla ITY1102                                 # el plazo de los puntos
+node neon/probar-plazo.mjs                                                 # el plazo de los puntos
 node neon/probar-laboratorio-navegador.mjs https://pulso-rust.vercel.app  # el navegador
 ```
 

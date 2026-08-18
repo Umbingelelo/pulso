@@ -135,7 +135,8 @@ declaró dictar.
 Por eso el contenido de los diagnósticos **no se versiona**: vive en `.gitignore` y en la base. Solo se
 versiona la estructura, en `neon/migrations/`.
 
-Después de una migración que toque una **vista** o la firma de una función, corre
+Después de una migración que toque una **vista**, la firma de una función, o que **agregue una columna
+que la app lea por la Data API** (como `puntua_desde` y `puntua_hasta` en `actividades`), corre
 `node neon/refrescar-api.mjs`. La Data API cachea el esquema al arrancar: sin ese aviso la consulta
 sigue respondiendo 200 pero con las columnas viejas, así que el campo nuevo llega `undefined` y la
 pantalla se ve exactamente igual que antes de migrar. No da error en ninguna parte.
@@ -284,8 +285,8 @@ de la asignatura y se publican con un script.
 
 ### El formato
 
-Encabezado con `codigo`, `titulo`, `descripcion`, `minutos`, `puntos` y `orden`, y después el
-enunciado con cinco bloques propios, todos cerrados con `:::`:
+Encabezado con `codigo`, `titulo`, `descripcion`, `minutos`, `puntos`, `orden` y —si tiene plazo—
+`desde` y `hasta`, y después el enunciado con cinco bloques propios, todos cerrados con `:::`:
 
 | Bloque | Para qué |
 |---|---|
@@ -342,7 +343,54 @@ El enunciado se convierte a HTML y se parte en bloques **al subirlo**, no en el 
 alumno no baja un intérprete de Markdown y, sobre todo, no hay que adivinar dónde va cada caja dentro
 del texto ya convertido.
 
+### El plazo: paga en su semana y no después
+
+Un laboratorio de la semana 1 valía lo mismo entregado el martes en clase que la noche antes del
+examen. Eso convierte el laboratorio en una tarea acumulable, y acumularlas es lo que no queremos: se
+hace en la sala, con el docente al lado, porque ahí es donde sirve.
+
+```
+puntua_desde ──────────────── puntua_hasta ─────────────────▶
+     │        paga los puntos        │      no paga nada
+```
+
+Las dos fechas viven en `actividades`, que es donde el trigger que cobra ya lee los puntos. **Nulas
+las dos = sin plazo**, que es como se comportaba todo antes: ninguna actividad ya subida cambió de
+conducta al migrar. Sirven también para las entregas y el diagnóstico, aunque nazcan sin plazo.
+
+**El plazo decide puntos, no acceso.** Fuera de plazo el laboratorio se abre igual, se escribe igual y
+se entrega igual: solo no paga. Quién ve qué sigue siendo asunto de `activa` y de `requiere`, que son
+cosas distintas. Y eso no es una concesión, es lo que hace que el resto funcione: la fila de
+`resultados_actividad` se escribe igual, así que el alumno atrasado conserva su trabajo, aparece en el
+avance del docente y **se le sigue desbloqueando el desafío opcional** —el candado mira esa fila, no
+los puntos—. Bloquear la entrega dejaría al que se atrasó una vez con el laboratorio congelado a
+medias y sin ningún desafío por el resto del semestre.
+
+Cuenta el momento de la entrega y no el del cobro: el trigger valora `completada_en`, igual que la
+0009 valora `alcanzo_final_en`.
+
+Se administra en dos lugares, y el orden importa:
+
+- **En el `.md`**, con `desde: 2026-08-18` y `hasta: 2026-08-24`. En hora local, y sin hora `desde` es
+  el primer minuto del día y `hasta` el último —que `hasta: 2026-08-24` significara medianoche dejaría
+  fuera el domingo entero, que es justo cuando entrega el que lo dejó para el final—.
+- **En el panel**, en «Actividades y laboratorios», con dos campos de fecha y un botón **«Esta
+  semana»** que rellena lunes 00:00 → domingo 23:59. Ahí también se quita, vaciando los dos campos.
+
+Si el `.md` no trae las fechas, **volver a subirlo no pisa** las del panel: corregirle una tilde a un
+laboratorio no puede borrarle el plazo, sobre todo porque borrarlo no da error —simplemente vuelve a
+pagar siempre, para todos, sin que nadie se entere—.
+
+La columna **«a tiempo»** de la tabla del panel es el control de ese error: si dice «24 entregas · 5 a
+tiempo», la fecha está mal puesta, no es que el curso sea flojo.
+
 ### Cómo lo vive el alumno
+
+El plazo se dice **antes**, no al entregar: descubrirlo después no es un plazo, es una trampa. La
+tarjeta de Actividades muestra «Fuera de plazo» en vez de «Pendiente» y pone la fecha; la barra fija
+del laboratorio muestra los puntos que se van a pagar de verdad —cero si ya cerró— y el aviso explica
+que se puede entregar igual. Y el mensaje del final dice lo que se cobró, no lo que el laboratorio
+vale: antes devolvía los puntos fijos y decía «Ganaste 100 puntos» aunque no se hubiera pagado nada.
 
 Se guarda solo mientras escribe, dos segundos después de la última tecla, y también al salir de la
 pantalla o cerrar la pestaña. Un laboratorio son dos horas de trabajo: pedirle que se acuerde de
@@ -415,6 +463,7 @@ node neon/probar-compilador.mjs                                          # el Ma
 set -a; . ./.env.local; set +a
 node neon/probar-revision.mjs --codigo L1                                  # el criterio de la IA
 node neon/probar-laboratorio.mjs --codigo L1                              # la lógica
+node neon/probar-plazo.mjs --sigla ITY1102                                 # el plazo de los puntos
 node neon/probar-laboratorio-navegador.mjs https://pulso-rust.vercel.app  # el navegador
 ```
 
@@ -444,6 +493,13 @@ puntos duplicados— y que no se vea el laboratorio de otra matrícula. Y revisa
 guardado**: que no queden `:::` sueltos, que los formatos y las clases sean de los que el navegador
 dibuja, que los controles vayan correlativos y que las columnas `cajas` y `controles` calcen con los
 bloques —de ahí salen la barra de progreso y el conteo del panel del docente—.
+
+**El plazo** descubre solo con qué probar —el laboratorio opcional de la asignatura y el oficial que
+requiere— y recorre los dos lados de la ventana. Lo que vigila de verdad no es que fuera de plazo no
+pague, que es lo fácil, sino las cuatro cosas que se rompen solas si alguien toca esto: que la entrega
+atrasada **quede registrada**, que **desbloquee el desafío opcional** igual, que lo que devuelve la
+función sea lo que se pagó de verdad, y que **antes** de `puntua_desde` tampoco pague. Deja las fechas
+como estaban y al alumno de prueba limpio.
 
 **El navegador** cubre lo único que la anterior no puede: que el guardado automático de verdad viaje.
 Es la parte donde una falla silenciosa le cuesta al alumno dos horas —escribe, se ve bien, y no salió

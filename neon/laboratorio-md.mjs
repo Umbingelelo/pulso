@@ -43,7 +43,9 @@ const AVISOS = ['alerta', 'pista', 'ojo'];
 const FORMATOS = ['corta', 'codigo'];
 /** El encabezado es un juego cerrado: una llave de más suele ser una tildada. */
 const LLAVES = ['codigo', 'titulo', 'descripcion', 'minutos', 'puntos', 'orden',
-                'opcional', 'requiere'];
+                'opcional', 'requiere', 'desde', 'hasta'];
+/** `2026-08-24` o `2026-08-24 23:59`, con «T» o espacio en medio. */
+const FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/;
 
 /** Cualquier línea que empiece con `:::`, con o sin indentación. */
 const MARCA = /^(\s*):::(.*)$/;
@@ -90,6 +92,46 @@ export function compilar(texto) {
  * de dos horas publicado con cero puntos no falla en ninguna parte: simplemente no
  * le paga al alumno. Ahora eso es un error.
  */
+/**
+ * Valida una fecha del plazo y la deja en hora local sin zona —`2026-08-24T23:59`—
+ * que es lo que `new Date()` interpreta en la zona de quien sube el laboratorio.
+ * La conversión a UTC la hace `subir-laboratorio.mjs`, que es el que habla con la
+ * base; acá solo se comprueba y se completa.
+ *
+ * Sin hora, `desde` es el primer minuto del día y `hasta` el último. Que
+ * «hasta: 2026-08-24» significara medianoche dejaría fuera el domingo entero, y el
+ * domingo es justo el día en que entrega el que dejó el laboratorio para el final:
+ * el docente escribiría la fecha correcta y el alumno cobraría cero.
+ */
+function leerFecha(valor, llave, problemas) {
+  const m = FECHA.exec(valor.trim());
+  if (!m) {
+    problemas.push(`«${llave}: ${valor}» no es una fecha. Se escribe «2026-08-24» ` +
+      'o «2026-08-24 23:59»');
+    return null;
+  }
+  const [, anio, mes, dia, hh, mm] = m;
+  const hora = hh ?? (llave === 'hasta' ? '23' : '00');
+  const min  = mm ?? (llave === 'hasta' ? '59' : '00');
+  const local = `${anio}-${mes}-${dia}T${hora}:${min}`;
+
+  // La regex acepta el 31 de febrero y `new Date` lo corre al 3 de marzo sin
+  // decir nada. Comparar el día y el mes de vuelta es lo que lo caza.
+  //
+  // Se comprueban solo el día y el mes, no la hora: en Chile la medianoche del
+  // primer domingo de septiembre **no existe** —el reloj salta de 23:59 a 01:00— y
+  // exigir que la hora vuelva igual haría que «desde: 2026-09-06» se rechazara por
+  // «no existe en el calendario», que además de falso es indescifrable. Con el
+  // salto, `new Date` deja el instante en la 01:00 de ese mismo día, que es
+  // exactamente lo que se quiere decir con «desde el domingo».
+  const d = new Date(`${local}:00`);
+  if (isNaN(d.getTime()) || d.getDate() !== Number(dia) || d.getMonth() + 1 !== Number(mes)) {
+    problemas.push(`«${llave}: ${valor}» no existe en el calendario`);
+    return null;
+  }
+  return local;
+}
+
 function leerEncabezado(texto, problemas) {
   if (!texto.startsWith('---\n')) {
     problemas.push('falta el encabezado entre --- y --- al principio del archivo');
@@ -149,6 +191,24 @@ function leerEncabezado(texto, problemas) {
   }
   if (meta.requiere && meta.requiere === meta.codigo) {
     problemas.push(`«requiere: ${meta.requiere}» apunta a sí mismo: nunca se desbloquearía`);
+  }
+
+  // El plazo en que paga. Las dos son opcionales y cada una es independiente: solo
+  // `hasta` es lo normal —«esta semana y no después»—, y solo `desde` sirve para
+  // dejar programado el de la semana que viene.
+  for (const k of ['desde', 'hasta']) {
+    if (meta[k] === undefined) continue;
+    const normal = leerFecha(meta[k], k, problemas);
+    if (normal) meta[k] = normal;
+    // Se borra la que no se entendió para que la comparación de abajo no opere
+    // sobre basura y agregue un segundo problema que confunde al primero.
+    else delete meta[k];
+  }
+  // Comparación de cadenas: `leerFecha` las devuelve normalizadas al mismo formato
+  // de ancho fijo, así que el orden alfabético es el orden cronológico.
+  if (meta.desde && meta.hasta && meta.hasta < meta.desde) {
+    problemas.push(`«hasta: ${meta.hasta}» es anterior a «desde: ${meta.desde}»: ` +
+      'el plazo terminaría antes de empezar y no pagaría nunca');
   }
 
   return {

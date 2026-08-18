@@ -87,12 +87,36 @@ import { PerfilStore } from './perfil.store';
             <button class="boton chico" [disabled]="entregando() || respondidas() === 0"
                     (click)="pedirEntrega()">Entregar</button>
           }
-          <span class="insignia celeste num">{{ l.puntos }} puntos</span>
+          <!-- Fuera de plazo la insignia dice cero: es el número que se va a pagar,
+               y en la barra fija es lo primero que se mira. -->
+          <span class="insignia num" [class.celeste]="l.en_plazo || !!l.entregado_en">
+            {{ l.en_plazo || l.entregado_en ? l.puntos : 0 }} puntos
+          </span>
         </div>
       </div>
 
       @if (error()) { <div class="aviso malo" style="margin:0 0 16px">{{ error() }}</div> }
       @if (hecho()) { <div class="aviso ok" style="margin:0 0 16px">{{ hecho() }}</div> }
+
+      <!-- Que ya no pague se dice antes de las dos horas de trabajo, no después.
+           Ya entregado no se dice nada: lo que valió, valió. -->
+      @if (!l.entregado_en && !l.en_plazo) {
+        <div class="aviso dato" style="margin:0 0 16px">
+          <strong>Fuera de plazo.</strong>
+          @if (yaPaso(l.puntua_hasta)) {
+            Este laboratorio daba puntos hasta el {{ l.puntua_hasta | date:'EEEE d/MM, HH:mm' }}.
+          } @else if (l.puntua_desde) {
+            Este laboratorio empieza a dar puntos el
+            {{ l.puntua_desde | date:'EEEE d/MM, HH:mm' }}.
+          }
+          Lo puedes hacer y entregar igual —queda registrado y te sirve para lo que
+          viene— pero ya no suma puntos.
+        </div>
+      } @else if (!l.entregado_en && l.puntua_hasta) {
+        <p class="chico suave" style="margin:0 0 16px">
+          Da puntos hasta el {{ l.puntua_hasta | date:'EEEE d/MM, HH:mm' }}.
+        </p>
+      }
 
       @if (l.entregado_en) {
         <div class="aviso dato" style="margin-bottom:16px">
@@ -201,6 +225,9 @@ import { PerfilStore } from './perfil.store';
               } @else {
                 Respondiste las {{ l.cajas }} cajas. Después de entregar no se puede editar.
               }
+              @if (!l.en_plazo) {
+                <strong>Está fuera de plazo, así que esta entrega no va a dar puntos.</strong>
+              }
             </p>
             <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
               <button class="boton" [disabled]="entregando()" (click)="entregar()">
@@ -214,7 +241,12 @@ import { PerfilStore } from './perfil.store';
                         gap:14px;flex-wrap:wrap">
               <p class="chico suave" style="margin:0">
                 Se guarda solo mientras escribes. Entrega cuando termines o cuando se acabe
-                la hora: los {{ l.puntos }} puntos son por el trabajo hecho.
+                la hora:
+                @if (l.en_plazo) {
+                  los {{ l.puntos }} puntos son por el trabajo hecho.
+                } @else {
+                  fuera de plazo ya no paga, pero queda registrado.
+                }
               </p>
               <button class="boton" [disabled]="respondidas() === 0" (click)="pedirEntrega()">
                 Entregar laboratorio
@@ -512,6 +544,15 @@ export class LaboratorioComponent implements OnDestroy {
     }
   }
 
+  /**
+   * Si esa fecha ya pasó. Sirve para distinguir los dos motivos por los que un
+   * laboratorio puede estar fuera de plazo —se cerró, o todavía no abre— y
+   * decírselos distinto, porque el alumno hace cosas distintas con cada uno.
+   */
+  yaPaso(iso: string | null): boolean {
+    return !!iso && Date.now() > new Date(iso).getTime();
+  }
+
   pedirEntrega(): void {
     this.error.set(''); this.hecho.set('');
     this.confirmando.set(true);
@@ -531,7 +572,12 @@ export class LaboratorioComponent implements OnDestroy {
       const l = await this.datos.laboratorio(this.matricula, this.codigo);
       this.lab.set(l);
       this.confirmando.set(false);
-      this.hecho.set(`Entregado. Ganaste ${r?.puntos ?? 0} puntos.`);
+      // `r.puntos` son los que se pagaron de verdad, no los que vale el
+      // laboratorio: fuera de plazo la base devuelve cero. Decirle «Ganaste 100
+      // puntos» a quien no cobró ninguno lo deja buscando el error en su saldo.
+      this.hecho.set(r?.a_tiempo === false
+        ? 'Entregado. Quedó registrado, pero fuera de plazo no da puntos.'
+        : `Entregado. Ganaste ${r?.puntos ?? 0} puntos.`);
       scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo entregar.');

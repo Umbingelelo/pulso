@@ -145,7 +145,7 @@ import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
       <div class="tarjeta" style="margin-top:20px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap">
           <h2>Tabla de posiciones</h2>
-          <span class="chico suave">Los diez primeros lugares de tu asignatura</span>
+          <span class="chico suave">Los diez primeros lugares de tu sección</span>
         </div>
 
         @if (errorTabla()) {

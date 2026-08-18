@@ -135,6 +135,11 @@ declaró dictar.
 Por eso el contenido de los diagnósticos **no se versiona**: vive en `.gitignore` y en la base. Solo se
 versiona la estructura, en `neon/migrations/`.
 
+Después de una migración que toque una **vista** o la firma de una función, corre
+`node neon/refrescar-api.mjs`. La Data API cachea el esquema al arrancar: sin ese aviso la consulta
+sigue respondiendo 200 pero con las columnas viejas, así que el campo nuevo llega `undefined` y la
+pantalla se ve exactamente igual que antes de migrar. No da error en ninguna parte.
+
 Y por eso los decks de clase tampoco: viven en Vercel Blob privado, no acá. Subirlos a `public/` habría
 sido más simple y habría dejado el material de todo el semestre —y los apuntes docentes— a un clic de
 cualquiera, además de volver los puntos por abrir la clase un adorno.

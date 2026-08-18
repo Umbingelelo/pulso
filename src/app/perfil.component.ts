@@ -16,13 +16,17 @@ import { PerfilStore } from './perfil.store';
     <div class="rejilla dos" style="margin-bottom:20px">
       <div class="tarjeta">
         <h2>Cómo te ven</h2>
-        <div style="display:flex;align-items:center;gap:18px;margin-top:16px">
-          <img class="avatar-grande" [src]="vistaPrevia()" alt="Avatar elegido">
-          <div>
-            <p style="font-weight:600">{{ perfil.perfil()?.nombre }}</p>
+        <div style="display:flex;align-items:flex-start;gap:18px;margin-top:16px">
+          <!-- La cara y el título son una sola pieza: el título va debajo, que es
+               donde el alumno lo mira, y no compitiendo con el nombre. -->
+          <div class="cara-con-titulo">
+            <img class="avatar-grande" [src]="vistaPrevia()" alt="Avatar elegido">
             @if (perfil.ramo()?.titulo; as t) {
-              <p class="chico" style="color:var(--celeste-oscuro);font-weight:600">«{{ t }}»</p>
+              <p class="chico titulo-cara">«{{ t }}»</p>
             }
+          </div>
+          <div style="min-width:0">
+            <p style="font-weight:600">{{ perfil.perfil()?.nombre }}</p>
             @if (perfil.ramo(); as r) {
               <p class="chico suave">{{ r.asignatura }}</p>
               <p class="chico suave">Sección {{ r.seccion }} · {{ r.periodo }}</p>

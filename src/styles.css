@@ -399,6 +399,14 @@ tr:last-child td{ border-bottom:none; }
   width:76px; height:76px; border-radius:50%;
   background:var(--celeste-suave); border:2px solid var(--borde); flex:none;
 }
+/* La cara grande con su título debajo, en el perfil. El texto se envuelve en el
+   ancho de la cara: un título de cuatro palabras no debe estirar la tarjeta. */
+.cara-con-titulo{ flex:none; width:90px; text-align:center; }
+.cara-con-titulo .titulo-cara{
+  margin:6px 0 0; color:var(--celeste-oscuro); font-weight:600; line-height:1.25;
+  overflow-wrap:anywhere;
+}
+
 .galeria-avatares{
   display:grid; grid-template-columns:repeat(auto-fill,minmax(78px,1fr)); gap:12px;
 }

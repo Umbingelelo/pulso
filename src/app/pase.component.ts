@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { DatosService, Pase, Posicion, Recompensa } from './datos.service';
 import { PerfilStore } from './perfil.store';
+import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
 
 /**
  * El pase de batalla y la tabla de posiciones del ramo.
@@ -163,7 +164,7 @@ import { PerfilStore } from './perfil.store';
                    [class.podio-3]="q.lugar === 3"
                    [style.--i]="$index">
                 <div class="lugar">{{ q.lugar }}</div>
-                <img [src]="q.avatar" alt="">
+                <img [src]="cara(q.avatar)" alt="" loading="lazy">
                 <div class="quien">
                   <div class="nom">{{ q.nombre }}</div>
                   @if (q.titulo) { <div class="tit">{{ q.titulo }}</div> }
@@ -183,7 +184,7 @@ import { PerfilStore } from './perfil.store';
             <p class="chico suave" style="margin:16px 0 8px">Tu posición</p>
             <div class="puesto yo">
               <div class="lugar">{{ y.lugar }}</div>
-              <img [src]="y.avatar" alt="">
+              <img [src]="cara(y.avatar)" alt="" loading="lazy">
               <div class="quien">
                 <div class="nom">{{ y.nombre }}</div>
                 @if (y.titulo) { <div class="tit">{{ y.titulo }}</div> }
@@ -198,6 +199,7 @@ import { PerfilStore } from './perfil.store';
 })
 export class PaseComponent {
   private datos = inject(DatosService);
+  private avatares = inject(AvatarService);
   protected perfil = inject(PerfilStore);
 
   pase = signal<Pase | null>(null);
@@ -286,6 +288,19 @@ export class PaseComponent {
     if (!r.cosmetico) return false;
     if (r.cosmetico.tipo === 'avatar') return this.perfil.perfil()?.avatar === r.cosmetico.valor;
     return this.tituloPuesto() === r.cosmetico.id;
+  }
+
+  /**
+   * La cara de un compañero, lista para el `src`.
+   *
+   * Iba `[src]="q.avatar"` en crudo, y eso funcionaba solo para las imágenes
+   * subidas. Los avatares de DiceBear se guardan como «estilo:semilla», que no es
+   * una URL: el navegador pedía «thumbs:ana» y dibujaba el ícono de imagen rota.
+   * Hoy 68 de 69 alumnos tienen uno de esos, así que el ranking era una columna de
+   * cuadros rotos.
+   */
+  cara(clave: string): string {
+    return this.avatares.imagen(clave ?? AVATAR_POR_DEFECTO, 76);
   }
 
   async equipar(r: Recompensa): Promise<void> {

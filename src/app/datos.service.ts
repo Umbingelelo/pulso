@@ -48,6 +48,11 @@ export interface Ramo {
   periodo_nombre: string;
   periodo_activo: boolean;
   puntos: number;
+  /**
+   * El título que lleva puesto **en este ramo**. Se equipa por matrícula, así que
+   * el mismo alumno puede llevar uno en Cloud Native y otro en Arquitectura.
+   */
+  titulo: string | null;
 }
 
 export interface Movimiento {

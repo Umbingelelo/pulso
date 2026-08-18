@@ -20,6 +20,9 @@ import { PerfilStore } from './perfil.store';
           <img class="avatar-grande" [src]="vistaPrevia()" alt="Avatar elegido">
           <div>
             <p style="font-weight:600">{{ perfil.perfil()?.nombre }}</p>
+            @if (perfil.ramo()?.titulo; as t) {
+              <p class="chico" style="color:var(--celeste-oscuro);font-weight:600">«{{ t }}»</p>
+            }
             @if (perfil.ramo(); as r) {
               <p class="chico suave">{{ r.asignatura }}</p>
               <p class="chico suave">Sección {{ r.seccion }} · {{ r.periodo }}</p>

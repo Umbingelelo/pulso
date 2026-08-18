@@ -205,10 +205,15 @@ import { ReunionStore } from './reunion.store';
                 </select>
               </label>
             }
+            <!-- El título va bajo la cara, que es donde el alumno lo busca: es
+                 lo que se ganó y lo que se ve en el ranking. -->
             <div class="usuario-lateral">
               <img [src]="avatar()" alt="">
               <div class="datos">
                 <div class="nom">{{ p.nombre }}</div>
+                @if (perfil.ramo()?.titulo; as t) {
+                  <div class="tit">{{ t }}</div>
+                }
                 <div class="sec">
                   @if (perfil.ramo(); as r) {
                     {{ r.sigla }} · Sección {{ r.seccion }}

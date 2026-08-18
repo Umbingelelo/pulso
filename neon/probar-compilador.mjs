@@ -146,6 +146,22 @@ for (const [etiqueta, linea, contiene] of ENCABEZADOS) {
     `esperaba un problema con «${contiene}», dijo: ${JSON.stringify(problemas)}`);
 }
 
+for (const [etiqueta, linea, contiene] of [
+  ['opcional que no es true ni false', 'opcional: si', 'tiene que ser true o false'],
+  ['opcional sin decir qué lo abre',   'opcional: true', 'queda abierto desde el principio'],
+]) {
+  const texto = `---\ncodigo: LX\ntitulo: Sonda\npuntos: 100\n${linea}\n---\n${CAJA_OK}`;
+  const { problemas } = compilar(texto);
+  const ok = problemas.some((p) => p.includes(contiene));
+  rev(etiqueta, ok, ok ? '' : `dijo: ${JSON.stringify(problemas)}`);
+}
+{
+  const texto = `---\ncodigo: LX\ntitulo: Sonda\npuntos: 100\nopcional: true\nrequiere: LX\n---\n${CAJA_OK}`;
+  const { problemas } = compilar(texto);
+  rev('un requiere que apunta a sí mismo',
+    problemas.some((p) => p.includes('apunta a sí mismo')), JSON.stringify(problemas));
+}
+
 for (const [etiqueta, texto, contiene] of [
   ['sin encabezado', `## Hola\n${CAJA_OK}`, 'falta el encabezado'],
   ['encabezado sin cerrar', `---\ncodigo: LX\ntitulo: Sonda\n${CAJA_OK}`, 'no se cierra'],
@@ -196,6 +212,21 @@ rev('los --- del cuerpo son separadores y no cortan el enunciado',
   && separadores.bloques.filter((b) => b.tipo === 'html')
        .map((b) => b.html).join('').split('<hr>').length - 1 === 2,
   JSON.stringify(separadores.problemas));
+
+// El título con dos puntos adentro se escribe entre comillas, y las comillas no
+// pueden llegar a la pantalla del alumno.
+const entreComillas = compilar(
+  `---\ncodigo: LX\ntitulo: "Desafío 1 · Hablar HTTP a mano"\npuntos: 100\n---\n${CAJA_OK}`);
+rev('un título entre comillas pierde las comillas',
+  entreComillas.meta.titulo === 'Desafío 1 · Hablar HTTP a mano',
+  JSON.stringify(entreComillas.meta.titulo));
+
+const opcionalBien = compilar(
+  `---\ncodigo: X1\ntitulo: Desafío\npuntos: 100\nopcional: true\nrequiere: L1\n---\n${CAJA_OK}`);
+rev('un opcional bien declarado se acepta',
+  opcionalBien.problemas.length === 0
+  && opcionalBien.meta.opcional === 'true' && opcionalBien.meta.requiere === 'L1',
+  JSON.stringify(opcionalBien.problemas));
 
 const conDosPuntos = compilar(
   `---\ncodigo: LX\ntitulo: Sonda\npuntos: 100\ndescripcion: Mira esto: viaja en texto plano\n---\n${CAJA_OK}`);

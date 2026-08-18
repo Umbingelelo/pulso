@@ -38,9 +38,30 @@ import { PerfilStore } from './perfil.store';
         <a class="boton contorno chico" routerLink="/actividades"
            style="margin-top:14px">Volver a actividades</a>
       </div>
+    } @else if (lab()?.falta; as req) {
+      <!-- Se llega acá escribiendo la dirección a mano: la tarjeta de Actividades
+           no ofrece el enlace. El enunciado no viene en la respuesta —eso lo
+           decide la base— así que acá no hay nada que esconder, solo que explicar. -->
+      <div class="encabezado">
+        <p class="etiqueta">Desafío {{ lab()!.codigo }}</p>
+        <h1>{{ lab()!.titulo }}</h1>
+      </div>
+      <div class="tarjeta">
+        <div class="aviso dato">
+          <strong>Todavía no se abre.</strong> Este desafío es opcional y aparece cuando entregas
+          <strong>{{ req }}</strong>. No te pierdes nada de la línea principal del ramo si no lo haces.
+        </div>
+        @if (lab()!.descripcion) {
+          <p class="chico suave" style="margin-top:14px">{{ lab()!.descripcion }}</p>
+        }
+        <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+          <a class="boton" [routerLink]="'/laboratorio/' + req">Ir a {{ req }}</a>
+          <a class="boton contorno" routerLink="/actividades">Volver a actividades</a>
+        </div>
+      </div>
     } @else if (lab(); as l) {
       <div class="encabezado">
-        <p class="etiqueta">Laboratorio {{ l.codigo }}</p>
+        <p class="etiqueta">{{ l.opcional ? 'Desafío' : 'Laboratorio' }} {{ l.codigo }}</p>
         <h1>{{ l.titulo }}</h1>
         @if (l.descripcion) { <p>{{ l.descripcion }}</p> }
       </div>

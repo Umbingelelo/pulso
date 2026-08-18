@@ -31,6 +31,11 @@ const ACCIONES = {
   entregar: (s, d) =>
     s`select public.laboratorio_entregar(${d.matricula}::uuid, ${d.codigo}) as r`,
 
+  // Qué laboratorios tiene, cuáles son opcionales y cuáles están cerrados. Lo
+  // usa la pantalla de Actividades para no ofrecer «Empezar» sobre un candado.
+  estado: (s, d) =>
+    s`select * from public.mis_laboratorios(${d.matricula}::uuid)`,
+
   // Para el docente: cómo va el curso en este laboratorio.
   avances: (s, d) =>
     s`select * from public.laboratorio_avances(

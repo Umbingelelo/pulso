@@ -465,6 +465,18 @@ export interface Revision {
   cacheada?: boolean;
 }
 
+/** Un laboratorio en la lista, con su candado. */
+export interface EstadoLaboratorio {
+  codigo: string;
+  titulo: string;
+  /** No entra en ninguna nota: es un desafío para quien terminó el oficial. */
+  opcional: boolean;
+  /** El código que hay que entregar antes, si lo hay. */
+  requiere: string | null;
+  /** Lo que **todavía** falta entregar. `null` = abierto. */
+  falta: string | null;
+}
+
 export interface Laboratorio {
   actividad_id: string;
   codigo: string;
@@ -475,6 +487,13 @@ export interface Laboratorio {
   minutos: number | null;
   cajas: number;
   controles: number;
+  opcional: boolean;
+  requiere: string | null;
+  /**
+   * Lo que falta entregar para abrirlo. Cuando no es `null`, el servidor **no
+   * manda los bloques**: la ficha se ve, el enunciado no.
+   */
+  falta: string | null;
   respuestas: Record<string, string>;
   /** Lo que el modelo sugirió, por identificador de caja. */
   revisiones: Record<string, Revision>;
@@ -1269,6 +1288,11 @@ export class DatosService {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { fallo: d?.error ?? 'No se pudo pedir la sugerencia.' };
     return d as { revision?: Revision; fallo?: string };
+  }
+
+  /** Los laboratorios del ramo con su candado, para pintar la lista sin abrir cada uno. */
+  async estadoLaboratorios(matriculaId: string): Promise<EstadoLaboratorio[]> {
+    return await this.lab('estado', { matricula: matriculaId }) as EstadoLaboratorio[];
   }
 
   /** Cómo va el curso en un laboratorio. Solo devuelve las secciones que dicta. */

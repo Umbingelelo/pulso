@@ -42,7 +42,8 @@ const AVISOS = ['alerta', 'pista', 'ojo'];
 /** Los dos formatos de caja que el navegador sabe dibujar (ver `laboratorio.component.ts`). */
 const FORMATOS = ['corta', 'codigo'];
 /** El encabezado es un juego cerrado: una llave de más suele ser una tildada. */
-const LLAVES = ['codigo', 'titulo', 'descripcion', 'minutos', 'puntos', 'orden'];
+const LLAVES = ['codigo', 'titulo', 'descripcion', 'minutos', 'puntos', 'orden',
+                'opcional', 'requiere'];
 
 /** Cualquier línea que empiece con `:::`, con o sin indentación. */
 const MARCA = /^(\s*):::(.*)$/;
@@ -117,7 +118,15 @@ function leerEncabezado(texto, problemas) {
         `línea ${n}: «${llave}» no es una llave del encabezado. Son: ${LLAVES.join(', ')}`);
       continue;
     }
-    meta[llave] = linea.slice(i + 1).trim();
+    // Se quitan las comillas envolventes si las hay: un título con dos puntos
+    // adentro se escribe entre comillas, y guardarlas haría que el alumno viera
+    // «"Desafío 1 · Hablar HTTP a mano"» con comillas y todo.
+    let valor = linea.slice(i + 1).trim();
+    if (valor.length > 1 && ((valor.startsWith('"') && valor.endsWith('"'))
+                          || (valor.startsWith("'") && valor.endsWith("'")))) {
+      valor = valor.slice(1, -1).trim();
+    }
+    meta[llave] = valor;
   }
 
   for (const k of ['codigo', 'titulo', 'puntos']) {
@@ -127,6 +136,19 @@ function leerEncabezado(texto, problemas) {
     if (meta[k] !== undefined && !/^\d+$/.test(meta[k])) {
       problemas.push(`«${k}: ${meta[k]}» no es un número entero`);
     }
+  }
+  if (meta.opcional !== undefined && !['true', 'false'].includes(meta.opcional)) {
+    problemas.push(`«opcional: ${meta.opcional}» tiene que ser true o false`);
+  }
+  // `requiere` sin `opcional` se acepta —un laboratorio de la línea principal
+  // también podría tener prerrequisito— pero `opcional` sin `requiere` casi
+  // siempre es un olvido: el desafío quedaría abierto desde el primer día.
+  if (meta.opcional === 'true' && !meta.requiere) {
+    problemas.push('un laboratorio «opcional: true» sin «requiere» queda abierto ' +
+      'desde el principio. Escribe el código del que hay que entregar antes, p.ej. «requiere: L1»');
+  }
+  if (meta.requiere && meta.requiere === meta.codigo) {
+    problemas.push(`«requiere: ${meta.requiere}» apunta a sí mismo: nunca se desbloquearía`);
   }
 
   return {

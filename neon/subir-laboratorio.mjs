@@ -64,6 +64,10 @@ console.log(`Laboratorio ${meta.codigo} · ${meta.titulo}`);
 console.log(`Bloques    ${bloques.length} · ${ids.length} cajas · ${controles} controles · ${avisos} avisos`);
 console.log(`Cajas      ${ids.join(', ')}`);
 console.log(`Puntos     ${meta.puntos} · ${meta.minutos ?? '?'} minutos · orden ${meta.orden ?? 0}`);
+if (meta.opcional === 'true' || meta.requiere) {
+  console.log(`Acceso     ${meta.opcional === 'true' ? 'opcional' : 'de la línea principal'}` +
+    (meta.requiere ? ` · se abre al entregar ${meta.requiere}` : ' · sin candado'));
+}
 
 if (!args.escribir) {
   console.log('\nSin --escribir: no toqué la base.');
@@ -91,12 +95,15 @@ const [act] = await sql`
   returning id`;
 
 await sql`
-  insert into public.laboratorios (actividad_id, bloques, minutos, cajas, controles)
+  insert into public.laboratorios (actividad_id, bloques, minutos, cajas, controles,
+                                   opcional, requiere)
   values (${act.id}, ${JSON.stringify(bloques)}::jsonb,
-          ${meta.minutos ? Number(meta.minutos) : null}, ${ids.length}, ${controles})
+          ${meta.minutos ? Number(meta.minutos) : null}, ${ids.length}, ${controles},
+          ${meta.opcional === 'true'}, ${meta.requiere ?? null})
   on conflict (actividad_id) do update
     set bloques = excluded.bloques, minutos = excluded.minutos,
         cajas = excluded.cajas, controles = excluded.controles,
+        opcional = excluded.opcional, requiere = excluded.requiere,
         actualizado_en = now()`;
 
 // Si el enunciado cambió, avisar de las cajas que desaparecieron: las respuestas

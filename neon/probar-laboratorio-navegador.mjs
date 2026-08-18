@@ -21,6 +21,16 @@ import { neon } from '@neondatabase/serverless';
 const BASE = process.argv[2] ?? 'https://pulso-rust.vercel.app';
 const CODIGO = process.argv.includes('--codigo')
   ? process.argv[process.argv.indexOf('--codigo') + 1] : 'L1';
+/**
+ * Con qué asignatura, cuando el código no alcanza.
+ *
+ * Desde que ITY1102 tiene su propio `L1`, buscar solo por código encuentra dos
+ * laboratorios. Y acá el desacuerdo es peor que en la prueba de lógica: la base
+ * miraba uno mientras el navegador mostraba el otro, así que las comprobaciones
+ * de «llegó a la base» fallaban sin que nada estuviera roto.
+ */
+const SIGLA = process.argv.includes('--sigla')
+  ? process.argv[process.argv.indexOf('--sigla') + 1] : null;
 /** `--foto ruta.png` deja el enunciado entero en una imagen, para mirarlo con ojos. */
 const FOTO = process.argv.includes('--foto')
   ? process.argv[process.argv.indexOf('--foto') + 1] : null;
@@ -42,17 +52,29 @@ const pausa = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ---------- Dejar la pizarra limpia ----------
 
-const [m] = await d`
-  select mt.id as matricula, a.id as actividad, a.titulo
+const candidatos = await d`
+  select mt.id as matricula, a.id as actividad, a.titulo, asg.sigla
     from public.matriculas mt
     join public.perfiles   p on p.id = mt.perfil_id
     join public.usuarios   u on u.id = p.id
     join public.secciones  s on s.id = mt.seccion_id
+    join public.asignaturas asg on asg.id = s.asignatura_id
     join public.actividades a on a.asignatura_id = s.asignatura_id
                              and a.periodo_id    = s.periodo_id
     join public.laboratorios l on l.actividad_id = a.id
-   where lower(u.correo) = 'alumno.prueba@duocuc.cl' and a.codigo = ${CODIGO}`;
-if (!m) throw new Error(`El alumno de prueba no tiene el laboratorio ${CODIGO}`);
+   where lower(u.correo) = 'alumno.prueba@duocuc.cl' and a.codigo = ${CODIGO}
+     and (${SIGLA}::text is null or asg.sigla = ${SIGLA})
+   order by asg.sigla`;
+if (!candidatos.length) {
+  throw new Error(`El alumno de prueba no tiene el laboratorio ${CODIGO}${SIGLA ? ` en ${SIGLA}` : ''}`);
+}
+if (candidatos.length > 1) {
+  console.error(`Hay ${candidatos.length} laboratorios con el código ${CODIGO}: ` +
+    candidatos.map((c) => c.sigla).join(', '));
+  console.error(`Elige uno con  --sigla ${candidatos[0].sigla}`);
+  process.exit(1);
+}
+const m = candidatos[0];
 
 // Por marca de agua **y** por motivo. La marca sola no alcanza: una corrida que
 // se muera después de entregar deja sus puntos ahí, y la siguiente toma su marca
@@ -85,7 +107,7 @@ try {
   await p.setViewport({ width: 1400, height: 1100 });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
 
-  console.log(`Laboratorio ${CODIGO} en ${BASE}`);
+  console.log(`${m.sigla} · laboratorio ${CODIGO} en ${BASE}`);
 
   await p.goto(`${BASE}/ingresar`, { waitUntil: 'networkidle2' });
   await p.waitForSelector('input[type=email]');
@@ -93,6 +115,12 @@ try {
   await p.type('input[type=password]', 'pulso-prueba-2026');
   await p.click('button[type=submit]');
   await p.waitForFunction(() => location.pathname !== '/ingresar', { timeout: 30000 });
+
+  // El alumno de prueba cursa los dos ramos y los dos tienen un `L1`. Sin fijar
+  // cuál está mirando, la pantalla puede abrir el del otro ramo y las
+  // comprobaciones contra la base fallarían sin que nada estuviera roto.
+  await p.evaluate((mat) => { try { localStorage.setItem('pulso.ramo', mat); } catch {} },
+    m.matricula);
 
   // ══════════ Llegar desde Actividades ══════════
   // Se entra por donde entra el alumno y no por la URL directa: si el enlace de
@@ -148,7 +176,11 @@ try {
   rev('tantas cajas como dice la base', vista.cajas, enBase.cajas);
   rev('tantos controles como dice la base', vista.controles, enBase.controles);
   rev('los avisos se dibujan', vista.notas > 0, true);
-  rev('el Markdown quedó convertido', vista.titulos && vista.codigo, true);
+  // Los títulos siempre; el `<pre>` solo si el enunciado trae código. El L1 de
+  // ITY es una hoja de respuestas que acompaña a un notebook y no tiene ninguno,
+  // así que exigírselo sería hacerlo fallar por no ser lo que no es.
+  const traeCodigo = JSON.stringify(enBase.bloques).includes('<pre><code');
+  rev('el Markdown quedó convertido', vista.titulos && (!traeCodigo || vista.codigo), true);
   rev('las tablas y las listas también', vista.tablas > 0 && vista.listas > 0, true);
   // Condicional a propósito: no todo laboratorio tiene enlaces —L1 se reescribió
   // sin ninguno— y exigirlos siempre convierte una prueba en un ruido que se

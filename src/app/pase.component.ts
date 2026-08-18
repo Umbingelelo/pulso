@@ -98,15 +98,18 @@ import { PerfilStore } from './perfil.store';
                    [style.--i]="$index">
                 <div class="n">Nivel {{ r.nivel }}</div>
                 <div class="premio">
-                  @if (r.cosmetico) {
+                  <!-- La cara de verdad y no una silueta: desde que los avatares
+                       son imágenes concretas, un icono genérico esconde justo lo
+                       que el alumno está jugando por conseguir. -->
+                  @if (r.cosmetico?.tipo === 'avatar' && r.cosmetico?.valor?.startsWith('https://')) {
+                    <img class="cara" [src]="r.cosmetico!.valor" [alt]="r.cosmetico!.nombre" loading="lazy">
+                  } @else if (r.cosmetico) {
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                          stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       @if (r.cosmetico.tipo === 'titulo') {
                         <path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h7"/>
-                      } @else if (r.cosmetico.tipo === 'marco') {
-                        <rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="12" cy="12" r="3"/>
                       } @else {
-                        <circle cx="12" cy="9" r="4"/><path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5"/>
+                        <rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="12" cy="12" r="3"/>
                       }
                     </svg>
                   } @else {
@@ -119,11 +122,12 @@ import { PerfilStore } from './perfil.store';
                 <div class="nom">
                   {{ r.cosmetico ? r.cosmetico.nombre : (r.tiradas === 1 ? 'Una tirada' : r.tiradas + ' tiradas') }}
                 </div>
-                @if (r.cosmetico && r.desbloqueada && r.cosmetico.tipo === 'titulo') {
+                @if (r.cosmetico && r.desbloqueada
+                     && (r.cosmetico.tipo === 'titulo' || r.cosmetico.tipo === 'avatar')) {
                   <button class="boton contorno chico" style="margin-top:8px;width:100%"
                           [disabled]="equipando() === r.cosmetico.id"
                           (click)="equipar(r)">
-                    {{ tituloPuesto() === r.cosmetico.id ? 'Puesto' : 'Usar' }}
+                    {{ puesto(r) ? 'Puesto' : 'Usar' }}
                   </button>
                 }
               </div>
@@ -272,13 +276,31 @@ export class PaseComponent {
     }
   }
 
+  /**
+   * Si esa recompensa es la que lleva puesta.
+   *
+   * Son dos cosas distintas: el título vive en la matrícula y se lee de la tabla
+   * de posiciones; la cara vive en el perfil, que es de la persona y no del ramo.
+   */
+  puesto(r: Recompensa): boolean {
+    if (!r.cosmetico) return false;
+    if (r.cosmetico.tipo === 'avatar') return this.perfil.perfil()?.avatar === r.cosmetico.valor;
+    return this.tituloPuesto() === r.cosmetico.id;
+  }
+
   async equipar(r: Recompensa): Promise<void> {
     const ramo = this.perfil.ramo();
     if (!ramo || !r.cosmetico || this.equipando()) return;
     this.equipando.set(r.cosmetico.id);
     try {
       await this.datos.equipar(ramo.matricula_id, r.cosmetico.id);
-      this.tituloPuesto.set(r.cosmetico.id);
+      if (r.cosmetico.tipo === 'avatar') {
+        // La cara vive en el perfil: sin recargarlo, el botón sigue diciendo
+        // «Usar» sobre algo que el alumno acaba de ponerse.
+        await this.perfil.cargar(true);
+      } else {
+        this.tituloPuesto.set(r.cosmetico.id);
+      }
       this.tabla.set(await this.datos.posiciones(ramo.matricula_id));
     } finally {
       this.equipando.set(null);

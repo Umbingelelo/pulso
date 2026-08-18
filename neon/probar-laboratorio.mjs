@@ -27,6 +27,15 @@ const args = Object.fromEntries(
   }, []),
 );
 const CODIGO = args.codigo ?? 'L1';
+/**
+ * Con qué asignatura, cuando el código no alcanza.
+ *
+ * Desde que ITY1102 tiene su propio `L1`, buscar solo por código encuentra dos
+ * laboratorios distintos y la prueba corría sobre el que Postgres devolviera
+ * primero. Verde en los dos casos, pero sin saber cuál se probó — que es lo mismo
+ * que no haber probado.
+ */
+const SIGLA = args.sigla ?? null;
 
 const dueno = neon(process.env.DATABASE_URL_OWNER);
 const app = neon(process.env.DATABASE_URL_OWNER);
@@ -69,15 +78,31 @@ const [alumno] = await dueno`
   select u.id from public.usuarios u where lower(u.correo) = ${CORREO}`;
 if (!alumno) throw new Error(`No existe ${CORREO}.`);
 
-const [m] = await dueno`
-  select mt.id as matricula, a.id as actividad, a.titulo, a.puntos, l.cajas, l.controles
+const candidatos = await dueno`
+  select mt.id as matricula, a.id as actividad, a.titulo, a.puntos, l.cajas, l.controles,
+         asg.sigla
     from public.matriculas mt
-    join public.secciones  s on s.id = mt.seccion_id
+    join public.secciones   s on s.id = mt.seccion_id
+    join public.asignaturas asg on asg.id = s.asignatura_id
     join public.actividades a on a.asignatura_id = s.asignatura_id
                              and a.periodo_id    = s.periodo_id
     join public.laboratorios l on l.actividad_id = a.id
-   where mt.perfil_id = ${alumno.id} and a.codigo = ${CODIGO}`;
-if (!m) throw new Error(`El alumno de prueba no tiene el laboratorio ${CODIGO}.`);
+   where mt.perfil_id = ${alumno.id} and a.codigo = ${CODIGO}
+     and (${SIGLA}::text is null or asg.sigla = ${SIGLA})
+   order by asg.sigla`;
+if (!candidatos.length) {
+  throw new Error(`El alumno de prueba no tiene el laboratorio ${CODIGO}` +
+    (SIGLA ? ` en ${SIGLA}.` : '.'));
+}
+if (candidatos.length > 1) {
+  // Se para en vez de elegir: correr sobre uno cualquiera y decir «todo bien»
+  // deja el otro sin probar y a nadie enterado.
+  console.error(`Hay ${candidatos.length} laboratorios con el código ${CODIGO}: ` +
+    candidatos.map((c) => c.sigla).join(', '));
+  console.error(`Elige uno:  node neon/probar-laboratorio.mjs --codigo ${CODIGO} --sigla ${candidatos[0].sigla}`);
+  process.exit(1);
+}
+const m = candidatos[0];
 
 /**
  * Deja la matrícula como estaba.
@@ -123,7 +148,7 @@ const saldo = async () => {
 };
 const antes = await saldo();
 
-console.log(`Laboratorio ${CODIGO} · ${m.cajas} cajas · ${m.controles} controles · ${m.puntos} puntos`);
+console.log(`${m.sigla} · laboratorio ${CODIGO} · ${m.cajas} cajas · ${m.controles} controles · ${m.puntos} puntos`);
 
 // ---------- Leerlo ----------
 

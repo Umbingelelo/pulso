@@ -27,7 +27,16 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compilar } from './laboratorio-md.mjs';
 
-const LABORATORIOS = '../Desarrollo_Cloud_Native/Laboratorios';
+/**
+ * Dónde viven los laboratorios de verdad.
+ *
+ * Son dos carpetas porque son dos asignaturas, y las dos tienen un `L1`: el
+ * código es único dentro de (asignatura, periodo), no en toda la base.
+ */
+const LABORATORIOS = [
+  '../Desarrollo_Cloud_Native/Laboratorios',
+  '../Arquitectura_de_Sistemas_IA/Laboratorios',
+];
 
 let fallos = 0;
 const rev = (etiqueta, ok, detalle = '') => {
@@ -207,15 +216,30 @@ rev('el número de línea apunta al archivo, no al cuerpo',
 // La red de seguridad: las reglas nuevas no pueden rechazar lo que ya está publicado.
 
 console.log('\nLos laboratorios de verdad');
-let archivos = [];
-try {
-  archivos = (await readdir(LABORATORIOS)).filter((x) => x.endsWith('.md')).sort();
-} catch {
-  console.log(`  · no encontré ${LABORATORIOS}, me los salto`);
+const archivos = [];
+for (const carpeta of LABORATORIOS) {
+  try {
+    // Un nivel de subcarpetas: el L1 de ITY vive dentro de la carpeta del
+    // laboratorio, junto a su notebook y sus guías.
+    for (const entrada of await readdir(carpeta, { withFileTypes: true })) {
+      const ruta = join(carpeta, entrada.name);
+      if (entrada.isFile() && entrada.name.endsWith('.md') && entrada.name !== 'README.md') {
+        archivos.push(ruta);
+      } else if (entrada.isDirectory()) {
+        for (const dentro of await readdir(ruta)) {
+          if (dentro.endsWith('.md') && dentro !== 'README.md') archivos.push(join(ruta, dentro));
+        }
+      }
+    }
+  } catch {
+    console.log(`  · no encontré ${carpeta}, me la salto`);
+  }
 }
-for (const archivo of archivos) {
+archivos.sort();
+for (const ruta of archivos) {
+  const archivo = ruta.split('/').pop();
   const { meta, bloques, ids, controles, problemas } = compilar(
-    await readFile(join(LABORATORIOS, archivo), 'utf8'));
+    await readFile(ruta, 'utf8'));
   rev(`${archivo} compila limpio`, problemas.length === 0, problemas.join('\n      '));
   if (problemas.length) continue;
   rev(`  ${meta.codigo} · ${bloques.length} bloques · ${ids.length} cajas · ${controles} controles`,

@@ -35,6 +35,8 @@ const args = Object.fromEntries(
   }, []),
 );
 const CODIGO = args.codigo ?? 'L1';
+/** Dos asignaturas tienen un `L1`, así que el código solo no alcanza. */
+const SIGLA = args.sigla ?? null;
 
 const d = neon(process.env.DATABASE_URL_OWNER);
 let fallos = 0;
@@ -43,15 +45,24 @@ const rev = (e, ok, detalle = '') => {
   console.log(`  ${ok ? '✓' : '✗'} ${e}${ok || !detalle ? '' : `\n      ${detalle}`}`);
 };
 
-const [lab] = await d`
-  select a.codigo, a.titulo, l.bloques, '{}'::jsonb as respuestas, '{}'::jsonb as revisiones
+const labs = await d`
+  select a.codigo, a.titulo, l.bloques, asg.sigla,
+         '{}'::jsonb as respuestas, '{}'::jsonb as revisiones
     from public.laboratorios l
     join public.actividades a on a.id = l.actividad_id
-   where a.codigo = ${CODIGO}`;
-if (!lab) throw new Error(`No existe el laboratorio ${CODIGO}.`);
+    join public.asignaturas asg on asg.id = a.asignatura_id
+   where a.codigo = ${CODIGO} and (${SIGLA}::text is null or asg.sigla = ${SIGLA})
+   order by asg.sigla`;
+if (!labs.length) throw new Error(`No existe el laboratorio ${CODIGO}${SIGLA ? ` en ${SIGLA}` : ''}.`);
+if (labs.length > 1) {
+  console.error(`Hay ${labs.length} laboratorios con el código ${CODIGO}: ${labs.map((l) => l.sigla).join(', ')}`);
+  console.error(`Elige uno:  node neon/probar-revision.mjs --codigo ${CODIGO} --sigla ${labs[0].sigla}`);
+  process.exit(1);
+}
+const lab = labs[0];
 
 const cajas = lab.bloques.filter((b) => b.tipo === 'caja');
-console.log(`${lab.codigo} · ${lab.titulo} · ${cajas.length} cajas`);
+console.log(`${lab.sigla} · ${lab.codigo} · ${lab.titulo} · ${cajas.length} cajas`);
 
 // ============================== El contexto ==============================
 // Sin gastar una llamada: si esto está mal, todo lo demás juzga a ciegas.
@@ -67,9 +78,17 @@ rev('la marca no va al final: hay enunciado después',
   ctx.indexOf('fin de la caja a revisar') < ctx.length - 500);
 rev('menciona las demás cajas',
   cajas.filter((c) => c.id !== unaCaja.id).every((c) => ctx.includes(`[caja ${c.id}]`)));
-rev('conserva los bloques de código del enunciado',
-  (ctx.match(/```/g) ?? []).length >= 4,
-  `${(ctx.match(/```/g) ?? []).length / 2} bloques`);
+// Condicional: no todo enunciado trae código. El L1 de ITY es una hoja de
+// respuestas que acompaña a un notebook, y exigirle bloques de código sería
+// hacerla fallar por no ser lo que no es.
+const codigoEnBase = JSON.stringify(lab.bloques).includes('<pre><code');
+if (codigoEnBase) {
+  rev('conserva los bloques de código del enunciado',
+    (ctx.match(/```/g) ?? []).length >= 4,
+    `${(ctx.match(/```/g) ?? []).length / 2} bloques`);
+} else {
+  console.log('  · este enunciado no trae bloques de código, no hay nada que conservar');
+}
 rev('no queda HTML crudo', !/<(p|div|pre|code|table|strong)\b/.test(ctx),
   (ctx.match(/<[a-z]+[ >]/g) ?? []).slice(0, 5).join(' '));
 
@@ -104,6 +123,10 @@ const SOPLONES = {
     'content-length cuenta bytes', 'no lleva body', 'no manda body',
     'porque no envía nada', 'la petición no tiene cuerpo',
   ],
+  // ITY · L1: la respuesta de 2b **son** los dos centinelas. Nombrarlos es dársela.
+  '2b': ['error', 'unknown'],
+  '8a': ['se escala con la media del entrenamiento', 'los parámetros del train',
+         'se ajusta con train', 'fit solo en train'],
 };
 
 /** Voseo y registro: dos cosas que salieron mal en la primera corrida. */
@@ -111,7 +134,7 @@ const VOSEO = /\b(mirá|revisá|volvé|volvete|leé|copiá|andá|fijate|tenís|p
 const GARABATOS = /\b(we[oó]n|hue[oó]n|cabr[oa]|causa|po[hs]?\b.*\bweon)\b/i;
 
 /** Respuestas escritas a mano para cajas concretas de L1. */
-const CASOS = CODIGO !== 'L1' ? [] : [
+const CASOS = (CODIGO !== 'L1' || lab.sigla !== 'DSY1107') ? [] : [
   {
     caja: '2.5',
     que: 'una explicación correcta de por qué base64 no protege un JWT',
@@ -162,8 +185,46 @@ const CASOS = CODIGO !== 'L1' ? [] : [
   },
 ];
 
+/** Los del L1 de ITY1102, que es una hoja de respuestas y no un tutorial. */
+const CASOS_ITY = (CODIGO !== 'L1' || lab.sigla !== 'ITY1102') ? [] : [
+  {
+    caja: '2b',
+    que: 'identifica bien los centinelas que isna() no ve',
+    respuesta: 'Encontré que hay celdas con el texto ERROR y con el texto UNKNOWN. ' +
+      'Como son strings y no NaN, isna() no los cuenta: son 1.234 celdas entre las dos.',
+    noPuede: ['incompleto'],
+  },
+  {
+    caja: '2b',
+    que: 'dice que no había nada, que es justo lo contrario',
+    respuesta: 'No encontré ningún valor raro, los datos estaban limpios.',
+    noPuede: ['logrado'],
+  },
+  {
+    caja: '2b',
+    que: 'en blanco',
+    respuesta: '   ',
+    noPuede: ['logrado', 'parcial'],
+  },
+  {
+    caja: '8c',
+    que: 'una justificación razonada del costo asimétrico',
+    respuesta: 'Cuesta más quedarse sin envases: si preparo de más pierdo el costo del ' +
+      'envase, que son unos pesos, pero si me quedo sin ellos pierdo la venta completa y ' +
+      'además el cliente se va molesto. El error de faltante es más caro que el de sobrante, ' +
+      'así que conviene un modelo que se equivoque hacia preparar de más.',
+    noPuede: ['incompleto'],
+  },
+  {
+    caja: '8c',
+    que: 'no justifica, solo elige',
+    respuesta: 'quedarse sin envases',
+    noPuede: ['logrado'],
+  },
+];
+
 const soloCaja = args.caja ? String(args.caja) : null;
-const casos = CASOS.filter((c) => !soloCaja || c.caja === soloCaja);
+const casos = [...CASOS, ...CASOS_ITY].filter((c) => !soloCaja || c.caja === soloCaja);
 
 if (!casos.length) {
   console.log(`\nSin casos escritos para ${CODIGO}${soloCaja ? ` caja ${soloCaja}` : ''}.`);
@@ -214,7 +275,7 @@ if (!casos.length) {
 // «No sé, ni idea» en una caja conceptual: el modelo tiene todo el contexto y nada
 // que evaluar, así que es el momento en que más quiere explicar.
 
-if (CODIGO === 'L1' && cajas.some((c) => c.id === '2.5')) {
+if (CODIGO === 'L1' && lab.sigla === 'DSY1107' && cajas.some((c) => c.id === '2.5')) {
   console.log('\nEl caso más tentador: «no sé, ni idea»');
   try {
     const r = await revisar({ lab, cajaId: '2.5', respuesta: 'no sé, ni idea' });

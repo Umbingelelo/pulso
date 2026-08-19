@@ -1,8 +1,20 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Actividad, DatosService, EstadoLaboratorio, Resultado } from './datos.service';
+import { Actividad, DatosService, EstadoLaboratorio, plazoVigente, Resultado } from './datos.service';
 import { PerfilStore } from './perfil.store';
+
+/**
+ * Lo que hay que hacer y lo que ya se hizo.
+ *
+ * ── El plazo se dice acá, no después de entregar ──
+ *
+ * Una actividad puede tener un plazo para pagar: dentro da puntos, fuera se puede
+ * hacer igual pero no paga. Eso tiene que estar en la tarjeta, antes de que el
+ * alumno entre: descubrir el plazo al entregar no es un plazo, es una trampa. Por
+ * eso la insignia dice «Fuera de plazo» en vez de «Pendiente» y la línea de abajo
+ * pone la fecha.
+ */
 
 @Component({
   selector: 'app-actividades',
@@ -32,6 +44,11 @@ import { PerfilStore } from './perfil.store';
                 <span class="insignia verde">Completada</span>
               } @else if (falta(a); as req) {
                 <span class="insignia">Se abre con {{ req }}</span>
+              } @else if (!enPlazo(a)) {
+                <!-- Antes que «Opcional» a propósito: que ya no pague es lo que
+                     cambia la decisión del alumno, y es lo que tiene que leer
+                     primero. -->
+                <span class="insignia">Fuera de plazo</span>
               } @else if (esOpcional(a)) {
                 <span class="insignia celeste">Opcional</span>
               } @else {
@@ -47,9 +64,16 @@ import { PerfilStore } from './perfil.store';
                 No entra en ninguna nota. Es para quien terminó y quiere más.
               </p>
             }
+            @if (!hecha(a.id) && leyendaPlazo(a); as aviso) {
+              <p class="chico" style="margin-top:8px" [class.suave]="enPlazo(a)">{{ aviso }}</p>
+            }
 
             <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
-              <span class="insignia celeste">{{ a.puntos }} puntos</span>
+              <!-- Sin plazo o dentro de él vale lo que dice; fuera vale cero, y
+                   anunciar los 100 puntos que ya no se pagan sería mentirle. -->
+              <span class="insignia" [class.celeste]="enPlazo(a)">
+                {{ hecha(a.id) || enPlazo(a) ? a.puntos : 0 }} puntos
+              </span>
               @if (hecha(a.id); as r) {
                 <a class="boton contorno chico" [routerLink]="ruta(a)">Ver mi resultado</a>
               } @else if (falta(a); as req) {
@@ -123,6 +147,33 @@ export class ActividadesComponent {
 
   esOpcional(a: Actividad): boolean {
     return this.candados().get(a.codigo)?.opcional === true;
+  }
+
+  /**
+   * Si hacerla ahora paga. Se calcula con las dos fechas que ya trae la actividad
+   * y no con el `en_plazo` de `mis_laboratorios`, porque así también sirve para el
+   * diagnóstico y las entregas, que no pasan por ahí.
+   */
+  enPlazo(a: Actividad): boolean {
+    return plazoVigente(a.puntua_desde, a.puntua_hasta);
+  }
+
+  /** El plazo en palabras, o `null` si no tiene. */
+  leyendaPlazo(a: Actividad): string | null {
+    if (!a.puntua_desde && !a.puntua_hasta) return null;
+    const f = (iso: string) =>
+      new Date(iso).toLocaleString('es-CL', { weekday: 'short', day: '2-digit', month: '2-digit',
+                                              hour: '2-digit', minute: '2-digit' });
+    const ahora = Date.now();
+
+    if (a.puntua_desde && ahora < new Date(a.puntua_desde).getTime()) {
+      return `Empieza a dar puntos el ${f(a.puntua_desde)}.`;
+    }
+    if (a.puntua_hasta && ahora > new Date(a.puntua_hasta).getTime()) {
+      return `El plazo terminó el ${f(a.puntua_hasta)}. Puedes hacerla igual, ` +
+             'pero ya no da puntos.';
+    }
+    return a.puntua_hasta ? `Da puntos hasta el ${f(a.puntua_hasta)}.` : null;
   }
 
   etiquetaTipo(tipo: string): string {

@@ -6,12 +6,26 @@ import { AlumnoDocente, DatosService, SeccionDocente } from './datos.service';
 import { DocenteStore } from './docente.store';
 
 /**
- * Administrar alumnos: moverlos de sección, darlos de baja, reiniciar su clave.
+ * Administrar alumnos: sus puntos, moverlos de sección, darlos de baja, reiniciar
+ * su clave.
  *
  * Nada se borra nunca. Dar de baja es `activa = false`, que lo saca de las listas
  * y de los promedios sin perder lo que hizo mientras cursaba; y cambiar de
  * sección mueve la matrícula entera, así que se lleva sus puntos y su progreso
  * consigo. Cambiarse de sección no debería costarle a nadie lo que ya trabajó.
+ *
+ * ── Por qué los puntos se ajustan también acá ──
+ *
+ * El formulario ya existía, pero solo en «Resumen». Y esta pantalla se llama
+ * «Alumnos», muestra la columna de puntos, y es donde uno va a buscar cualquier
+ * cosa que se le haga a un alumno: tener la acción en la otra lista la volvía
+ * invisible. Es el mismo `otorgarPuntos()` de siempre, así que no hay dos maneras
+ * de hacer lo mismo, hay una en los dos lugares donde se busca.
+ *
+ * El libro de movimientos **no se edita**: ajustar es agregar una línea, positiva o
+ * negativa, con su motivo. Por eso el campo pide un motivo obligatorio —el alumno
+ * lo va a leer en su pantalla de puntos, y «−50» sin explicación es peor que no
+ * descontar— y por eso no hay ningún botón que diga «corregir».
  */
 @Component({
   selector: 'app-docente-alumnos',
@@ -69,7 +83,9 @@ import { DocenteStore } from './docente.store';
                 @if (a.diagnostico) { <span class="insignia verde">sí</span> }
                 @else { <span class="insignia amarilla">no</span> }
               </td>
-              <td class="der">
+              <td class="der" style="white-space:nowrap">
+                <button class="boton contorno chico" style="margin-right:6px"
+                        (click)="abrirEnPuntos(a)">Puntos</button>
                 <button class="boton contorno chico" (click)="abrir(a)">
                   {{ editando()?.matricula_id === a.matricula_id ? 'Cerrar' : 'Editar' }}
                 </button>
@@ -93,6 +109,42 @@ import { DocenteStore } from './docente.store';
             @if (a.ultimo_ingreso) { · último ingreso {{ a.ultimo_ingreso | date:'dd/MM HH:mm' }} }
             @else { · nunca ha entrado }
           </p>
+
+          <!-- Primero los puntos: es lo que más se toca, y es lo que se venía a
+               hacer si se entró por el botón «Puntos» de la fila. -->
+          <div id="bloque-puntos" style="margin-top:20px;padding:16px;
+                                         border-radius:var(--r-chico);background:var(--fondo)">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;
+                        gap:14px;flex-wrap:wrap">
+              <span class="etiqueta">Ajustar puntos</span>
+              <span class="insignia celeste num">{{ a.puntos }} ahora</span>
+            </div>
+
+            <div class="rejilla dos" style="margin-top:10px">
+              <label style="margin:0">
+                <span class="etiqueta">Cuántos</span>
+                <input type="number" [(ngModel)]="monto" name="monto"
+                       placeholder="100 · o −50 para descontar">
+              </label>
+              <label style="margin:0">
+                <span class="etiqueta">Motivo</span>
+                <input [(ngModel)]="motivo" name="motivoPuntos"
+                       placeholder="Laboratorio 1 hecho en clase">
+              </label>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
+              <button class="boton chico"
+                      [disabled]="ocupado() || !monto || !motivo.trim()"
+                      (click)="ajustar(a)">
+                {{ ocupado() ? 'Registrando…' : etiquetaAjuste() }}
+              </button>
+              <span class="chico suave">
+                Queda como un movimiento con su motivo, y el alumno lo ve en su pantalla de
+                puntos. El libro no se edita: para deshacer, se registra el contrario.
+              </span>
+            </div>
+          </div>
 
           <div class="rejilla dos" style="margin-top:20px">
             <div>
@@ -171,6 +223,9 @@ export class DocenteAlumnosComponent {
 
   nuevaSeccion = '';
   clave = '';
+  /** El ajuste de puntos. Negativo descuenta. */
+  monto: number | null = null;
+  motivo = '';
 
   visibles = computed(() => {
     const q = this.busca().trim().toLowerCase();
@@ -210,7 +265,43 @@ export class DocenteAlumnosComponent {
     this.editando.set(a);
     this.nuevaSeccion = a.seccion_id;
     this.clave = '';
+    this.monto = null;
+    this.motivo = '';
     this.error.set(''); this.hecho.set('');
+  }
+
+  /**
+   * Igual que `abrir`, pero baja hasta el bloque de puntos.
+   *
+   * Sin el desplazamiento el botón parecía no hacer nada: la tarjeta se abre más
+   * abajo del pliegue en una nómina de sesenta alumnos, y el docente se queda
+   * mirando la misma tabla. Y **no** alterna como «Editar» —vuelve a bajar si ya
+   * estaba abierta— porque cerrar no es lo que se pide al apretar «Puntos».
+   */
+  abrirEnPuntos(a: AlumnoDocente): void {
+    if (this.editando()?.matricula_id !== a.matricula_id) this.abrir(a);
+    // Después del render, si no el nodo todavía no existe.
+    setTimeout(() =>
+      document.getElementById('bloque-puntos')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
+
+  /** «Sumar 100 puntos» / «Descontar 50 puntos», según el signo. */
+  etiquetaAjuste(): string {
+    const n = this.monto;
+    if (!n) return 'Registrar movimiento';
+    return n > 0 ? `Sumar ${n} puntos` : `Descontar ${Math.abs(n)} puntos`;
+  }
+
+  ajustar(a: AlumnoDocente): void {
+    const n = this.monto;
+    const porQue = this.motivo.trim();
+    if (!n || !porQue) return;
+    this.operar(async () => {
+      await this.datos.otorgarPuntos(a.matricula_id, n, porQue);
+      this.monto = null;
+      this.motivo = '';
+    }, `${n > 0 ? '+' : ''}${n} puntos para ${a.nombre.split(' ')[0]}: ${porQue}`);
   }
 
   private async operar(f: () => Promise<void>, mensaje: string): Promise<void> {

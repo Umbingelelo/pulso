@@ -162,6 +162,59 @@ for (const [etiqueta, linea, contiene] of [
     problemas.some((p) => p.includes('apunta a sí mismo')), JSON.stringify(problemas));
 }
 
+// ============================== El plazo ==============================
+// `desde` y `hasta` marcan la ventana en que el laboratorio paga. Una fecha mal
+// escrita que se aceptara en silencio es de las peores que hay acá: no falla en
+// ninguna parte y el curso entero entrega a tiempo cobrando cero.
+
+console.log('\nEl plazo');
+
+const conPlazo = (lineas) =>
+  `---\ncodigo: LX\ntitulo: Sonda\npuntos: 100\n${lineas}\n---\n${CAJA_OK}`;
+
+for (const [etiqueta, lineas, contiene] of [
+  ['una fecha al derecho y al revés', 'hasta: 24-08-2026',        'no es una fecha'],
+  ['una fecha en palabras',           'hasta: el domingo',        'no es una fecha'],
+  ['una hora sin minutos',            'hasta: 2026-08-24 23',     'no es una fecha'],
+  ['un día que no existe',            'hasta: 2026-02-31',        'no existe en el calendario'],
+  ['un mes que no existe',            'desde: 2026-13-01',        'no existe en el calendario'],
+  ['el plazo al revés', 'desde: 2026-08-24\nhasta: 2026-08-18', 'terminaría antes de empezar'],
+]) {
+  const { problemas } = compilar(conPlazo(lineas));
+  const ok = problemas.some((p) => p.includes(contiene));
+  rev(etiqueta, ok, ok ? '' :
+    `esperaba un problema con «${contiene}», dijo: ${JSON.stringify(problemas)}`);
+}
+
+for (const [etiqueta, lineas, esperado] of [
+  // El caso que importa de verdad: «hasta» sin hora tiene que ser el último minuto
+  // del día. Si fuera medianoche, el domingo completo quedaría fuera del plazo —y
+  // el domingo es cuando entrega el que dejó el laboratorio para el final.
+  ['«hasta» sin hora llega al final del día', 'hasta: 2026-08-24',
+    { hasta: '2026-08-24T23:59' }],
+  ['«desde» sin hora empieza al principio',   'desde: 2026-08-18',
+    { desde: '2026-08-18T00:00' }],
+  ['con hora se respeta la que dice', 'desde: 2026-08-18 08:30\nhasta: 2026-08-24 20:00',
+    { desde: '2026-08-18T08:30', hasta: '2026-08-24T20:00' }],
+  ['la «T» en medio también sirve', 'hasta: 2026-08-24T20:00',
+    { hasta: '2026-08-24T20:00' }],
+]) {
+  const { meta, problemas } = compilar(conPlazo(lineas));
+  const ok = problemas.length === 0
+    && Object.entries(esperado).every(([k, v]) => meta[k] === v);
+  rev(etiqueta, ok,
+    `problemas: ${JSON.stringify(problemas)}, desde: ${meta.desde}, hasta: ${meta.hasta}`);
+}
+
+{
+  // Sin plazo es lo normal y tiene que seguir compilando: así están todos los
+  // laboratorios que ya se subieron.
+  const { meta, problemas } = compilar(conPlazo('minutos: 90'));
+  rev('sin plazo no es un problema',
+    problemas.length === 0 && meta.desde === undefined && meta.hasta === undefined,
+    JSON.stringify(problemas));
+}
+
 for (const [etiqueta, texto, contiene] of [
   ['sin encabezado', `## Hola\n${CAJA_OK}`, 'falta el encabezado'],
   ['encabezado sin cerrar', `---\ncodigo: LX\ntitulo: Sonda\n${CAJA_OK}`, 'no se cierra'],

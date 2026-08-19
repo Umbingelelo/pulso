@@ -70,6 +70,20 @@ export interface Actividad {
   tipo: string;
   puntos: number;
   orden: number;
+  /**
+   * El plazo en que paga. Nulo por ese lado = sin límite; nulas las dos = sin
+   * plazo. Fuera del plazo la actividad se hace igual, pero no da puntos.
+   */
+  puntua_desde: string | null;
+  puntua_hasta: string | null;
+}
+
+/** ¿Está `iso` todavía por venir? Nulo cuenta como sin límite, así que sí. */
+export function plazoVigente(desde: string | null, hasta: string | null): boolean {
+  const ahora = Date.now();
+  if (desde && ahora < new Date(desde).getTime()) return false;
+  if (hasta && ahora > new Date(hasta).getTime()) return false;
+  return true;
 }
 
 export interface Resultado {
@@ -270,6 +284,12 @@ export interface ActividadDocente {
   orden: number;
   activa: boolean;
   entregas: number;
+  puntua_desde: string | null;
+  puntua_hasta: string | null;
+  /** Si el plazo está abierto **ahora**. Lo calcula la base, no el navegador. */
+  en_plazo: boolean;
+  /** De las `entregas`, cuántas cayeron dentro del plazo y cobraron. */
+  a_tiempo: number;
 }
 
 export interface RamoDocente {
@@ -480,6 +500,9 @@ export interface EstadoLaboratorio {
   requiere: string | null;
   /** Lo que **todavía** falta entregar. `null` = abierto. */
   falta: string | null;
+  puntua_desde: string | null;
+  puntua_hasta: string | null;
+  en_plazo: boolean;
 }
 
 export interface Laboratorio {
@@ -499,11 +522,27 @@ export interface Laboratorio {
    * manda los bloques**: la ficha se ve, el enunciado no.
    */
   falta: string | null;
+  puntua_desde: string | null;
+  puntua_hasta: string | null;
+  /** Si entregarlo **ahora** paga. Viene resuelto de la base. */
+  en_plazo: boolean;
   respuestas: Record<string, string>;
   /** Lo que el modelo sugirió, por identificador de caja. */
   revisiones: Record<string, Revision>;
   tramo: number;
   entregado_en: string | null;
+}
+
+/** Lo que contesta `laboratorio_entregar`. */
+export interface Entrega {
+  entregado: boolean;
+  respondidas: number;
+  de: number;
+  /** Los puntos que **de verdad** se pagaron: cero si llegó fuera de plazo. */
+  puntos: number;
+  a_tiempo: boolean;
+  puntua_desde: string | null;
+  puntua_hasta: string | null;
 }
 
 export interface AvanceLab {
@@ -859,7 +898,15 @@ export class DatosService {
   async actividades(ramo: Ramo): Promise<Actividad[]> {
     const { data, error } = await this.db
       .from('actividades')
-      .select('id, codigo, titulo, descripcion, tipo, puntos, orden')
+      // Del plazo viajan las dos fechas y no un `en_plazo` resuelto, porque esta
+      // consulta sí pasa por la Data API y ahí no se pueden llamar funciones en un
+      // `select`. Lo decide `plazoVigente()`, que es aritmética trivial.
+      //
+      // Y ojo con esto al desplegar: una columna nueva no aparece en la Data API
+      // hasta correr `node neon/refrescar-api.mjs`. Sin eso la consulta responde
+      // 200, el campo llega `undefined`, y la pantalla se ve igual que antes de
+      // migrar sin dar error en ninguna parte.
+      .select('id, codigo, titulo, descripcion, tipo, puntos, orden, puntua_desde, puntua_hasta')
       .eq('asignatura_id', ramo.asignatura_id)
       .eq('periodo_id', ramo.periodo_id)
       .eq('activa', true)
@@ -985,15 +1032,22 @@ export class DatosService {
     return await this.panel('actividades', { asignatura: asignaturaId, periodo: periodoId });
   }
 
+  /**
+   * `puntuaDesde` y `puntuaHasta` en ISO con zona, o `null` para quitar ese lado
+   * del plazo. Se mandan **siempre**, incluso sin cambiarlas: la función de la base
+   * las asigna tal cual, así que omitirlas borraría el plazo que ya estaba puesto.
+   */
   async guardarActividad(a: {
     id: string | null; asignaturaId: string; periodoId: string;
     codigo: string; titulo: string; descripcion: string | null;
     tipo: string; puntos: number; orden: number; activa: boolean;
+    puntuaDesde: string | null; puntuaHasta: string | null;
   }): Promise<void> {
     await this.panel('guardar-actividad', {
       id: a.id, asignatura: a.asignaturaId, periodo: a.periodoId,
       codigo: a.codigo, titulo: a.titulo, descripcion: a.descripcion,
       tipo: a.tipo, puntos: a.puntos, orden: a.orden, activa: a.activa,
+      puntuaDesde: a.puntuaDesde, puntuaHasta: a.puntuaHasta,
     });
   }
 
@@ -1230,7 +1284,7 @@ export class DatosService {
   async actividadesDe(asignaturaId: string, periodoId: string): Promise<Actividad[]> {
     const { data, error } = await this.db
       .from('actividades')
-      .select('id, codigo, titulo, descripcion, tipo, puntos, orden')
+      .select('id, codigo, titulo, descripcion, tipo, puntos, orden, puntua_desde, puntua_hasta')
       .eq('asignatura_id', asignaturaId)
       .eq('periodo_id', periodoId)
       .order('orden');
@@ -1267,9 +1321,9 @@ export class DatosService {
     await this.lab('guardar', { matricula: matriculaId, codigo, respuestas, tramo });
   }
 
-  async entregarLaboratorio(matriculaId: string, codigo: string): Promise<any> {
+  async entregarLaboratorio(matriculaId: string, codigo: string): Promise<Entrega | undefined> {
     const [fila] = await this.lab('entregar', { matricula: matriculaId, codigo });
-    return fila?.r;
+    return fila?.r as Entrega | undefined;
   }
 
   /**

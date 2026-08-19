@@ -23,6 +23,16 @@
  * Quien parte el Markdown en bloques y decide qué es válido es
  * `laboratorio-md.mjs`. Acá sólo se lee el archivo, se informa y se escribe.
  *
+ * ── El plazo ──
+ *
+ * `desde:` y `hasta:` en el encabezado marcan la ventana en que el laboratorio
+ * **paga puntos**. Fuera de ella se hace y se entrega igual, pero no suma. Se
+ * escriben en hora local —`hasta: 2026-08-24` es ese domingo a las 23:59— y son
+ * opcionales: sin ellas el laboratorio paga siempre, como antes.
+ *
+ * Si el .md no las trae, **no se pisa** lo que haya en el panel del docente. Para
+ * quitar un plazo se vacían los dos campos allá.
+ *
  * ── Lo que se verifica antes de subir ──
  *
  * Todo lo que el compilador junte en `problemas`, y además —ya en la base— las
@@ -68,6 +78,9 @@ if (meta.opcional === 'true' || meta.requiere) {
   console.log(`Acceso     ${meta.opcional === 'true' ? 'opcional' : 'de la línea principal'}` +
     (meta.requiere ? ` · se abre al entregar ${meta.requiere}` : ' · sin candado'));
 }
+console.log(`Plazo      ${meta.desde || meta.hasta
+  ? `${meta.desde ?? 'siempre'} → ${meta.hasta ?? 'siempre'} (hora local)`
+  : 'no viene en el .md · se conserva el del panel'}`);
 
 if (!args.escribir) {
   console.log('\nSin --escribir: no toqué la base.');
@@ -83,16 +96,34 @@ const [ambito] = await sql`
    where a.sigla = ${SIGLA} and p.codigo = ${PERIODO}`;
 if (!ambito) { console.error(`No existe ${SIGLA} en ${PERIODO}`); process.exit(1); }
 
+// `meta.desde` y `meta.hasta` vienen del compilador en hora local sin zona, así que
+// `new Date` las interpreta en la zona de esta máquina —la del docente— y
+// `toISOString` las manda con zona. Nadie tiene que acordarse de sumar horas.
+const aUtc = (local) => (local ? new Date(`${local}:00`).toISOString() : null);
+const desde = aUtc(meta.desde);
+const hasta = aUtc(meta.hasta);
+
 const [act] = await sql`
   insert into public.actividades (asignatura_id, periodo_id, codigo, titulo, descripcion,
-                                  tipo, puntos, orden, activa)
+                                  tipo, puntos, orden, activa, puntua_desde, puntua_hasta)
   values (${ambito.asignatura_id}, ${ambito.periodo_id}, ${meta.codigo}, ${meta.titulo},
           ${meta.descripcion ?? null}, 'laboratorio',
-          ${Number(meta.puntos)}, ${Number(meta.orden ?? 0)}, true)
+          ${Number(meta.puntos)}, ${Number(meta.orden ?? 0)}, true,
+          ${desde}::timestamptz, ${hasta}::timestamptz)
   on conflict (asignatura_id, periodo_id, codigo) do update
     set titulo = excluded.titulo, descripcion = excluded.descripcion,
-        puntos = excluded.puntos, orden = excluded.orden, activa = true
-  returning id`;
+        puntos = excluded.puntos, orden = excluded.orden, activa = true,
+        -- Con coalesce y no asignación directa: si el .md no trae el plazo, se
+        -- conserva el que el docente puso en el panel. Volver a subir un
+        -- laboratorio para corregirle una tilde no puede borrarle la fecha, y
+        -- borrarla no da error: simplemente vuelve a pagar siempre, para todos, sin
+        -- que nadie se entere. Para quitar el plazo se vacían los campos del panel.
+        --
+        -- (Sin comillas invertidas en este comentario: va dentro de un template
+        --  literal de JavaScript y una comilla invertida lo cerraría en la mitad.)
+        puntua_desde = coalesce(excluded.puntua_desde, public.actividades.puntua_desde),
+        puntua_hasta = coalesce(excluded.puntua_hasta, public.actividades.puntua_hasta)
+  returning id, puntua_desde, puntua_hasta`;
 
 await sql`
   insert into public.laboratorios (actividad_id, bloques, minutos, cajas, controles,

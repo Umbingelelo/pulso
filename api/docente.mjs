@@ -86,12 +86,21 @@ const ACCIONES = {
   clave: (s, d) =>
     s`select public.alumno_reiniciar_clave(${d.matricula}::uuid, ${d.clave}) as r`,
 
+  /**
+   * Las dos fechas del plazo van como `timestamptz` y pueden ser nulas: nulo
+   * significa «sin plazo por ese lado», y el formulario manda nulo cuando el
+   * docente vacía el campo. Llegan en ISO con zona desde el navegador, así que
+   * Postgres las guarda en el instante correcto sin que nadie tenga que saber en
+   * qué zona está el que las escribió.
+   */
   'guardar-actividad': (s, d) =>
     s`select public.actividad_guardar(
         ${d.id ?? null}::uuid, ${d.asignatura}::uuid, ${d.periodo}::uuid,
         ${d.codigo}, ${d.titulo}, ${d.descripcion ?? null}, ${d.tipo},
         ${Number(d.puntos) || 0}::integer, ${Number(d.orden) || 0}::integer,
-        ${d.activa !== false}) as r`,
+        ${d.activa !== false},
+        ${d.puntuaDesde ?? null}::timestamptz,
+        ${d.puntuaHasta ?? null}::timestamptz) as r`,
 };
 
 /**

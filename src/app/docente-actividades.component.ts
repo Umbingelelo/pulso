@@ -3,6 +3,7 @@ import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AvanceLab, ActividadDocente, DatosService } from './datos.service';
 import { DocenteStore } from './docente.store';
+import { aIso, aLocal, semanaDe } from './fechas';
 
 /**
  * Laboratorios, entregas y el diagnóstico: crearlos y editarlos.
@@ -11,6 +12,20 @@ import { DocenteStore } from './docente.store';
  * por delante los resultados de los alumnos y los puntos que ya se pagaron —el
  * libro de movimientos no se edita nunca— así que lo que hay es desactivarla:
  * deja de aparecer y lo hecho queda.
+ *
+ * ── El plazo ──
+ *
+ * Un laboratorio paga en su semana y después no. Las dos fechas se escriben acá,
+ * en la hora del computador del docente, y vacías significan «sin plazo»: así se
+ * comportaba todo antes de que esto existiera.
+ *
+ * El botón «Esta semana» está porque es el caso de todas las veces —los
+ * laboratorios de la semana dan puntos esa semana— y escribir dos fechas a mano en
+ * cada actividad es justo donde uno se equivoca en un dígito y le deja de pagar al
+ * curso completo sin enterarse.
+ *
+ * La columna «a tiempo» es el control de ese error: si dice «24 entregas · 5 a
+ * tiempo», el plazo está mal puesto, no es que el curso sea flojo.
  */
 @Component({
   selector: 'app-docente-actividades',
@@ -41,7 +56,7 @@ import { DocenteStore } from './docente.store';
         } @else {
           <table style="margin-top:14px">
             <tr>
-              <th>Código</th><th>Actividad</th><th>Tipo</th>
+              <th>Código</th><th>Actividad</th><th>Tipo</th><th>Plazo</th>
               <th class="der">Puntos</th><th class="der">Entregas</th><th></th>
             </tr>
             @for (a of lista(); track a.id) {
@@ -53,8 +68,26 @@ import { DocenteStore } from './docente.store';
                   @if (a.descripcion) { <div class="chico suave">{{ a.descripcion }}</div> }
                 </td>
                 <td>{{ etiqueta(a.tipo) }}</td>
+                <td>
+                  @if (!a.puntua_desde && !a.puntua_hasta) {
+                    <span class="chico suave">sin plazo</span>
+                  } @else {
+                    <span class="insignia" [class.verde]="a.en_plazo"
+                          [class.amarilla]="!a.en_plazo">
+                      {{ a.en_plazo ? 'Abierto' : 'Cerrado' }}
+                    </span>
+                    <div class="chico suave">{{ plazo(a) }}</div>
+                  }
+                </td>
                 <td class="der num">{{ a.puntos }}</td>
-                <td class="der num">{{ a.entregas }}</td>
+                <td class="der num">
+                  {{ a.entregas }}
+                  <!-- Solo cuando difieren: en una actividad sin plazo todas están
+                       a tiempo por definición y repetir el número no dice nada. -->
+                  @if (a.entregas > 0 && a.a_tiempo < a.entregas) {
+                    <div class="chico suave">{{ a.a_tiempo }} a tiempo</div>
+                  }
+                </td>
                 <td class="der" style="white-space:nowrap">
                   @if (a.tipo === 'laboratorio') {
                     <button class="boton contorno chico" style="margin-right:6px"
@@ -171,7 +204,28 @@ import { DocenteStore } from './docente.store';
             </label>
           </div>
 
-          <label style="display:flex;align-items:center;gap:8px;margin-top:6px">
+          <div class="rejilla dos">
+            <label>
+              <span class="etiqueta">Da puntos desde</span>
+              <input type="datetime-local" [ngModel]="form().desde" name="desde"
+                     (ngModelChange)="tocar('desde', $event)">
+            </label>
+            <label>
+              <span class="etiqueta">Da puntos hasta</span>
+              <input type="datetime-local" [ngModel]="form().hasta" name="hasta"
+                     (ngModelChange)="tocar('hasta', $event)">
+            </label>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">
+            <button class="boton contorno chico" (click)="estaSemana()">Esta semana</button>
+            @if (form().desde || form().hasta) {
+              <button class="boton contorno chico" (click)="sinPlazo()">Quitar el plazo</button>
+            }
+            <span class="chico suave">{{ leyendaPlazo() }}</span>
+          </div>
+
+          <label style="display:flex;align-items:center;gap:8px;margin-top:14px">
             <input type="checkbox" [ngModel]="form().activa" name="activa" style="width:auto"
                    (ngModelChange)="tocar('activa', $event)">
             <span class="chico">Visible para los alumnos</span>
@@ -212,6 +266,8 @@ export class DocenteActividadesComponent {
   form = signal<{
     id: string | null; codigo: string; titulo: string; descripcion: string;
     tipo: string; puntos: number; orden: number; activa: boolean;
+    /** Hora local sin zona, como la quiere el `datetime-local`. Vacío = sin límite. */
+    desde: string; hasta: string;
   }>(this.vacio());
 
   entregasDelAbierto = computed(() =>
@@ -225,11 +281,41 @@ export class DocenteActividadesComponent {
 
   private vacio() {
     return { id: null, codigo: '', titulo: '', descripcion: '',
-             tipo: 'laboratorio', puntos: 100, orden: 0, activa: true };
+             tipo: 'laboratorio', puntos: 100, orden: 0, activa: true,
+             desde: '', hasta: '' };
   }
 
   etiqueta(t: string): string {
     return t === 'diagnostico' ? 'Diagnóstico' : t === 'laboratorio' ? 'Laboratorio' : 'Entrega';
+  }
+
+  /** El plazo de una fila, en una línea. */
+  plazo(a: ActividadDocente): string {
+    const f = (iso: string) =>
+      new Date(iso).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', hour: '2-digit',
+                                              minute: '2-digit' });
+    if (a.puntua_desde && a.puntua_hasta) return `${f(a.puntua_desde)} → ${f(a.puntua_hasta)}`;
+    if (a.puntua_hasta) return `hasta ${f(a.puntua_hasta)}`;
+    return `desde ${f(a.puntua_desde!)}`;
+  }
+
+  /** Qué significan los dos campos tal como están ahora, dicho en palabras. */
+  leyendaPlazo(): string {
+    const { desde, hasta } = this.form();
+    if (!desde && !hasta) return 'Sin plazo: paga cuando sea.';
+    if (desde && hasta) return 'Fuera de esas fechas se puede entregar, pero no paga puntos.';
+    if (hasta) return 'Después de esa fecha se puede entregar, pero no paga puntos.';
+    return 'Antes de esa fecha se puede entregar, pero no paga puntos.';
+  }
+
+  /** Lunes 00:00 a domingo 23:59 de la semana en curso. El caso de siempre. */
+  estaSemana(): void {
+    const { desde, hasta } = semanaDe(new Date());
+    this.form.set({ ...this.form(), desde, hasta });
+  }
+
+  sinPlazo(): void {
+    this.form.set({ ...this.form(), desde: '', hasta: '' });
   }
 
   completo(): boolean {
@@ -268,6 +354,7 @@ export class DocenteActividadesComponent {
     this.form.set({
       id: a.id, codigo: a.codigo, titulo: a.titulo, descripcion: a.descripcion ?? '',
       tipo: a.tipo, puntos: a.puntos, orden: a.orden, activa: a.activa,
+      desde: aLocal(a.puntua_desde), hasta: aLocal(a.puntua_hasta),
     });
     this.abierto.set(true);
     this.error.set(''); this.hecho.set('');
@@ -307,6 +394,7 @@ export class DocenteActividadesComponent {
         codigo: f.codigo, titulo: f.titulo,
         descripcion: f.descripcion.trim() || null,
         tipo: f.tipo, puntos: f.puntos, orden: f.orden, activa: f.activa,
+        puntuaDesde: aIso(f.desde), puntuaHasta: aIso(f.hasta),
       });
       await this.cargar();
       this.abierto.set(false);

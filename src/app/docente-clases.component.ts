@@ -3,6 +3,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ClaseDocente, DatosService } from './datos.service';
 import { DocenteStore } from './docente.store';
+import { aIso, aLocal } from './fechas';
 
 /**
  * Las clases del ramo: cuándo se habilita cada una y hasta cuándo vale completa.
@@ -168,22 +169,10 @@ export class DocenteClasesComponent {
     return c.puntos_abrir + c.actividades * c.puntos_actividad + c.puntos_terminar;
   }
 
-  /**
-   * ISO (UTC) → el valor que espera un `datetime-local`, que es hora local sin
-   * zona. Restar el desfase antes de cortar la cadena es lo que evita que una
-   * clase programada a las 08:31 se muestre a las 12:31.
-   */
-  private aLocal(iso: string | null): string {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  }
-
-  private aIso(local: string): string | null {
-    if (!local) return null;
-    const d = new Date(local);
-    return isNaN(d.getTime()) ? null : d.toISOString();
-  }
+  // `aLocal` y `aIso` viven en `fechas.ts`: el panel de actividades programa el
+  // plazo de los puntos con las mismas dos conversiones.
+  private aLocal = aLocal;
+  private aIso = aIso;
 
   private async cargar(): Promise<void> {
     this.cargando.set(true);

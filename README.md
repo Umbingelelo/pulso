@@ -777,6 +777,30 @@ No hay archivo de configuración en `src/`: la app llega a la base por `/db`, qu
 a la Data API de Neon, y la sesión la manejan las funciones de `api/auth/`. Los secretos están en las
 variables de entorno del proyecto en Vercel y, para desarrollo, en `.env.local`, que no se versiona.
 
+### La base migra antes que el frontend, así que la firma vieja tiene que seguir sirviendo
+
+Entre migrar y desplegar pasa un rato, y en ese rato **el frontend que hay publicado sigue llamando a
+las funciones con la firma vieja**. Un parámetro nuevo con valor por omisión parece resolverlo —la
+llamada de antes sigue calzando— pero le escribe el valor por omisión a la columna.
+
+La 0028 le agregó a `actividad_guardar` los dos parámetros del plazo con omisión nula, y eso dejó al
+panel publicado **borrando el plazo** cada vez que se guardaba una actividad, aunque el docente solo
+hubiera corregido una tilde en el título. El laboratorio volvía a pagar siempre, para todos, sin un
+error en ninguna parte. Lo arregla la 0029 llevando la diferencia a la firma, que es lo único que
+Postgres puede mirar:
+
+| Firma | Qué hace con el plazo |
+|---|---|
+| diez argumentos | no lo toca —es la que llama el panel viejo— |
+| doce argumentos | lo deja exactamente como digan los dos últimos, nulos incluidos |
+
+Por eso la de doce **no** tiene valores por omisión: con ellos, una llamada de diez calzaría con las dos
+y Postgres la rechazaría por ambigua. Y la de diez no repite ninguna validación —lee el plazo guardado y
+llama a la otra— porque dos copias de las mismas reglas terminan comportándose distinto.
+
+La regla que queda: **al agregar un parámetro que escribe una columna, pregúntate qué le va a escribir
+la llamada que ya está corriendo en producción.**
+
 ## Rutas
 
 | Ruta | Quién entra |

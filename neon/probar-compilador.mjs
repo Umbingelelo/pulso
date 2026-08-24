@@ -20,6 +20,11 @@
  *     encima aparecía una caja fantasma que no pidió nadie
  *   - `puntos: 100 pts` publicaba el laboratorio con cero puntos
  *
+ * Y la pauta trae un modo de falla propio, que es el peor de todos: si terminara
+ * entre los bloques, el enunciado que llega al navegador vendría **con las
+ * respuestas adentro**. Por eso acá no se comprueba solo que compile: se
+ * comprueba que la pauta **no esté** en ningún bloque.
+ *
  * Ninguna daba error. Por eso el criterio de este archivo no es «compila», es
  * «se queja de lo que tiene que quejarse».
  */
@@ -117,6 +122,27 @@ const RECHAZOS = [
 
   ['una cerca de código sin cerrar',
     '```bash\nnode -v' + CAJA_OK, 'no se cierra'],
+
+  ['una pauta sin decir de qué caja es',
+    CAJA_OK + ':::pauta\nLa respuesta.\n:::', 'necesita la caja'],
+
+  ['una pauta de una caja que no existe',
+    CAJA_OK + ':::pauta{7.7}\nLa respuesta.\n:::', 'no corresponde a ninguna caja'],
+
+  ['dos pautas para la misma caja',
+    CAJA_OK + ':::pauta{9.1}\nUna.\n:::\n\n:::pauta{9.1}\nOtra.\n:::', 'ya tiene pauta'],
+
+  ['una pauta vacía',
+    CAJA_OK + ':::pauta{9.1}\n:::', 'está vacía'],
+
+  ['una pauta con algo más en la llave',
+    CAJA_OK + ':::pauta{9.1 corta}\nLa respuesta.\n:::', 'solo el identificador'],
+
+  // El typo que importa: `:::pauat` cae en la regla general y se caza como
+  // cualquier otra clase inventada. Si en cambio se colara a prosa, el alumno
+  // leería la respuesta correcta en pantalla.
+  ['una pauta mal escrita',
+    CAJA_OK + ':::pauat{9.1}\nLa respuesta.\n:::', 'no existe'],
 ];
 
 console.log('Lo que tiene que rechazar');
@@ -292,6 +318,44 @@ const numeros = compilar(conCabeza(':::control{1}\nUno.\n:::\n\n:::control{2}\nD
 rev('controles correlativos', numeros.problemas.length === 0 && numeros.controles === 2,
   JSON.stringify(numeros.problemas));
 
+// ============================== La pauta ==============================
+// La respuesta correcta sale por `pautas` y **no** puede aparecer en ningún
+// bloque: los bloques son literalmente lo que el navegador dibuja.
+
+console.log('\nLa pauta');
+
+const conPauta = compilar(conCabeza(
+  CAJA_OK + ':::pauta{9.1}\nLa respuesta es **42** y se justifica así.\n:::'));
+rev('una pauta bien escrita se acepta', conPauta.problemas.length === 0,
+  JSON.stringify(conPauta.problemas));
+rev('  llega a pautas, con su Markdown crudo',
+  conPauta.pautas['9.1'] === 'La respuesta es **42** y se justifica así.',
+  JSON.stringify(conPauta.pautas));
+rev('  y NO queda ningún bloque de pauta',
+  !conPauta.bloques.some((b) => b.tipo === 'pauta' || b.clase === 'pauta'),
+  JSON.stringify(conPauta.bloques.map((b) => b.tipo ?? b.clase)));
+rev('  ni el texto de la respuesta aparece en lo que se dibuja',
+  !JSON.stringify(conPauta.bloques).includes('42'),
+  JSON.stringify(conPauta.bloques));
+rev('  y el enunciado queda igual que sin ella',
+  conPauta.bloques.length === compilar(conCabeza(CAJA_OK)).bloques.length);
+
+// Una pauta que documenta esta sintaxis, o que trae un ejemplo de salida, lleva
+// cercas de código adentro. Es el caso normal en un laboratorio de terminal.
+const pautaConCerca = compilar(conCabeza(
+  CAJA_OK + ':::pauta{9.1}\nTiene que verse así:\n\n```\nHTTP/1.1 200 OK\n```\n:::'));
+rev('una pauta con una cerca de código adentro',
+  pautaConCerca.problemas.length === 0
+  && pautaConCerca.pautas['9.1'].includes('HTTP/1.1 200 OK'),
+  JSON.stringify(pautaConCerca.problemas));
+
+// Sin pauta, `pautas` existe y está vacío: quien lo lee no tiene que preguntarse
+// si es undefined. Así están publicados L0, L1 y X1.
+const sinPauta = compilar(conCabeza(CAJA_OK));
+rev('un laboratorio sin pautas devuelve un objeto vacío, no undefined',
+  sinPauta.problemas.length === 0 && Object.keys(sinPauta.pautas ?? {}).length === 0,
+  JSON.stringify(sinPauta.pautas));
+
 const linea = compilar(`---\ncodigo: LX\ntitulo: Sonda\npuntos: 100\n---\n\n\n\n:::caja {1.1}\nx\n:::\n`);
 rev('el número de línea apunta al archivo, no al cuerpo',
   linea.problemas.some((p) => p.startsWith('línea 9:')), JSON.stringify(linea.problemas));
@@ -322,17 +386,36 @@ for (const carpeta of LABORATORIOS) {
 archivos.sort();
 for (const ruta of archivos) {
   const archivo = ruta.split('/').pop();
-  const { meta, bloques, ids, controles, problemas } = compilar(
+  const { meta, bloques, ids, pautas, controles, problemas } = compilar(
     await readFile(ruta, 'utf8'));
   rev(`${archivo} compila limpio`, problemas.length === 0, problemas.join('\n      '));
   if (problemas.length) continue;
-  rev(`  ${meta.codigo} · ${bloques.length} bloques · ${ids.length} cajas · ${controles} controles`,
+  const conPauta = Object.keys(pautas).length;
+  rev(`  ${meta.codigo} · ${bloques.length} bloques · ${ids.length} cajas · ${controles} controles`
+    + ` · ${conPauta}/${ids.length} pautas`,
     bloques.length > 0 && ids.length > 0);
   // Lo que se le queda pegado a un enunciado mal compilado y llega a la pantalla.
   const crudo = bloques.filter((b) => (b.html ?? b.enunciado ?? '')
     .match(/<p>\s*:::/));
   rev('  no queda ningún ::: suelto en la prosa', crudo.length === 0,
     JSON.stringify(crudo.map((b) => (b.html ?? b.enunciado).slice(0, 80))));
+
+  // La comprobación que justifica todo el diseño de la pauta, hecha contra los
+  // archivos de verdad: ni una frase de ninguna pauta puede estar en los bloques,
+  // porque los bloques son lo que viaja al navegador. Se compara por frases
+  // largas —no por palabras— para que «la respuesta» o «el token» no den falsos
+  // positivos contra el enunciado, que naturalmente habla de lo mismo.
+  if (conPauta) {
+    const dibujado = JSON.stringify(bloques);
+    const filtradas = [];
+    for (const [id, texto] of Object.entries(pautas)) {
+      for (const frase of texto.split(/[\n.;]/).map((f) => f.trim())) {
+        if (frase.length >= 60 && dibujado.includes(frase)) filtradas.push(`${id}: ${frase}`);
+      }
+    }
+    rev('  ninguna pauta se filtró a los bloques', filtradas.length === 0,
+      filtradas.join('\n      '));
+  }
 }
 
 console.log(fallos === 0 ? '\nTodo bien.' : `\n${fallos} fallos.`);

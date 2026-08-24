@@ -288,6 +288,39 @@ const [{ r: todasMal }] = await comoAlumno(alumno.id, (s) =>
 rev('quedan todas en incompleto',
   Object.values(todasMal.revisiones).every((x) => x.veredicto === 'incompleto'), true);
 
+// ---------- La pauta ----------
+// La respuesta correcta que escribió el docente. Lo único que hay que comprobar
+// acá es lo que la hace segura: que la trae la función del servidor y que **no
+// viene pegada al enunciado**, porque el enunciado sí viaja al navegador.
+
+console.log('\nLa pauta');
+const [{ pautas: pautasCrudas }] = await dueno`
+  select coalesce(l.pautas, '{}'::jsonb) as pautas
+    from public.laboratorios l where l.actividad_id = ${m.actividad}`;
+const conPauta = Object.keys(pautasCrudas);
+console.log(`  · ${CODIGO} tiene pauta en ${conPauta.length} de ${idsDeCaja.length} cajas`);
+
+const [{ r: paraElNavegador }] = await comoAlumno(alumno.id, (s) =>
+  s`select public.mi_laboratorio(${m.matricula}::uuid, ${CODIGO}) as r`);
+rev('el enunciado que viaja al navegador no trae pautas',
+  Object.keys(paraElNavegador).includes('pautas'), false);
+// Y no solo la llave: ni una frase de ninguna pauta puede estar en lo que viaja.
+const viajado = JSON.stringify(paraElNavegador);
+const filtradas = conPauta.filter((id) => pautasCrudas[id].split(/[\n.;]/)
+  .some((f) => f.trim().length >= 60 && viajado.includes(f.trim())));
+rev('ni el texto de una pauta se filtró en él', filtradas, []);
+
+if (conPauta.length) {
+  const [{ p }] = await comoAlumno(alumno.id, (s) =>
+    s`select public.laboratorio_pauta(${m.matricula}::uuid, ${CODIGO}, ${conPauta[0]}) as p`);
+  rev(`el servidor sí puede leer la pauta de ${conPauta[0]}`, p === pautasCrudas[conPauta[0]], true);
+  // Una caja sin pauta devuelve null, no un error: es el caso de L0, L1 y X1
+  // enteros, y quien llama tiene que poder distinguirlo de una falla.
+  const [{ p: nada }] = await comoAlumno(alumno.id, (s) =>
+    s`select public.laboratorio_pauta(${m.matricula}::uuid, ${CODIGO}, 'no-existe') as p`);
+  rev('una caja sin pauta devuelve nulo y no revienta', nada, null);
+}
+
 // ---------- Entregar ----------
 
 console.log('\nEntregar');
@@ -336,6 +369,9 @@ if (otra) {
   await debeFallar('no revisa la caja de otro', alumno.id, (s) =>
     s`select public.laboratorio_revisar_guardar(${otra.id}::uuid, ${CODIGO},
         ${idsDeCaja[0]}, 'logrado', 'x', 'y')`, 'no es tuya');
+  await debeFallar('no lee la pauta con la matrícula de otro', alumno.id, (s) =>
+    s`select public.laboratorio_pauta(${otra.id}::uuid, ${CODIGO}, ${idsDeCaja[0]})`,
+    'no es tuya');
 }
 const [{ r: inexistente }] = await comoAlumno(alumno.id, (s) =>
   s`select public.mi_laboratorio(${m.matricula}::uuid, 'NO-EXISTE') as r`);

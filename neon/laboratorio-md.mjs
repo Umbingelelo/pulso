@@ -28,16 +28,23 @@
  * Ninguna de esas fallaba. Todas llegaban a la pantalla del alumno.
  *
  * Así que ahora el escáner recuerda dos cosas —si viene de abrir una cerca de
- * código y si viene de abrir un bloque— y el vocabulario es cerrado: cinco
- * clases, dos formatos de caja, seis llaves de encabezado. Fuera de eso, error
+ * código y si viene de abrir un bloque— y el vocabulario es cerrado: seis
+ * clases, dos formatos de caja, diez llaves de encabezado. Fuera de eso, error
  * con número de línea del archivo de verdad.
  */
 import { marked } from 'marked';
 
 marked.setOptions({ gfm: true, breaks: false });
 
-/** Las cinco clases de bloque. `caja` y `control` llevan argumento; los avisos no. */
-const CLASES = ['caja', 'control', 'alerta', 'pista', 'ojo'];
+/**
+ * Las seis clases de bloque. `caja`, `control` y `pauta` llevan argumento; los avisos no.
+ *
+ * `pauta` es la única que **no llega al navegador**: es la respuesta correcta que
+ * el docente escribe al lado de cada caja para que el modelo tenga con qué
+ * comparar. Se guarda en su propia columna, no entre los bloques, justamente para
+ * que no pueda dibujarse por accidente. Ver `0030_pauta.sql`.
+ */
+const CLASES = ['caja', 'control', 'alerta', 'pista', 'ojo', 'pauta'];
 const AVISOS = ['alerta', 'pista', 'ojo'];
 /** Los dos formatos de caja que el navegador sabe dibujar (ver `laboratorio.component.ts`). */
 const FORMATOS = ['corta', 'codigo'];
@@ -61,13 +68,15 @@ const CERCA = /^ {0,3}(`{3,}|~{3,})(.*)$/;
  * junta todos en vez de morir en el primero, porque el docente está arreglando
  * su guía y quiere la lista entera de una vez, no una vuelta por error.
  *
- * @returns {{meta: object, bloques: object[], ids: string[],
+ * @returns {{meta: object, bloques: object[], ids: string[], pautas: object,
  *            controles: number, avisos: number, problemas: string[]}}
  */
 export function compilar(texto) {
   const problemas = [];
   const cabecera = leerEncabezado(texto, problemas);
-  if (!cabecera) return { meta: {}, bloques: [], ids: [], controles: 0, avisos: 0, problemas };
+  if (!cabecera) {
+    return { meta: {}, bloques: [], ids: [], pautas: {}, controles: 0, avisos: 0, problemas };
+  }
 
   const { meta, cuerpo, desplazamiento } = cabecera;
   const cuerpoCompilado = compilarCuerpo(cuerpo, desplazamiento, problemas);
@@ -227,6 +236,9 @@ function compilarCuerpo(cuerpo, desplazamiento, problemas) {
   const ids = [];
   const numerosDeControl = [];
 
+  /** id de caja → { texto, linea }. Se aplana al final, ya validado. */
+  const pautas = {};
+
   let prosa = [];
   let dentro = null;
   let contenido = [];
@@ -281,7 +293,7 @@ function compilarCuerpo(cuerpo, desplazamiento, problemas) {
         problemas.push(`línea ${n}: hay un ::: de cierre sin bloque abierto`);
         continue;
       }
-      cerrar(dentro, contenido, bloques, ids, numerosDeControl, problemas);
+      cerrar(dentro, contenido, bloques, ids, numerosDeControl, pautas, problemas);
       dentro = null;
       continue;
     }
@@ -315,10 +327,20 @@ function compilarCuerpo(cuerpo, desplazamiento, problemas) {
   if (!ids.length) problemas.push('el laboratorio no tiene ninguna caja de respuesta');
 
   revisarControles(numerosDeControl, problemas);
+  // Una pauta que apunta a una caja que no existe no falla en ninguna parte: se
+  // guarda, nadie la lee, y la caja que el docente creía cubierta se revisa a
+  // ciegas. Es el mismo modo de falla que las cajas huérfanas, y se caza igual.
+  for (const [id, p] of Object.entries(pautas)) {
+    if (!ids.includes(id)) {
+      problemas.push(`línea ${p.linea}: la pauta «${id}» no corresponde a ninguna caja. ` +
+        `Las cajas son: ${ids.join(', ')}`);
+    }
+  }
 
   return {
     bloques,
     ids,
+    pautas: Object.fromEntries(Object.entries(pautas).map(([id, p]) => [id, p.texto])),
     controles: numerosDeControl.length,
     avisos: bloques.filter((b) => b.tipo === 'aviso').length,
   };
@@ -332,9 +354,36 @@ function compilarCuerpo(cuerpo, desplazamiento, problemas) {
  * falta, no hay dónde guardar. Nada de eso da error en tiempo de ejecución, así
  * que se caza acá o no se caza nunca.
  */
-function cerrar(dentro, contenido, bloques, ids, numerosDeControl, problemas) {
-  const html = marked.parse(contenido.join('\n').trim());
+function cerrar(dentro, contenido, bloques, ids, numerosDeControl, pautas, problemas) {
+  const crudo = contenido.join('\n').trim();
   const { clase, arg, tieneLlave, linea } = dentro;
+
+  // La pauta se guarda **en Markdown crudo** y no en HTML, porque su único lector
+  // es el modelo: convertirla a HTML sería gastar tokens en etiquetas para después
+  // volver a quitarlas. Y va antes de `marked.parse` para no pagar esa conversión.
+  if (clase === 'pauta') {
+    if (!tieneLlave || !arg) {
+      problemas.push(`línea ${linea}: :::pauta necesita la caja a la que corresponde, ` +
+        'p.ej. :::pauta{1.2}');
+      return;
+    }
+    if (/\s/.test(arg)) {
+      problemas.push(`línea ${linea}: :::pauta{${arg}} lleva solo el identificador de la caja`);
+      return;
+    }
+    if (pautas[arg]) {
+      problemas.push(`línea ${linea}: la caja «${arg}» ya tiene pauta en la línea ${pautas[arg].linea}`);
+      return;
+    }
+    if (!crudo) {
+      problemas.push(`línea ${linea}: la pauta de «${arg}» está vacía`);
+      return;
+    }
+    pautas[arg] = { texto: crudo, linea };
+    return;
+  }
+
+  const html = marked.parse(crudo);
 
   if (clase === 'caja') {
     if (!tieneLlave) {

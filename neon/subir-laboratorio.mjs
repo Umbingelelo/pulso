@@ -15,6 +15,9 @@
  * Encabezado sencillo y después el enunciado, con bloques propios:
  *
  *     :::caja{1.2 corta}   donde el alumno escribe. El identificador es la llave
+ *     :::pauta{1.2}        la respuesta correcta de esa caja. **No se le muestra
+ *                          nunca al alumno**: va a una columna aparte y su único
+ *                          lector es el modelo que revisa. Ver `0030_pauta.sql`.
  *     :::control{1}        punto de control que valida el docente en sala
  *     :::alerta            aviso
  *     :::pista             ayuda
@@ -61,7 +64,7 @@ const PERIODO = args.periodo ?? '2026-2';
 // ============================== Compilar ==============================
 
 const texto = await readFile(args.archivo, 'utf8');
-const { meta, bloques, ids, controles, avisos, problemas } = compilar(texto);
+const { meta, bloques, ids, pautas, controles, avisos, problemas } = compilar(texto);
 
 if (problemas.length) {
   console.error(`${basename(args.archivo)}:`);
@@ -74,6 +77,15 @@ console.log(`Laboratorio ${meta.codigo} · ${meta.titulo}`);
 console.log(`Bloques    ${bloques.length} · ${ids.length} cajas · ${controles} controles · ${avisos} avisos`);
 console.log(`Cajas      ${ids.join(', ')}`);
 console.log(`Puntos     ${meta.puntos} · ${meta.minutos ?? '?'} minutos · orden ${meta.orden ?? 0}`);
+
+// La cobertura de pautas se informa siempre, y las que faltan por nombre. No es
+// un error —se puede publicar sin ninguna, y así están L0 y L1— pero una caja sin
+// pauta se revisa con menos criterio que sus vecinas y eso no se nota mirando la
+// pantalla: el alumno recibe un veredicto igual de seguro.
+const sinPauta = ids.filter((id) => !(id in pautas));
+console.log(`Pautas     ${ids.length - sinPauta.length} de ${ids.length} cajas`);
+if (sinPauta.length) console.log(`           sin pauta: ${sinPauta.join(', ')}`);
+
 if (meta.opcional === 'true' || meta.requiere) {
   console.log(`Acceso     ${meta.opcional === 'true' ? 'opcional' : 'de la línea principal'}` +
     (meta.requiere ? ` · se abre al entregar ${meta.requiere}` : ' · sin candado'));
@@ -126,13 +138,13 @@ const [act] = await sql`
   returning id, puntua_desde, puntua_hasta`;
 
 await sql`
-  insert into public.laboratorios (actividad_id, bloques, minutos, cajas, controles,
+  insert into public.laboratorios (actividad_id, bloques, pautas, minutos, cajas, controles,
                                    opcional, requiere)
-  values (${act.id}, ${JSON.stringify(bloques)}::jsonb,
+  values (${act.id}, ${JSON.stringify(bloques)}::jsonb, ${JSON.stringify(pautas)}::jsonb,
           ${meta.minutos ? Number(meta.minutos) : null}, ${ids.length}, ${controles},
           ${meta.opcional === 'true'}, ${meta.requiere ?? null})
   on conflict (actividad_id) do update
-    set bloques = excluded.bloques, minutos = excluded.minutos,
+    set bloques = excluded.bloques, pautas = excluded.pautas, minutos = excluded.minutos,
         cajas = excluded.cajas, controles = excluded.controles,
         opcional = excluded.opcional, requiere = excluded.requiere,
         actualizado_en = now()`;

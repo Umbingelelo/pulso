@@ -54,19 +54,35 @@ const ACCIONES = {
  * que la matrícula sea suya. Si el enunciado viniera del cliente, un alumno se
  * inventaría uno fácil y se aprobaría lo que quisiera.
  *
+ * ── Lo que el navegador NO recibe ──
+ *
+ * La pauta: la respuesta correcta que escribió el docente. Se pide aparte, con
+ * `laboratorio_pauta()`, precisamente para que no viaje pegada al enunciado — y
+ * de acá **no sale nunca** hacia la respuesta HTTP: entra a la instrucción del
+ * modelo y muere ahí. Lo que vuelve al navegador es el veredicto y el mensaje,
+ * los mismos dos campos de antes. Ver `0030_pauta.sql`.
+ *
  * ── Y no vive en su propio archivo ──
  *
  * Por el techo de doce funciones serverless del plan: ver la cabecera de
  * `api/docente.mjs`, donde el modo reunión aprendió lo mismo a la mala.
  */
 async function accionRevisar(usuarioId, d) {
+  // Las dos cosas en una consulta: el enunciado y la pauta de **esta** caja. La
+  // pauta se pide de la caja sola y no del laboratorio entero porque la
+  // instrucción revisa una, y las otras veintinueve no tienen nada que hacer en
+  // la memoria de esta función. Puede venir null y está bien: hay laboratorios
+  // sin pauta y el criterio funciona igual, solo con menos apoyo.
   const [fila] = await comoUsuario(usuarioId, (s) =>
-    s`select public.mi_laboratorio(${d.matricula}::uuid, ${d.codigo}) as r`);
+    s`select public.mi_laboratorio(${d.matricula}::uuid, ${d.codigo})               as r,
+             public.laboratorio_pauta(${d.matricula}::uuid, ${d.codigo}, ${d.caja}) as p`);
   const lab = fila?.r;
   if (!lab) return { estado: 404, cuerpo: { error: 'No encontré ese laboratorio en tu ramo.' } };
 
   const caja = (lab.bloques ?? []).find((b) => b.tipo === 'caja' && b.id === d.caja);
   if (!caja) return { estado: 400, cuerpo: { error: `La caja «${d.caja}» no existe.` } };
+
+  const pauta = fila.p ?? null;
 
   // El texto que se revisa es el que manda el navegador, no el guardado: el
   // guardado automático espera dos segundos, y si esperáramos a que viaje, el
@@ -77,13 +93,13 @@ async function accionRevisar(usuarioId, d) {
   }
 
   // Si no cambió nada desde la última vez, se devuelve lo mismo sin pagar de nuevo.
-  const marca = await huella(respuesta, caja.enunciado);
+  const marca = await huella(respuesta, caja.enunciado, pauta);
   const previa = (lab.revisiones ?? {})[d.caja];
   if (previa?.hash === marca) {
     return { estado: 200, cuerpo: { revision: { ...previa, cacheada: true } } };
   }
 
-  const r = await revisar({ lab, cajaId: d.caja, respuesta });
+  const r = await revisar({ lab, cajaId: d.caja, respuesta, pauta });
 
   await comoUsuario(usuarioId, (s) =>
     s`select public.laboratorio_revisar_guardar(

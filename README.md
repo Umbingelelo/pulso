@@ -125,6 +125,10 @@ declaró dictar.
   `/api/clase`, que exige cookie de sesión y matrícula vigente. `progreso_clase` no tiene políticas de
   `insert` ni `update`: todo pasa por `abrir_clase()` y `progreso_clase_guardar()`, que son las que
   corrigen y pagan.
+- **Laboratorios**: la pauta de cada caja vive en `laboratorios.pautas`, y la tabla `laboratorios` no
+  tiene política de lectura para `pulso_app`: se lee por `mi_laboratorio()`, que **no selecciona esa
+  columna**. El único camino a la pauta es `laboratorio_pauta()`, que se niega a contestarle a quien
+  llega con token de navegador y solo responde por la vía del servidor. Detalle en *La pauta*, más abajo.
 - Ni un resultado ni un movimiento tienen políticas de `update` o `delete`: no se editan nunca.
 - El perfil y su primera matrícula los crea `registrar_alumno()` en una sola transacción, junto con la
   cuenta. No hay trigger sobre una tabla ajena que pueda quedar a medias.
@@ -288,11 +292,12 @@ de la asignatura y se publican con un script.
 ### El formato
 
 Encabezado con `codigo`, `titulo`, `descripcion`, `minutos`, `puntos`, `orden` y —si tiene plazo—
-`desde` y `hasta`, y después el enunciado con cinco bloques propios, todos cerrados con `:::`:
+`desde` y `hasta`, y después el enunciado con seis bloques propios, todos cerrados con `:::`:
 
 | Bloque | Para qué |
 |---|---|
 | `:::caja{1.2 corta}` | Donde el alumno responde. `corta` o `codigo` |
+| `:::pauta{1.2}` | La respuesta correcta de esa caja. **El alumno no la ve nunca**: es para el modelo |
 | `:::control{1}` | Punto de control: el alumno declara que llegó, tú lo validas en sala |
 | `:::alerta` | Un aviso |
 | `:::pista` | Una ayuda |
@@ -317,13 +322,15 @@ Así que el vocabulario es cerrado y se revisa al subir, con el número de líne
 
 | Se rechaza | Por qué |
 |---|---|
-| `:::nota`, `:::pists` | Sólo existen las cinco de la tabla de arriba |
+| `:::nota`, `:::pists` | Sólo existen las seis de la tabla de arriba |
 | `:::caja {1.2}`, `  :::caja{1.2}` | Espacio antes de la llave o indentación: la caja se perdía |
 | Una caja o un aviso dentro de otro | Los bloques no se anidan; el de afuera cerraba donde no era |
 | `:::caja{1.2 larga}` | Los formatos son `corta` y `codigo`, que son los que el navegador dibuja |
 | Un identificador repetido o ausente | Es la llave de la respuesta |
 | Controles `1, 3` o `1, 1` | El avance es **un** número: con un salto el alumno nunca llega al último |
 | `puntos: 100 pts`, `descripción:` | Publicaba con cero puntos, o con la descripción en el suelo |
+| `:::pauta{7.7}` sin caja 7.7 | La pauta quedaba guardada, nadie la leía, y esa caja se revisaba a ciegas |
+| Dos `:::pauta{1.2}`, o una vacía | Una se comía a la otra, o no había criterio que mandar |
 
 Y lo que va dentro de una cerca de ` ``` ` o `~~~` se respeta tal cual: ahí `:::caja{9.9}` es texto
 que el alumno tiene que leer, no una caja.
@@ -337,8 +344,8 @@ node neon/subir-laboratorio.mjs --archivo ../Desarrollo_Cloud_Native/Laboratorio
 node neon/subir-laboratorio.mjs --archivo … --escribir   # y ahora sí
 ```
 
-Sin `--escribir` no toca nada: dice cuántos bloques, cuántas cajas y con qué identificadores quedó, o
-la lista completa de problemas con su línea. Vale la pena mirarlo, porque de ahí salió que un `split`
+Sin `--escribir` no toca nada: dice cuántos bloques, cuántas cajas y con qué identificadores quedó,
+**en cuántas de ellas hay pauta y cuáles no la tienen**, o la lista completa de problemas con su línea. Vale la pena mirarlo, porque de ahí salió que un `split`
 mal usado se estaba comiendo el 95% del enunciado sin quejarse.
 
 El enunciado se convierte a HTML y se parte en bloques **al subirlo**, no en el navegador: así el
@@ -433,6 +440,37 @@ principio, y si cambiaste de opinión dilo»: sin ver la 0.1, eso no se puede va
 
 El enunciado entero de L1 son unos **11.400 tokens**, así que revisar sus 21 cajas para 30 alumnos cuesta
 del orden de **medio dólar**. L0 sale en once centavos. No hay nada que optimizar.
+
+#### La pauta: la respuesta correcta, para el modelo y para nadie más
+
+Cada caja puede traer un `:::pauta{1.2}` con lo que el docente considera una respuesta correcta. Con el
+enunciado solo, el modelo tenía que reconstruir el criterio en cada llamada, y en las cajas
+conceptuales —«¿por qué esa firma no sirve de nada?»— eso se nota: dos alumnos que escribieron lo mismo
+podían salir con veredictos distintos. La pauta es el criterio escrito una vez, por quien hizo la guía.
+También arregla el caso contrario, que era el más injusto: la caja que pregunta «¿cuánto te demoró?»
+salía «incompleto» porque el modelo buscaba contenido técnico donde no hay ninguno.
+
+**Y no llega al navegador por ningún camino.** Eso no es una promesa, son tres cosas:
+
+- Vive en `laboratorios.pautas`, una columna que **`mi_laboratorio()` no selecciona**. Guardarla entre
+  los bloques la habría hecho viajar con el enunciado —invisible en la pantalla, perfectamente legible
+  en la pestaña de red—, que es literalmente el laboratorio con las respuestas adentro.
+- La lee `laboratorio_pauta()`, que **se niega a contestarle a quien llega con token de navegador**. El
+  navegador habla con la Data API llevando su JWT, así que `uid_del_token()` devuelve su uid;
+  `/api/laboratorio` pone la identidad a mano con `pulso.usuario_id` y ahí es null. La función exige la
+  segunda vía. Comprobado desde la consola del navegador con un token válido: `La pauta no se entrega
+  por la Data API`, mientras `mi_laboratorio` en la misma línea responde 200.
+- De `/api/laboratorio` **no sale**: entra a la instrucción del modelo y muere ahí. Lo que vuelve son
+  el veredicto y el mensaje, los mismos dos campos de antes.
+
+Tenerla adentro **empeora** el riesgo de que el modelo suelte la respuesta, porque ahora la tiene
+escrita al lado. Por eso la prohibición aparece dos veces en la instrucción —una donde se entrega la
+pauta y otra donde se explica cómo escribir el mensaje— y por eso `probar-revision.mjs` corre las
+pruebas de soplo sobre las cajas conceptuales de L2, que son las que tienen pauta.
+
+Se publica sin pauta perfectamente: así están L0, L1 y X1. El publicador dice en cada corrida cuántas
+cajas quedaron sin una, porque una caja sin pauta se revisa con menos criterio que sus vecinas y eso no
+se nota mirando la pantalla — el alumno recibe un veredicto igual de seguro.
 
 #### Nada de reglas deterministas
 

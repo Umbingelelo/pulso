@@ -553,8 +553,27 @@ salen ahora de `tiene_texto()`.
 
 ## Gacha y cosméticos
 
-El pase reparte **tiradas**; el gacha es donde se gastan. Cada tirada entrega un cosmético: un
-**título** que se muestra bajo el nombre, o una **cara** para el perfil.
+El pase reparte **tiradas** y la tienda las vende; el gacha es donde se gastan. Cada tirada entrega un
+cosmético: un **título** que se muestra bajo el nombre, o una **cara** para el perfil.
+
+### Una tirada se compra con puntos, y eso estuvo roto doce veces
+
+La tienda tenía dos artículos —«Tirada exclusiva de íconos» y «Tirada exclusiva de títulos», 150 puntos
+cada uno— que **no entregaban nada**. `solicitar_canje` descontaba los puntos y escribía el canje; las
+tiradas viven en `movimientos_tiradas` y nadie las escribía desde un canje: las únicas fuentes eran los
+niveles del pase y el −1 de `gacha_tirar`. Entre el 17 y el 24 de agosto, diez alumnos pagaron doce
+veces por nada. El canje quedaba «entregado», el saldo bajaba, y la pantalla del gacha seguía diciendo
+que no les quedaban tiradas: sin un error en ninguna parte.
+
+Lo arregla la `0031`. Los dos artículos se retiran —se dejan `activo = false`, no se borran, porque hay
+canjes apuntándolos y `canjes.articulo_id` es `on delete restrict`—, se devuelve lo pagado al
+`precio_pagado` de cada uno, y queda **uno solo**: «Una tirada de gacha», que tira del pozo general.
+
+Y el mecanismo pasa a estar en el catálogo, no en un `if`: **`articulos.tiradas`** dice cuántas entrega
+cada artículo. Así un paquete de cinco tiradas es una fila y no una migración. Con un check que prohíbe
+combinar `tiradas` con `requiere_aprobacion`: la tirada se entrega al solicitar, en la misma
+transacción que cobra, así que un artículo que además esperara visto bueno la entregaría antes de que
+el docente aprobara nada. En vez de dejar ese camino a medias, la combinación no se puede escribir.
 
 ### El sorteo es en dos pasos
 
@@ -645,7 +664,9 @@ alumno puede quedarse tirando semanas esperando algo que el gacha no entrega.
 ### Ni el pase ni el gacha pagan puntos
 
 Los puntos son de las actividades y se gastan en la tienda. El pase reparte XP, niveles, cosméticos y
-tiradas; el gacha reparte cosméticos. Son dos economías y mezclarlas le quita sentido a las dos.
+tiradas; el gacha reparte cosméticos. Son dos economías, y **el único puente entre ellas va en un solo
+sentido**: con puntos se compra una tirada en la tienda. Al revés no: ni el pase ni el gacha pagan
+puntos nunca.
 
 Había una mentira concreta: `mi_pase` devolvía `puntos_por_sobrante` —«lo que sigas ganando se
 convierte en puntos: llevas N»— y **nadie los pagaba nunca**. No hay un solo `insert` sobre

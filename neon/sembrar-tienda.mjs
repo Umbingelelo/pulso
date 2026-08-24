@@ -36,10 +36,9 @@ const sql = neon(process.env.DATABASE_URL_OWNER);
  */
 const PREMIOS = [
   // código                 nombre                                    categoría     esfuerzo    precio icono            límite
-  ['gacha-iconos',         'Tirada exclusiva de íconos',              'gacha',      'Baja',        150, 'sparkles',      null,
-   'Una tirada en el pozo que solo entrega íconos y avatares.'],
-  ['gacha-titulos',        'Tirada exclusiva de títulos',             'gacha',      'Baja',        150, 'dices',         null,
-   'Una tirada en el pozo que solo entrega títulos.'],
+  ['gacha-tirada',         'Una tirada de gacha',                     'gacha',      'Baja',        150, 'dices',         null,
+   'Una tirada en el pozo del gacha. Puede salir un ícono o un título, de cualquier rareza, '
+   + 'de todo lo que todavía no tengas. Lo del pase no entra: eso se gana subiendo de nivel.'],
   ['decimas-02',           '0,2 puntos en una evaluación',            'nota',       'Baja',        200, 'trending-up',      3,
    'Se suman a la nota de la evaluación que elijas. Uno por parcial.'],
   ['llegar-tarde',         'Llegar tarde a clase',                    'comodin',    'Media',       350, 'alarm-clock',      3,
@@ -71,7 +70,20 @@ const PREMIOS = [
 ];
 
 /** Los que tocan nota o plazo pasan por el visto bueno del docente. */
-const SIN_APROBACION = new Set(['gacha-iconos', 'gacha-titulos']);
+const SIN_APROBACION = new Set(['gacha-tirada']);
+
+/**
+ * Cuántas tiradas de gacha entrega cada artículo al canjearlo.
+ *
+ * Vive acá y no en el cuerpo de `solicitar_canje` a propósito: el catálogo es donde
+ * el docente ya define precio, límite y stock, así que también dice qué entrega. Un
+ * paquete de cinco tiradas es una fila, no una migración.
+ *
+ * Antes esto no existía y era el agujero: los dos artículos de gacha cobraban 150
+ * puntos y **no entregaban nada**, porque nadie escribía en `movimientos_tiradas`
+ * desde un canje. Ver `0031_una_sola_tirada.sql`.
+ */
+const TIRADAS = new Map([['gacha-tirada', 1]]);
 
 const ambitos = await sql`
   select a.id as asignatura_id, p.id as periodo_id, a.sigla
@@ -79,11 +91,24 @@ const ambitos = await sql`
    where p.codigo = '2026-2' and a.activa`;
 
 for (const am of ambitos) {
-  // La tienda anterior eran 32 artículos de relleno con emojis. Nadie ha canjeado
-  // nada, así que se reemplaza entera en vez de dejar dos catálogos conviviendo.
-  await sql`delete from public.articulos
-             where asignatura_id = ${am.asignatura_id} and periodo_id = ${am.periodo_id}
-               and codigo <> all(${PREMIOS.map((p) => p[0])})`;
+  // Lo que no está en la lista se **retira**, no se borra.
+  //
+  // Antes era un `delete`, y el comentario decía «nadie ha canjeado nada». Eso dejó
+  // de ser cierto: hay canjes apuntando a artículos retirados y
+  // `canjes.articulo_id` es `on delete restrict`, así que el borrado ya no fallaría
+  // en silencio — fallaría la corrida entera. Y si la FK fuera en cascada sería
+  // peor: se llevaría el historial de compras de esos alumnos.
+  //
+  // Retirarlo hace lo que se quiere: sale de la vitrina —que filtra por `activo`— y
+  // el canje que alguien hizo sigue en su historial con el nombre de lo que compró.
+  const retirados = await sql`
+    update public.articulos set activo = false
+     where asignatura_id = ${am.asignatura_id} and periodo_id = ${am.periodo_id}
+       and activo and codigo <> all(${PREMIOS.map((p) => p[0])})
+    returning codigo`;
+  if (retirados.length) {
+    console.log(`${am.sigla}: retirados ${retirados.map((r) => r.codigo).join(', ')}`);
+  }
 
   let orden = 0;
   for (const [codigo, nombre, categoria, esfuerzo, precio, icono, limite, descripcion] of PREMIOS) {
@@ -91,17 +116,18 @@ for (const am of ambitos) {
     await sql`
       insert into public.articulos (asignatura_id, periodo_id, codigo, nombre, descripcion,
                                     detalle, categoria, icono, precio, requiere_aprobacion,
-                                    limite_por_alumno, activo, orden)
+                                    limite_por_alumno, activo, orden, tiradas)
       values (${am.asignatura_id}, ${am.periodo_id}, ${codigo}, ${nombre}, ${descripcion},
               ${'Esfuerzo ' + esfuerzo}, ${categoria}, ${icono}, ${precio},
-              ${!SIN_APROBACION.has(codigo)}, ${limite}, true, ${orden})
+              ${!SIN_APROBACION.has(codigo)}, ${limite}, true, ${orden},
+              ${TIRADAS.get(codigo) ?? null})
       on conflict (asignatura_id, periodo_id, codigo) do update
         set nombre = excluded.nombre, descripcion = excluded.descripcion,
             detalle = excluded.detalle, categoria = excluded.categoria,
             icono = excluded.icono, precio = excluded.precio,
             requiere_aprobacion = excluded.requiere_aprobacion,
             limite_por_alumno = excluded.limite_por_alumno, orden = excluded.orden,
-            activo = true`;
+            tiradas = excluded.tiradas, activo = true`;
   }
   console.log(`${am.sigla}: ${PREMIOS.length} premios`);
 }

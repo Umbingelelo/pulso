@@ -48,8 +48,12 @@ import { PerfilStore } from './perfil.store';
         <div class="cuenta">
           <p class="etiqueta">Tiradas disponibles</p>
           <p class="cifra destacada">{{ tiradas() }}</p>
+          <!-- Las dos vías, porque desde la 0031 la tienda vende tiradas y esta
+               línea decía solo el pase: un alumno con puntos de sobra leía que la
+               única forma era subir de nivel. -->
           <p class="chico suave">
-            Se ganan subiendo de nivel en el <a routerLink="/pase">pase</a>.
+            Se ganan subiendo de nivel en el <a routerLink="/pase">pase</a>, o se
+            compran en la <a routerLink="/tienda">tienda</a>.
           </p>
         </div>
 

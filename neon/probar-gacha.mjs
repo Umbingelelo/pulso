@@ -299,6 +299,108 @@ if (ciegas.length) {
     `${ciegas.map((p) => p.nombre).join(', ')}. Para eso, --tiradas 4000`);
 }
 
+// ---------- La tienda entrega la tirada ----------
+//
+// Esta sección existe por una falla que estuvo doce veces en producción: los dos
+// artículos de gacha de la tienda cobraban 150 puntos y **no entregaban nada**.
+// `solicitar_canje` descontaba y escribía el canje; nadie escribía en
+// `movimientos_tiradas`. Todo quedaba «entregado», el saldo bajaba, y la pantalla
+// del gacha seguía diciendo que no quedaban tiradas.
+//
+// Lo que se vigila acá es la cadena completa —cobra, acredita, y la tirada se puede
+// gastar— porque cada pieza por separado funcionaba y el conjunto no.
+
+console.log('\nLa tienda entrega la tirada');
+
+const [articulo] = await d`
+  select a.id, a.codigo, a.precio, a.tiradas
+    from public.articulos a
+    join public.matriculas mt on mt.id = ${m.id}
+    join public.secciones s on s.id = mt.seccion_id
+                           and s.asignatura_id = a.asignatura_id
+                           and s.periodo_id = a.periodo_id
+   where a.categoria = 'gacha' and a.activo`;
+
+const [{ n: cuantos }] = await d`
+  select count(*)::int as n
+    from public.articulos a
+    join public.matriculas mt on mt.id = ${m.id}
+    join public.secciones s on s.id = mt.seccion_id
+                           and s.asignatura_id = a.asignatura_id
+                           and s.periodo_id = a.periodo_id
+   where a.categoria = 'gacha' and a.activo`;
+rev('hay un solo artículo de gacha en la vitrina', cuantos === 1, `hay ${cuantos}`);
+
+if (!articulo) {
+  rev('el artículo de gacha existe', false, 'no encontré ninguno activo para esta matrícula');
+} else {
+  rev(`el artículo declara cuántas tiradas entrega (${articulo.codigo})`,
+    articulo.tiradas === 1, `tiradas = ${articulo.tiradas}`);
+
+  const saldoDe = async () => {
+    const [r] = await d`select coalesce(sum(puntos), 0)::int as n
+       from public.movimientos_puntos where matricula_id = ${m.id}`;
+    return r.n;
+  };
+
+  // Los puntos que haga falta para poder comprar, y se devuelven al final.
+  const saldoInicial = await saldoDe();
+  const MOTIVO_SALDO = 'Prueba de gacha: saldo para canjear';
+  if (saldoInicial < articulo.precio) {
+    await d`insert into public.movimientos_puntos (matricula_id, puntos, motivo)
+            values (${m.id}, ${articulo.precio - saldoInicial + 10}, ${MOTIVO_SALDO})`;
+  }
+
+  const tiradasAntes = await tiradasDe();
+  const saldoAntes = await saldoDe();
+
+  const [{ canje }] = await como(alumno.id, (s) =>
+    s`select public.solicitar_canje(${m.id}::uuid, ${articulo.id}::uuid) as canje`);
+  rev('el canje se registra', Number(canje) > 0, `devolvió ${canje}`);
+
+  const saldoDespues = await saldoDe();
+  const tiradasDespues = await tiradasDe();
+  rev('cobra el precio', saldoAntes - saldoDespues === articulo.precio,
+    `bajó ${saldoAntes - saldoDespues}, el precio es ${articulo.precio}`);
+  rev('y acredita la tirada', tiradasDespues - tiradasAntes === articulo.tiradas,
+    `subió ${tiradasDespues - tiradasAntes}`);
+
+  // El motivo lleva el número del canje: sin eso, dos compras del mismo artículo no
+  // se distinguen en el historial y no se puede rastrear qué pagó qué.
+  const [{ n: rastreable }] = await d`
+    select count(*)::int as n from public.movimientos_tiradas
+     where matricula_id = ${m.id} and motivo like ${'Canje #' + canje + ':%'}`;
+  rev('la tirada se puede rastrear hasta el canje que la pagó', rastreable === 1);
+
+  // Y lo que de verdad importaba: que la tirada sirva.
+  const [{ premio }] = await como(alumno.id, (s) =>
+    s`select public.gacha_tirar(${m.id}::uuid) as premio`);
+  rev('la tirada comprada se puede gastar', Boolean(premio?.nombre),
+    JSON.stringify(premio));
+  rev('y queda en cero de nuevo', (await tiradasDe()) === tiradasAntes);
+
+  // Un artículo con tiradas no puede quedar esperando visto bueno: se cobraría al
+  // solicitar y la tirada se entregaría igual, antes de que el docente aprobara.
+  // El check de la 0031 lo prohíbe, y esto comprueba que el check está puesto.
+  try {
+    await d`update public.articulos set requiere_aprobacion = true where id = ${articulo.id}`;
+    await d`update public.articulos set requiere_aprobacion = false where id = ${articulo.id}`;
+    rev('un artículo con tiradas no puede pedir visto bueno', false, 'la base lo aceptó');
+  } catch (e) {
+    rev('un artículo con tiradas no puede pedir visto bueno',
+      (e.message ?? '').includes('articulos_tiradas_sin_aprobacion'), e.message);
+  }
+
+  // Deshacer la compra: el canje, su cobro y el saldo que se le puso.
+  await d`delete from public.canjes where id = ${canje}`;
+  await d`delete from public.movimientos_puntos
+           where matricula_id = ${m.id} and (motivo = ${MOTIVO_SALDO}
+              or motivo like ${'Canje: %'} and puntos = ${-articulo.precio})`;
+  const saldoFinal = await saldoDe();
+  rev('el saldo vuelve a como estaba', saldoFinal === saldoInicial,
+    `quedó con ${saldoFinal}, tenía ${saldoInicial}`);
+}
+
 // ---------- Dejarlo como estaba ----------
 
 await limpiar();

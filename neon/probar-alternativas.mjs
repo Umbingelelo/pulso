@@ -64,10 +64,22 @@ async function como(consulta) {
   return r[2] ?? [];
 }
 
-/** Lo que hay que borrar al final, por lo mismo: no hay transacción que deshacer. */
+/**
+ * Lo que hay que borrar al final, por lo mismo: no hay transacción que deshacer.
+ *
+ * Y los **puntos** aparte, que es la parte que se olvida. Borrar la actividad se
+ * lleva en cascada el laboratorio, el avance y el resultado, pero no el movimiento
+ * de puntos: ése cuelga de la matrícula, no de la actividad, y el trigger lo
+ * escribe con el **título**. Sin esta segunda línea cada corrida le regalaba 100
+ * puntos al alumno de prueba —cuatro corridas, 400 puntos— y nadie se enteraba
+ * porque el saldo no lo revisa nadie. Es exactamente la trampa que documenta
+ * `probar-laboratorio.mjs`.
+ */
 const limpiar = async () => {
   await d`delete from public.actividades a
            where a.codigo in ('ZZA','ZZB') and a.asignatura_id = ${m.asignatura_id}`;
+  await d`delete from public.movimientos_puntos
+           where matricula_id = ${m.id} and motivo in ('Prueba ZZA', 'Prueba ZZB')`;
 };
 await limpiar();
 
@@ -178,6 +190,14 @@ try {
 const [{ n }] = await d`select count(*)::int as n from public.actividades
    where codigo in ('ZZA','ZZB')`;
 rev('la prueba no dejó nada en la base', n, 0);
+
+// Y el saldo, que es lo que de verdad se escapaba: los puntos cuelgan de la
+// matrícula y sobreviven al `cascade` de la actividad.
+const [{ n: saldo }] = await d`
+  select coalesce(sum(mp.puntos), 0)::int as n
+    from public.movimientos_puntos mp
+   where mp.matricula_id = ${m.id} and mp.motivo in ('Prueba ZZA', 'Prueba ZZB')`;
+rev('ni puntos regalados al alumno de prueba', saldo, 0);
 
 console.log(fallos === 0 ? '\nTodo bien: se hace uno o el otro, y el que cobró no pierde.'
                          : `\n${fallos} fallos.`);

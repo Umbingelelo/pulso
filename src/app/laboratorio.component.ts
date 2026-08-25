@@ -38,6 +38,26 @@ import { PerfilStore } from './perfil.store';
         <a class="boton contorno chico" routerLink="/actividades"
            style="margin-top:14px">Volver a actividades</a>
       </div>
+    } @else if (lab()?.cerrado_por; as otro) {
+      <!-- Se llega acá escribiendo la dirección a mano. La base ya no manda el
+           enunciado, así que no hay nada que esconder: solo explicar por qué, y
+           que sus puntos están a salvo — que es lo que el alumno viene a preguntar. -->
+      <div class="encabezado">
+        <p class="etiqueta">Desafío {{ lab()!.codigo }}</p>
+        <h1>{{ lab()!.titulo }}</h1>
+      </div>
+      <div class="tarjeta">
+        <div class="aviso dato">
+          <strong>Ya elegiste el otro camino.</strong> Este y <strong>{{ otro }}</strong> son
+          alternativas: se hace uno o el otro, no los dos. Entregaste {{ otro }} y
+          <strong>sus puntos están contados</strong>; esto no te quita nada.
+        </div>
+        @if (lab()!.descripcion) {
+          <p class="chico suave" style="margin-top:14px">{{ lab()!.descripcion }}</p>
+        }
+        <a class="boton contorno chico" routerLink="/actividades"
+           style="margin-top:14px">Volver a actividades</a>
+      </div>
     } @else if (lab()?.falta; as req) {
       <!-- Se llega acá escribiendo la dirección a mano: la tarjeta de Actividades
            no ofrece el enlace. El enunciado no viene en la respuesta —eso lo

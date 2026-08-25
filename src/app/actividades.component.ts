@@ -44,6 +44,11 @@ import { PerfilStore } from './perfil.store';
                 <span class="insignia verde">Completada</span>
               } @else if (falta(a); as req) {
                 <span class="insignia">Se abre con {{ req }}</span>
+              } @else if (cerradoPor(a); as otro) {
+                <!-- Antes que «Fuera de plazo» y que «Opcional»: que ya no se pueda
+                     hacer es lo primero que el alumno necesita saber, y el resto
+                     deja de importarle. -->
+                <span class="insignia">Hiciste {{ otro }}</span>
               } @else if (!enPlazo(a)) {
                 <!-- Antes que «Opcional» a propósito: que ya no pague es lo que
                      cambia la decisión del alumno, y es lo que tiene que leer
@@ -59,7 +64,19 @@ import { PerfilStore } from './perfil.store';
             @if (a.descripcion) {
               <p class="chico suave" style="margin-top:10px">{{ a.descripcion }}</p>
             }
-            @if (esOpcional(a) && !hecha(a.id)) {
+            @if (cerradoPor(a); as otro) {
+              <p class="chico suave" style="margin-top:8px">
+                Este y <strong>{{ otro }}</strong> son alternativas: se hace uno o el
+                otro, no los dos. Ya entregaste {{ otro }} y sus puntos están contados.
+              </p>
+            } @else if (alternativaDe(a); as otro) {
+              <!-- Decirlo **antes** de que elija, no después de que cobre: es la
+                   diferencia entre una regla y una sorpresa. -->
+              <p class="chico suave" style="margin-top:8px">
+                Alternativa de <strong>{{ otro }}</strong>: al entregar uno, el otro se
+                cierra. Elige el que puedas hacer.
+              </p>
+            } @else if (esOpcional(a) && !hecha(a.id)) {
               <p class="chico suave" style="margin-top:8px">
                 No entra en ninguna nota. Es para quien terminó y quiere más.
               </p>
@@ -81,6 +98,8 @@ import { PerfilStore } from './perfil.store';
                      una puerta que no abre. El candado real está en la base; esto
                      solo evita el viaje en falso. -->
                 <span class="chico suave">Termina {{ req }} para desbloquearlo</span>
+              } @else if (cerradoPor(a); as otro) {
+                <span class="chico suave">Elegiste {{ otro }}</span>
               } @else {
                 <a class="boton accion chico" [routerLink]="ruta(a)">Empezar</a>
               }
@@ -162,6 +181,16 @@ export class ActividadesComponent {
   /** El código que hay que entregar antes, o `null` si está abierto. */
   falta(a: Actividad): string | null {
     return this.candados().get(a.codigo)?.falta ?? null;
+  }
+
+  /** El alternativo que ya entregó y que por eso cierra a éste. */
+  cerradoPor(a: Actividad): string | null {
+    return this.candados().get(a.codigo)?.cerrado_por ?? null;
+  }
+
+  /** Con quién es alternativa, esté cerrado o no. Sirve para avisar antes de elegir. */
+  alternativaDe(a: Actividad): string | null {
+    return this.candados().get(a.codigo)?.excluye ?? null;
   }
 
   esOpcional(a: Actividad): boolean {

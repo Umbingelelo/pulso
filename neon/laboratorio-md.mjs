@@ -50,7 +50,7 @@ const AVISOS = ['alerta', 'pista', 'ojo'];
 const FORMATOS = ['corta', 'codigo'];
 /** El encabezado es un juego cerrado: una llave de más suele ser una tildada. */
 const LLAVES = ['codigo', 'titulo', 'descripcion', 'minutos', 'puntos', 'orden',
-                'opcional', 'requiere', 'desde', 'hasta'];
+                'opcional', 'requiere', 'excluye', 'desde', 'hasta'];
 /** `2026-08-24` o `2026-08-24 23:59`, con «T» o espacio en medio. */
 const FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/;
 
@@ -221,6 +221,18 @@ function leerEncabezado(texto, problemas) {
   }
   if (meta.requiere && meta.requiere === meta.codigo) {
     problemas.push(`«requiere: ${meta.requiere}» apunta a sí mismo: nunca se desbloquearía`);
+  }
+  // `excluye` es el par alternativo: entregar uno cierra el otro. Apuntarse a sí
+  // mismo lo cerraría al entregarlo, y entregarlo es justamente lo que hay que
+  // poder hacer. Y excluir lo mismo que se requiere es un candado imposible: no se
+  // abre hasta entregar aquello, y al entregarlo queda cerrado.
+  if (meta.excluye && meta.excluye === meta.codigo) {
+    problemas.push(`«excluye: ${meta.excluye}» apunta a sí mismo`);
+  }
+  if (meta.excluye && meta.requiere && meta.excluye === meta.requiere) {
+    problemas.push(`«excluye» y «requiere» apuntan los dos a ${meta.excluye}: ` +
+      'ese laboratorio no se podría abrir nunca, porque lo que lo abre es lo mismo ' +
+      'que lo cierra');
   }
 
   // El plazo en que paga. Las dos son opcionales y cada una es independiente: solo

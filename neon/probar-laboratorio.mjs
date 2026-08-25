@@ -331,7 +331,21 @@ rev('entregado', entrega?.entregado, true);
 // sin ninguna. Ni cuenta distinto, ni paga menos, ni se queja.
 rev('con todas las sugerencias en incompleto, entrega igual', entrega?.entregado, true);
 rev('cuenta las respondidas', entrega?.respondidas, m.cajas);
-rev('pagó los puntos completos', await saldo() - antes, m.puntos);
+/**
+ * Lo que **debe** pagar esta entrega: sus puntos dentro del plazo, cero fuera.
+ *
+ * Estaba fijo en `m.puntos`, y eso convirtió esta prueba en una bomba de tiempo:
+ * mientras L0 estuvo dentro de su semana pasó en verde, y el día que la semana
+ * cerró empezó a fallar por lo que el producto hace **bien**. La expectativa tiene
+ * que salir de la misma fuente que la decisión.
+ */
+const [{ en_plazo: aTiempo }] = await dueno`
+  select coalesce(public.actividad_en_plazo(${m.actividad}::uuid, now()), true) as en_plazo`;
+const debePagar = aTiempo ? m.puntos : 0;
+if (!aTiempo) {
+  console.log(`  · ${CODIGO} está fuera de su plazo, así que lo correcto es que pague 0`);
+}
+rev('pagó lo que corresponde al plazo', await saldo() - antes, debePagar);
 
 const [{ r: v3 }] = await comoAlumno(alumno.id, (s) =>
   s`select public.mi_laboratorio(${m.matricula}::uuid, ${CODIGO}) as r`);
@@ -347,7 +361,7 @@ await debeFallar('no se puede seguir escribiendo', alumno.id, (s) =>
 await debeFallar('no se entrega dos veces', alumno.id, (s) =>
   s`select public.laboratorio_entregar(${m.matricula}::uuid, ${CODIGO})`,
   'Ya lo habías entregado');
-rev('los puntos no se duplicaron', await saldo() - antes, m.puntos);
+rev('los puntos no se duplicaron', await saldo() - antes, debePagar);
 
 // Entregar cierra la edición pero no el aprendizaje: la sugerencia es la única
 // retroalimentación que va a recibir sobre lo que escribió, así que se puede

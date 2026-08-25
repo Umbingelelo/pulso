@@ -86,9 +86,10 @@ const sinPauta = ids.filter((id) => !(id in pautas));
 console.log(`Pautas     ${ids.length - sinPauta.length} de ${ids.length} cajas`);
 if (sinPauta.length) console.log(`           sin pauta: ${sinPauta.join(', ')}`);
 
-if (meta.opcional === 'true' || meta.requiere) {
+if (meta.opcional === 'true' || meta.requiere || meta.excluye) {
   console.log(`Acceso     ${meta.opcional === 'true' ? 'opcional' : 'de la línea principal'}` +
-    (meta.requiere ? ` · se abre al entregar ${meta.requiere}` : ' · sin candado'));
+    (meta.requiere ? ` · se abre al entregar ${meta.requiere}` : ' · sin candado') +
+    (meta.excluye ? ` · alternativa de ${meta.excluye}: se hace uno o el otro` : ''));
 }
 console.log(`Plazo      ${meta.desde || meta.hasta
   ? `${meta.desde ?? 'siempre'} → ${meta.hasta ?? 'siempre'} (hora local)`
@@ -139,14 +140,15 @@ const [act] = await sql`
 
 await sql`
   insert into public.laboratorios (actividad_id, bloques, pautas, minutos, cajas, controles,
-                                   opcional, requiere)
+                                   opcional, requiere, excluye)
   values (${act.id}, ${JSON.stringify(bloques)}::jsonb, ${JSON.stringify(pautas)}::jsonb,
           ${meta.minutos ? Number(meta.minutos) : null}, ${ids.length}, ${controles},
-          ${meta.opcional === 'true'}, ${meta.requiere ?? null})
+          ${meta.opcional === 'true'}, ${meta.requiere ?? null}, ${meta.excluye ?? null})
   on conflict (actividad_id) do update
     set bloques = excluded.bloques, pautas = excluded.pautas, minutos = excluded.minutos,
         cajas = excluded.cajas, controles = excluded.controles,
         opcional = excluded.opcional, requiere = excluded.requiere,
+        excluye = excluded.excluye,
         actualizado_en = now()`;
 
 // Si el enunciado cambió, avisar de las cajas que desaparecieron: las respuestas

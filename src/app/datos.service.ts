@@ -500,6 +500,13 @@ export interface EstadoLaboratorio {
   requiere: string | null;
   /** Lo que **todavía** falta entregar. `null` = abierto. */
   falta: string | null;
+  /** El código del laboratorio alternativo: se hace uno o el otro. */
+  excluye: string | null;
+  /**
+   * El código del alternativo que **ya entregó**, y que por eso cierra a éste.
+   * `null` = abierto. Es distinto de `falta`: aquél espera algo, éste ya pasó.
+   */
+  cerrado_por: string | null;
   puntua_desde: string | null;
   puntua_hasta: string | null;
   en_plazo: boolean;
@@ -522,6 +529,14 @@ export interface Laboratorio {
    * manda los bloques**: la ficha se ve, el enunciado no.
    */
   falta: string | null;
+  /** El código del laboratorio alternativo: se hace uno o el otro. */
+  excluye: string | null;
+  /**
+   * El alternativo que **ya entregó**, y que por eso cierra a éste. Cuando no es
+   * `null`, tampoco vienen los bloques. Distinto de `falta`: aquél espera algo que
+   * puede pasar, éste ya pasó y no se deshace.
+   */
+  cerrado_por: string | null;
   puntua_desde: string | null;
   puntua_hasta: string | null;
   /** Si entregarlo **ahora** paga. Viene resuelto de la base. */

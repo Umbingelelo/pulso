@@ -229,10 +229,16 @@ import { ReunionStore } from './reunion.store';
             @if (perfil.ramos().length > 1) {
               <label class="selector-ramo">
                 <span class="etiqueta">Ramo</span>
-                <select [value]="perfil.ramoId()"
-                        (change)="cambiarRamo($any($event.target).value)">
+                <!-- La selección va en el [selected] de cada opción, igual que en
+                     el de sección de arriba: el ramo se lee de localStorage al
+                     instante y las opciones llegan después, así que un [value]
+                     sobre el select se asignaba cuando esa opción todavía no
+                     existía y el navegador lo dejaba en la primera. El alumno con
+                     dos ramos veía el contenido de uno y el nombre del otro. -->
+                <select (change)="cambiarRamo($any($event.target).value)">
                   @for (r of perfil.ramos(); track r.matricula_id) {
-                    <option [value]="r.matricula_id">
+                    <option [value]="r.matricula_id"
+                            [selected]="perfil.ramoId() === r.matricula_id">
                       {{ r.sigla }} · {{ r.seccion }} · {{ r.periodo }}
                     </option>
                   }

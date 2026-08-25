@@ -1,5 +1,5 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { DatosService, Mision } from './datos.service';
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { DatosService, Mision, Ramo } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 /**
@@ -131,15 +131,34 @@ export class MisionesComponent {
     return r ? Number(r.solucion?.correcta) : -1;
   });
 
+  /**
+   * Reaccionar al ramo, y no cargar una sola vez al construirse.
+   *
+   * El selector de ramo vive en la barra lateral, así que cambia sin que esta
+   * pantalla se destruya. Leyéndolo solo en el constructor, el alumno con dos
+   * ramos cambiaba de ramo y seguía viendo el contenido del otro, sin ningún
+   * error. Es el mismo defecto que tenía el panel del docente; `tienda`, `puntos`
+   * e `inicio` ya lo hacían así.
+   *
+   * Ojo con la forma: el `effect` lee el ramo y **se lo pasa** a `cargar`. La
+   * primera versión de esto dejaba el `await this.perfil.cargar()` dentro de
+   * `cargar`, y eso es un ciclo — el effect depende de `perfil.ramo()`, y
+   * `perfil.cargar()` escribe las señales de las que ese computed sale, así que
+   * el effect se volvía a disparar solo. La pantalla de misiones dejó de ofrecer
+   * el botón de generar y la prueba de navegador lo cazó.
+   */
   constructor() {
-    this.cargar();
+    effect(() => {
+      const ramo = this.perfil.ramo();
+      if (ramo) void this.cargar(ramo);
+      else this.cargando.set(false);
+    });
+    void this.perfil.cargar();
   }
 
-  private async cargar(): Promise<void> {
+  private async cargar(ramo: Ramo): Promise<void> {
+    this.cargando.set(true);
     try {
-      await this.perfil.cargar();
-      const ramo = this.perfil.ramo();
-      if (!ramo) return;
       const r = await this.datos.misionDelDia(ramo.matricula_id);
       this.estado.set(r.estado);
       this.mision.set(r.mision);

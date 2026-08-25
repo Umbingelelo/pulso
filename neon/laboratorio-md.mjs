@@ -194,9 +194,30 @@ function leerEncabezado(texto, problemas) {
   // `requiere` sin `opcional` se acepta —un laboratorio de la línea principal
   // también podría tener prerrequisito— pero `opcional` sin `requiere` casi
   // siempre es un olvido: el desafío quedaría abierto desde el primer día.
-  if (meta.opcional === 'true' && !meta.requiere) {
+  //
+  // «Casi siempre», y hay un caso legítimo: un laboratorio opcional **autosuficiente**,
+  // que se puede hacer suelto y no es premio por haber terminado otro. El L2B de
+  // ITY1102 es exactamente eso y su guía docente lo dice: «es opcional y no es
+  // requisito de nada», «si lo dicta suelto, es autosuficiente».
+  //
+  // Para ése se escribe «requiere: ninguno». No se acepta la ausencia a secas
+  // porque entonces el olvido y la decisión se ven igual en el archivo, y el que
+  // lea el encabezado en marzo no sabría cuál de las dos fue.
+  // Local y no en `meta`: `meta` es lo que dice el archivo, y esto es una lectura
+  // de eso. Guardarlo ahí le agregaría al publicador una llave que no existe en
+  // ningún encabezado.
+  const sinCandado = (meta.requiere ?? '').toLowerCase() === 'ninguno';
+  if (sinCandado) delete meta.requiere;
+
+  if (meta.opcional === 'true' && !meta.requiere && !sinCandado) {
     problemas.push('un laboratorio «opcional: true» sin «requiere» queda abierto ' +
-      'desde el principio. Escribe el código del que hay que entregar antes, p.ej. «requiere: L1»');
+      'desde el principio. Escribe el código del que hay que entregar antes ' +
+      '—p.ej. «requiere: L1»— o, si de verdad va abierto porque se puede hacer ' +
+      'suelto, dilo con «requiere: ninguno».');
+  }
+  if (sinCandado && meta.opcional !== 'true') {
+    problemas.push('«requiere: ninguno» solo tiene sentido junto a «opcional: true»: ' +
+      'un laboratorio de la línea principal ya está abierto. Quita la línea.');
   }
   if (meta.requiere && meta.requiere === meta.codigo) {
     problemas.push(`«requiere: ${meta.requiere}» apunta a sí mismo: nunca se desbloquearía`);

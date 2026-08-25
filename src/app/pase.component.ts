@@ -1,6 +1,6 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { DatosService, Pase, Posicion, Recompensa } from './datos.service';
+import { DatosService, Pase, Posicion, Ramo, Recompensa } from './datos.service';
 import { PerfilStore } from './perfil.store';
 import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
 
@@ -234,15 +234,34 @@ export class PaseComponent {
     return this.tabla().find(p => p.soy_yo) ?? null;
   });
 
+  /**
+   * Reaccionar al ramo, y no cargar una sola vez al construirse.
+   *
+   * El selector de ramo vive en la barra lateral, así que cambia sin que esta
+   * pantalla se destruya. Leyéndolo solo en el constructor, el alumno con dos
+   * ramos cambiaba de ramo y seguía viendo el contenido del otro, sin ningún
+   * error. Es el mismo defecto que tenía el panel del docente; `tienda`, `puntos`
+   * e `inicio` ya lo hacían así.
+   *
+   * Ojo con la forma: el `effect` lee el ramo y **se lo pasa** a `cargar`. La
+   * primera versión de esto dejaba el `await this.perfil.cargar()` dentro de
+   * `cargar`, y eso es un ciclo — el effect depende de `perfil.ramo()`, y
+   * `perfil.cargar()` escribe las señales de las que ese computed sale, así que
+   * el effect se volvía a disparar solo. La pantalla de misiones dejó de ofrecer
+   * el botón de generar y la prueba de navegador lo cazó.
+   */
   constructor() {
-    this.cargar();
+    effect(() => {
+      const ramo = this.perfil.ramo();
+      if (ramo) void this.cargar(ramo);
+      else this.cargando.set(false);
+    });
+    void this.perfil.cargar();
   }
 
-  private async cargar(): Promise<void> {
+  private async cargar(ramo: Ramo): Promise<void> {
+    this.cargando.set(true);
     try {
-      await this.perfil.cargar();
-      const ramo = this.perfil.ramo();
-      if (!ramo) return;
 
       // Primero se entrega lo desbloqueado, después se lee: así la escalera ya
       // llega con las recompensas marcadas como obtenidas.

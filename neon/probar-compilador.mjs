@@ -43,6 +43,17 @@ const LABORATORIOS = [
   '../Arquitectura_de_Sistemas_IA/Laboratorios',
 ];
 
+/**
+ * Qué archivo es un enunciado y qué no.
+ *
+ * Junto a cada laboratorio de ITY1102 vive una `Guia-docente-*.md` que dice en su
+ * primera línea «no se entrega a los alumnos»: es el reloj de la sesión y la pauta
+ * del docente, no tiene encabezado y no tiene por qué tenerlo. Sin este filtro la
+ * prueba las compilaba y reportaba dos fallos por archivos que están perfectos.
+ */
+const esEnunciado = (nombre) =>
+  nombre.endsWith('.md') && nombre !== 'README.md' && !nombre.startsWith('Guia-docente');
+
 let fallos = 0;
 const rev = (etiqueta, ok, detalle = '') => {
   if (!ok) fallos++;
@@ -175,6 +186,10 @@ for (const [etiqueta, linea, contiene] of ENCABEZADOS) {
 for (const [etiqueta, linea, contiene] of [
   ['opcional que no es true ni false', 'opcional: si', 'tiene que ser true o false'],
   ['opcional sin decir qué lo abre',   'opcional: true', 'queda abierto desde el principio'],
+  // «requiere: ninguno» es la forma de decir «opcional y abierto» a propósito. En
+  // un laboratorio de la línea principal no significa nada, y aceptarlo callado
+  // dejaría una línea que el que lea el encabezado en marzo no sabría interpretar.
+  ['«requiere: ninguno» en uno obligatorio', 'requiere: ninguno', 'solo tiene sentido junto a'],
 ]) {
   const texto = `---\ncodigo: LX\ntitulo: Sonda\npuntos: 100\n${linea}\n---\n${CAJA_OK}`;
   const { problemas } = compilar(texto);
@@ -307,6 +322,18 @@ rev('un opcional bien declarado se acepta',
   && opcionalBien.meta.opcional === 'true' && opcionalBien.meta.requiere === 'L1',
   JSON.stringify(opcionalBien.problemas));
 
+// El opcional **autosuficiente**: se puede hacer suelto, así que va abierto. Es el
+// L2B de ITY1102, y su guía docente lo dice con esas palabras. Lo que se comprueba
+// es que `requiere` quede **sin valor**: con «ninguno» ahí, `laboratorio_falta`
+// buscaría una actividad de código «ninguno» y el candado no se abriría nunca.
+const opcionalAbierto = compilar(
+  `---\ncodigo: L2B\ntitulo: Opcional\npuntos: 100\nopcional: true\nrequiere: ninguno\n---\n${CAJA_OK}`);
+rev('un opcional autosuficiente se declara con «requiere: ninguno»',
+  opcionalAbierto.problemas.length === 0
+  && opcionalAbierto.meta.opcional === 'true'
+  && opcionalAbierto.meta.requiere === undefined,
+  JSON.stringify({ problemas: opcionalAbierto.problemas, requiere: opcionalAbierto.meta.requiere }));
+
 const conDosPuntos = compilar(
   `---\ncodigo: LX\ntitulo: Sonda\npuntos: 100\ndescripcion: Mira esto: viaja en texto plano\n---\n${CAJA_OK}`);
 rev('una descripción con dos puntos adentro',
@@ -371,11 +398,11 @@ for (const carpeta of LABORATORIOS) {
     // laboratorio, junto a su notebook y sus guías.
     for (const entrada of await readdir(carpeta, { withFileTypes: true })) {
       const ruta = join(carpeta, entrada.name);
-      if (entrada.isFile() && entrada.name.endsWith('.md') && entrada.name !== 'README.md') {
+      if (entrada.isFile() && esEnunciado(entrada.name)) {
         archivos.push(ruta);
       } else if (entrada.isDirectory()) {
         for (const dentro of await readdir(ruta)) {
-          if (dentro.endsWith('.md') && dentro !== 'README.md') archivos.push(join(ruta, dentro));
+          if (esEnunciado(dentro)) archivos.push(join(ruta, dentro));
         }
       }
     }

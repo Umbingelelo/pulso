@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Cosmetico, DatosService, TiradaGacha } from './datos.service';
 import { PerfilStore } from './perfil.store';
@@ -346,8 +346,22 @@ export class GachaComponent {
     return [...grupos.values()].sort((a, b) => b.orden - a.orden);
   });
 
+  /**
+   * Reaccionar al ramo, y no cargar una sola vez al construirse.
+   *
+   * La colección y las tiradas son **por matrícula**, así que un alumno con dos
+   * ramos veía las del ramo anterior tras cambiar el selector de la barra —que no
+   * destruye esta pantalla— y sin ningún error a la vista.
+   */
   constructor() {
-    this.perfil.cargar().then(() => this.cargar());
+    effect(() => {
+      // `cargar` lee el ramo por su cuenta; esto es lo que declara la dependencia.
+      // Y no llama a `perfil.cargar()` adentro, que sería el ciclo: el effect
+      // depende de `perfil.ramo()` y eso escribe las señales de las que sale.
+      if (this.perfil.ramo()) void this.cargar();
+      else this.cargando.set(false);
+    });
+    void this.perfil.cargar();
   }
 
   /**

@@ -1,20 +1,27 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import {
-  Actividad, AlumnoNomina, Canje, DatosService, FilaResumenDiagnostico, RamoDocente,
+  Actividad, AlumnoNomina, Canje, DatosService, FilaResumenDiagnostico,
   SeccionReunion,
 } from './datos.service';
+import { DocenteStore } from './docente.store';
 
 /**
  * La vista del docente, acotada a lo que dicta.
  *
- * Se elige primero **qué ramo**: una asignatura en un periodo. Sin eso, las
- * secciones se mezclarían —el código `001D` existe en las dos asignaturas y va a
- * volver a existir en 2027-1— y los promedios del diagnóstico sumarían cursos
- * distintos.
+ * Se elige primero **qué ramo** —una asignatura en un periodo— y después **qué
+ * sección**. Sin lo primero las secciones se mezclarían: el código `001D` existe
+ * en las dos asignaturas y va a volver a existir en 2027-1, y los promedios del
+ * diagnóstico sumarían cursos distintos.
+ *
+ * Las dos elecciones viven en `DocenteStore` y el selector está en la barra
+ * lateral. Esta pantalla tenía las suyas propias —un `ramoId` local, un selector
+ * dentro de la página y un `cargar()` que siempre saltaba al primer ramo—, así que
+ * era la única de las cuatro que no obedecía al selector de la barra ni a lo que
+ * el docente hubiera elegido antes.
  */
 @Component({
   selector: 'app-docente',
@@ -22,10 +29,13 @@ import {
   template: `
     <div class="encabezado">
       <h1>Curso</h1>
-      <p>Alumnos registrados en Pulso y sus puntos.</p>
+      <!-- El rótulo y no una frase fija: las cuatro pantallas dicen lo mismo en el
+           mismo lugar, así que nunca hay duda de sobre qué curso se está operando.
+           Era la queja de fondo. -->
+      <p>{{ docente.rotulo() || 'Alumnos registrados en Pulso y sus puntos.' }}</p>
     </div>
 
-    @if (ramos().length === 0) {
+    @if (docente.ramos().length === 0) {
       <div class="tarjeta">
         <div class="aviso dato">
           No tienes asignaturas asignadas en este periodo. Se declaran en
@@ -33,23 +43,10 @@ import {
         </div>
       </div>
     } @else {
-      <!-- ============ Qué ramo se está mirando ============ -->
-      <div class="tarjeta" style="margin-bottom:20px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
-          <h2>Qué estoy mirando</h2>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            @for (r of ramos(); track r.asignatura_id + r.periodo_id) {
-              <button class="boton chico" [class.contorno]="clave(r) !== ramoId()"
-                      (click)="elegirRamo(r)">
-                {{ r.sigla }} · {{ r.periodo }}
-              </button>
-            }
-          </div>
-        </div>
-        @if (ramo(); as r) {
-          <p class="chico suave" style="margin-top:10px">{{ r.asignatura }}</p>
-        }
-      </div>
+      <!-- Acá había un segundo selector de ramo, propio de esta pantalla y
+           desconectado del de la barra lateral: cambiarlo no movía las otras tres,
+           y cambiar el de la barra no movía ésta. Ahora el selector es uno y el
+           encabezado solo dice sobre qué se está operando. -->
 
       <!-- ============ Modo reunión ============ -->
       <!-- Va arriba, antes de las cifras: es lo único de esta pantalla que se
@@ -127,14 +124,25 @@ import {
       </div>
 
       <div class="rejilla tres" style="margin-bottom:20px">
+        <!-- La cifra grande es la de lo que se está mirando, y debajo el total del
+             ramo cuando hay una sección elegida. Antes solo estaba el total, así que
+             con una sección puesta el número de arriba no correspondía a la tabla de
+             abajo y no había forma de notarlo. -->
         <div class="tarjeta">
-          <p class="etiqueta">Alumnos matriculados</p>
-          <p class="cifra destacada">{{ alumnos().length }}</p>
+          <p class="etiqueta">
+            {{ docente.seccion() ? 'Alumnos en la sección' : 'Alumnos matriculados' }}
+          </p>
+          <p class="cifra destacada">{{ visibles().length }}</p>
+          @if (docente.seccion()) {
+            <p class="chico suave">{{ alumnos().length }} en el ramo completo</p>
+          }
         </div>
         <div class="tarjeta">
-          <p class="etiqueta">Secciones activas</p>
-          <p class="cifra">{{ secciones().length }}</p>
-          <p class="chico suave">{{ secciones().join(' · ') || 'ninguna todavía' }}</p>
+          <p class="etiqueta">Secciones</p>
+          <p class="cifra">{{ docente.secciones().length }}</p>
+          <p class="chico suave">
+            {{ codigosDeSeccion() || 'ninguna todavía' }}
+          </p>
         </div>
         <div class="tarjeta">
           <p class="etiqueta">Puntos otorgados</p>
@@ -258,12 +266,16 @@ import {
       <div class="tarjeta">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
           <h2>Nómina</h2>
+          <!-- Las mismas pestañas que en «Alumnos», y sobre la misma elección:
+               cambiar de sección acá la cambia en todo el panel. -->
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="boton chico" [class.contorno]="filtro() !== ''"
-                    (click)="filtro.set('')">Todas</button>
-            @for (s of secciones(); track s) {
-              <button class="boton chico" [class.contorno]="filtro() !== s"
-                      (click)="filtro.set(s)">{{ s }}</button>
+            <button class="boton chico" [class.contorno]="docente.seccionId() !== ''"
+                    (click)="docente.elegirSeccion('')">Todas</button>
+            @for (s of docente.secciones(); track s.id) {
+              <button class="boton chico" [class.contorno]="docente.seccionId() !== s.id"
+                      (click)="docente.elegirSeccion(s.id)">
+                {{ s.codigo }} · {{ s.matriculados }}
+              </button>
             }
           </div>
         </div>
@@ -335,14 +347,13 @@ export class DocenteComponent {
   private datos = inject(DatosService);
   private avatares = inject(AvatarService);
 
-  ramos = signal<RamoDocente[]>([]);
-  ramoId = signal('');
+  protected docente = inject(DocenteStore);
+
   alumnos = signal<AlumnoNomina[]>([]);
   diagnostico = signal<Actividad | null>(null);
   resumen = signal<FilaResumenDiagnostico[]>([]);
   canjes = signal<Canje[]>([]);
   cargando = signal(true);
-  filtro = signal('');
 
   rechazando = signal<number | null>(null);
   resolviendo = signal<number | null>(null);
@@ -363,53 +374,56 @@ export class DocenteComponent {
   hechoReunion = signal('');
 
 
-  ramo = computed(() => this.ramos().find(r => this.clave(r) === this.ramoId()) ?? null);
-  secciones = computed(() => [...new Set(this.alumnos().map(a => a.seccion))].sort());
-  visibles = computed(() =>
-    this.filtro() ? this.alumnos().filter(a => a.seccion === this.filtro()) : this.alumnos()
-  );
-  totalPuntos = computed(() => this.alumnos().reduce((n, a) => n + a.puntos, 0));
+  /**
+   * Lo que se muestra sale de la elección del store, no de un filtro local.
+   *
+   * Y filtra por `seccion_id` y no por el código: el código `001D` existe en las
+   * dos asignaturas, así que comparar textos mezclaba secciones de ramos distintos
+   * el día que hubiera dos abiertas.
+   */
+  visibles = computed(() => {
+    const sec = this.docente.seccionId();
+    return sec ? this.alumnos().filter(a => a.seccion_id === sec) : this.alumnos();
+  });
+  /** Los puntos de lo que se está mirando, no del ramo entero. */
+  totalPuntos = computed(() => this.visibles().reduce((n, a) => n + a.puntos, 0));
+  /**
+   * «001D (32) · 002D (28)». Con `${'${s.codigo} · ${s.matriculados}'}` unido por
+   * espacios, el HTML los colapsa a uno y quedaba «001D · 32 002D · 28»: no se
+   * distingue dónde termina una sección y empieza la otra.
+   */
+  codigosDeSeccion = computed(() =>
+    this.docente.secciones().map(s => `${s.codigo} (${s.matriculados})`).join(' · '));
   /** Cuántos rindieron: el resumen lo informa por sección, y todas traen el mismo total. */
   rendidos = computed(() => this.resumen()[0]?.rendidos ?? 0);
   porResolver = computed(() => this.canjes().filter(c => c.estado === 'solicitado'));
   /** Los códigos de las secciones que están en reunión ahora, para el rótulo de arriba. */
   enReunion = computed(() => this.seccionesReunion().filter(s => s.en_reunion).map(s => s.codigo));
 
+  /**
+   * Recargar cuando cambia el ramo.
+   *
+   * Antes esto era `this.cargar()` en el constructor, y `cargar()` hacía
+   * `elegirRamo(ramos[0])`: esta pantalla **siempre** mostraba el primer ramo, sin
+   * importar lo que hubieras elegido, y no reaccionaba al selector de la barra.
+   */
   constructor() {
-    this.cargar();
-  }
-
-  clave(r: RamoDocente): string {
-    return `${r.asignatura_id}|${r.periodo_id}`;
+    effect(() => {
+      const clave = this.docente.ramoId();
+      void clave;
+      if (this.docente.ramo()) void this.cargarRamo();
+    });
+    void this.docente.cargar();
   }
 
   pct(s: FilaResumenDiagnostico): number {
     return s.rendidos ? Math.round(s.bajo / s.rendidos * 100) : 0;
   }
 
-  private async cargar(): Promise<void> {
-    this.cargando.set(true);
-    try {
-      const ramos = await this.datos.ramosQueDicto();
-      this.ramos.set(ramos);
-      if (ramos.length) await this.elegirRamo(ramos[0]);
-    } catch (e: any) {
-      this.error.set(e?.message ?? 'No se pudo cargar la nómina.');
-    } finally {
-      this.cargando.set(false);
-    }
-  }
-
-  async elegirRamo(r: RamoDocente): Promise<void> {
-    this.ramoId.set(this.clave(r));
-    this.filtro.set('');
-    this.elegido.set(null);
-    await this.cargarRamo();
-  }
-
   private async cargarRamo(): Promise<void> {
-    const r = this.ramo();
+    const r = this.docente.ramo();
     if (!r) return;
+    this.elegido.set(null);
 
     this.cargando.set(true);
     try {
@@ -467,7 +481,7 @@ export class DocenteComponent {
 
   /** Solo las reuniones: recargar el ramo entero por esto sería pedir cuatro consultas. */
   private async refrescarReuniones(): Promise<void> {
-    const r = this.ramo();
+    const r = this.docente.ramo();
     if (!r) return;
     this.seccionesReunion.set(
       await this.datos.seccionesEnReunion(r.asignatura_id, r.periodo_id));

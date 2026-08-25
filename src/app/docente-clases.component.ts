@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ClaseDocente, DatosService } from './datos.service';
 import { DocenteStore } from './docente.store';
@@ -19,7 +19,7 @@ import { aIso, aLocal } from './fechas';
   template: `
     <div class="encabezado">
       <h1>Clases</h1>
-      <p>{{ docente.ramo()?.asignatura ?? 'Horario y ventana de cada clase.' }}</p>
+      <p>{{ docente.rotulo() || 'Horario y ventana de cada clase.' }}</p>
     </div>
 
     @if (cargando()) {
@@ -161,8 +161,21 @@ export class DocenteClasesComponent {
   fActividad = 10;
   fTerminar = 55;
 
+  /**
+   * Recargar cuando cambia el ramo, y no una sola vez al construirse.
+   *
+   * El selector vive en la barra lateral, así que puede cambiar sin que esta
+   * pantalla se destruya. Leyendo el ramo solo en el constructor, la tabla se
+   * quedaba con los datos del ramo anterior y no había ningún error que lo
+   * delatara. Ver `docente.store.ts`.
+   */
   constructor() {
-    this.cargar();
+    effect(() => {
+      const clave = this.docente.ramoId();
+      void clave;
+      if (this.docente.ramo()) void this.cargar();
+    });
+    void this.docente.cargar();
   }
 
   maximo(c: ClaseDocente): number {

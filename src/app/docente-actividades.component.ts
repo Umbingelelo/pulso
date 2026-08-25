@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AvanceLab, ActividadDocente, DatosService } from './datos.service';
@@ -33,7 +33,7 @@ import { aIso, aLocal, semanaDe } from './fechas';
   template: `
     <div class="encabezado">
       <h1>Actividades y laboratorios</h1>
-      <p>{{ docente.ramo()?.asignatura ?? 'Lo que el alumno tiene que entregar.' }}</p>
+      <p>{{ docente.rotulo() || 'Lo que el alumno tiene que entregar.' }}</p>
     </div>
 
     @if (cargando()) {
@@ -275,8 +275,21 @@ export class DocenteActividadesComponent {
 
   entregados = computed(() => this.avance().filter(x => !!x.entregado_en).length);
 
+  /**
+   * Recargar cuando cambia el ramo, y no una sola vez al construirse.
+   *
+   * El selector vive en la barra lateral, así que puede cambiar sin que esta
+   * pantalla se destruya. Leyendo el ramo solo en el constructor, la tabla se
+   * quedaba con los datos del ramo anterior y no había ningún error que lo
+   * delatara. Ver `docente.store.ts`.
+   */
   constructor() {
-    this.cargar();
+    effect(() => {
+      const clave = this.docente.ramoId();
+      void clave;
+      if (this.docente.ramo()) void this.cargar();
+    });
+    void this.docente.cargar();
   }
 
   private vacio() {

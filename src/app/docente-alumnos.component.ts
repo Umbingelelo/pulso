@@ -1,8 +1,8 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { AlumnoDocente, DatosService, SeccionDocente } from './datos.service';
+import { AlumnoDocente, DatosService, RamoDocente } from './datos.service';
 import { DocenteStore } from './docente.store';
 
 /**
@@ -33,29 +33,49 @@ import { DocenteStore } from './docente.store';
   template: `
     <div class="encabezado">
       <h1>Alumnos</h1>
-      <p>{{ docente.ramo()?.asignatura ?? 'Administrar matrículas del curso.' }}</p>
+      <p>{{ docente.rotulo() || 'Administrar matrículas del curso.' }}</p>
     </div>
 
     @if (cargando()) {
       <div class="tarjeta"><p class="suave">Cargando…</p></div>
     } @else {
+      <!-- Las secciones primero, porque administrar un curso es administrar una
+           sección. Son pestañas y no un desplegable: con tres secciones, verlas
+           todas con su cuenta al lado dice de un vistazo cómo está repartido el
+           curso, y elegir es un clic en vez de dos. Cambian la elección del store,
+           así que la barra lateral y las otras tres pantallas se enteran. -->
       <div class="tarjeta" style="margin-bottom:18px">
-        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="boton chico" [class.contorno]="docente.seccionId() !== ''"
+                  (click)="docente.elegirSeccion('')">
+            Todas · {{ total() }}
+          </button>
+          @for (s of secciones(); track s.id) {
+            <button class="boton chico" [class.contorno]="docente.seccionId() !== s.id"
+                    (click)="docente.elegirSeccion(s.id)">
+              {{ s.codigo }} · {{ s.matriculados }}
+            </button>
+          }
+          @if (secciones().length === 0) {
+            <span class="chico suave">Este ramo todavía no tiene secciones cargadas.</span>
+          }
+        </div>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:14px">
           <input style="flex:1 1 240px" placeholder="Buscar por nombre o correo"
                  [ngModel]="busca()" (ngModelChange)="busca.set($event)" name="busca">
-          <select [ngModel]="filtroSeccion()" (ngModelChange)="filtroSeccion.set($event)"
-                  name="filtro" style="flex:0 0 auto">
-            <option value="">Todas las secciones</option>
-            @for (s of secciones(); track s.id) {
-              <option [value]="s.id">{{ s.codigo }} · {{ s.matriculados }}</option>
-            }
-          </select>
           <label style="display:flex;align-items:center;gap:8px;margin:0">
             <input type="checkbox" [ngModel]="verBajas()" (ngModelChange)="verBajas.set($event)"
                    name="bajas" style="width:auto">
             <span class="chico">Ver dados de baja</span>
           </label>
-          <span class="insignia celeste">{{ visibles().length }} de {{ alumnos().length }}</span>
+          <!-- Tres números y no uno: cuántos se ven, cuántos tiene la sección y
+               cuántos el ramo. Sin el del medio no hay forma de saber si la lista
+               está corta porque filtraste o porque falta gente. -->
+          <span class="insignia celeste">
+            {{ visibles().length }} de {{ deLaSeccion().length }}
+            @if (docente.seccionId()) { · {{ alumnos().length }} en el ramo }
+          </span>
         </div>
       </div>
 
@@ -202,7 +222,6 @@ export class DocenteAlumnosComponent {
   protected docente = inject(DocenteStore);
 
   alumnos = signal<AlumnoDocente[]>([]);
-  secciones = signal<SeccionDocente[]>([]);
   editando = signal<AlumnoDocente | null>(null);
   cargando = signal(true);
   ocupado = signal(false);
@@ -218,8 +237,20 @@ export class DocenteAlumnosComponent {
    * equivocado, que es mucho peor que no filtrar.
    */
   busca = signal('');
-  filtroSeccion = signal('');
   verBajas = signal(false);
+
+  /**
+   * La sección la manda el store, no esta pantalla.
+   *
+   * Antes era una señal local: se reiniciaba en cada recarga —incluso al ajustar
+   * los puntos de alguien, porque `operar()` recarga— y no existía en las otras
+   * tres pantallas. Elegir la sección en la barra y que las cuatro obedezcan es
+   * la diferencia entre filtrar una tabla y administrar una sección.
+   */
+  secciones = computed(() => this.docente.secciones());
+
+  /** Los matriculados del ramo entero, para la pestaña «Todas». */
+  total = computed(() => this.secciones().reduce((n, s) => n + s.matriculados, 0));
 
   nuevaSeccion = '';
   clave = '';
@@ -227,32 +258,59 @@ export class DocenteAlumnosComponent {
   monto: number | null = null;
   motivo = '';
 
+  /** Los del ramo que caen en la sección elegida. '' = todas. */
+  deLaSeccion = computed(() => {
+    const sec = this.docente.seccionId();
+    return sec ? this.alumnos().filter(a => a.seccion_id === sec) : this.alumnos();
+  });
+
   visibles = computed(() => {
     const q = this.busca().trim().toLowerCase();
-    const sec = this.filtroSeccion();
     const bajas = this.verBajas();
-    return this.alumnos().filter(a =>
+    return this.deLaSeccion().filter(a =>
       (bajas || a.activa)
-      && (!sec || a.seccion_id === sec)
       && (!q || a.nombre.toLowerCase().includes(q) || a.correo.toLowerCase().includes(q)));
   });
 
+  /**
+   * Recargar cuando cambia el ramo, y no una sola vez al construirse.
+   *
+   * El bug de fondo era éste: la pantalla leía el ramo en el constructor y no
+   * volvía a mirar. Cambiar el selector de la barra dejaba la tabla con los
+   * alumnos del ramo anterior, sin ningún error — con 71 en un ramo y 23 en el
+   * otro, se ve igual que «no me salen todos los alumnos».
+   *
+   * El `effect` mira **el ramo y no la sección**: la sección se aplica en
+   * `deLaSeccion`, sobre los datos que ya están en memoria. Volver a pedir la
+   * nómina entera para filtrar por sección sería un viaje al servidor por un
+   * `filter`.
+   */
   constructor() {
-    this.cargar();
-  }
-
-  private async cargar(): Promise<void> {
-    this.cargando.set(true);
-    try {
-      await this.docente.cargar();
+    let anterior = '';
+    effect(() => {
+      const clave = this.docente.ramoId();
       const r = this.docente.ramo();
       if (!r) return;
-      const [al, se] = await Promise.all([
-        this.datos.alumnosDelRamo(r.asignatura_id, r.periodo_id),
-        this.datos.seccionesQueDicto(r.asignatura_id, r.periodo_id),
-      ]);
-      this.alumnos.set(al);
-      this.secciones.set(se);
+      // La ficha abierta es de un alumno del ramo anterior: se cierra. Solo acá,
+      // que es el único momento en que la selección dejó de tener sentido.
+      if (anterior && anterior !== clave) this.editando.set(null);
+      anterior = clave;
+      void this.cargar(r);
+    });
+    void this.docente.cargar();
+  }
+
+  /**
+   * Trae la nómina del ramo. **No toca `editando`**, a propósito: `operar()`
+   * recarga después de cada cambio y tiene que dejar la ficha abierta donde
+   * estaba. Limpiarla acá cerraba la tarjeta tras «Dar de baja», y entonces
+   * «Reactivar» —que vive dentro de esa tarjeta— ya no existía. Quien limpia la
+   * selección es el `effect`, y solo cuando de verdad cambió el ramo.
+   */
+  private async cargar(r: RamoDocente): Promise<void> {
+    this.cargando.set(true);
+    try {
+      this.alumnos.set(await this.datos.alumnosDelRamo(r.asignatura_id, r.periodo_id));
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo cargar el curso.');
     } finally {
@@ -308,12 +366,16 @@ export class DocenteAlumnosComponent {
     if (this.ocupado()) return;
     this.ocupado.set(true);
     this.error.set(''); this.hecho.set('');
+    // Antes de recargar: después, `editando` ya apunta a una fila vieja.
+    const id = this.editando()?.matricula_id;
     try {
       await f();
-      await this.cargar();
+      const r = this.docente.ramo();
+      if (r) await this.cargar(r);
+      // Mover a alguien de sección cambia las cuentas del selector de la barra.
+      await this.docente.refrescarSecciones();
       // La ficha abierta quedó obsoleta tras recargar: se vuelve a apuntar a la
       // fila nueva para no mostrar datos viejos junto a un mensaje de éxito.
-      const id = this.editando()?.matricula_id;
       this.editando.set(this.alumnos().find(x => x.matricula_id === id) ?? null);
       this.hecho.set(mensaje);
     } catch (e: any) {

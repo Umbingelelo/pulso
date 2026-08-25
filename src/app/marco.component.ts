@@ -170,6 +170,11 @@ import { ReunionStore } from './reunion.store';
 
         <div class="pie">
           @if (perfil.esDocente()) {
+            <!-- Los dos selectores del panel viven acá y en ningún otro lado.
+                 «Resumen» tenía el suyo propio adentro de la página, así que había
+                 dos compitiendo: el de acá movía tres pantallas y el de allá
+                 ninguna. Uno solo, siempre a la vista, y las cuatro pantallas
+                 reaccionan. -->
             @if (docente.ramos().length > 1) {
               <label class="selector-ramo">
                 <span class="etiqueta">Ramo</span>
@@ -177,6 +182,35 @@ import { ReunionStore } from './reunion.store';
                         (change)="docente.elegir($any($event.target).value)">
                   @for (r of docente.ramos(); track r.asignatura_id + r.periodo_id) {
                     <option [value]="docente.clave(r)">{{ r.sigla }} · {{ r.periodo }}</option>
+                  }
+                </select>
+              </label>
+            }
+            <!-- Administrar un curso es administrar una sección, así que la sección
+                 es una elección y no un filtro de una pantalla. «Todas» es un estado
+                 legítimo: es el que sirve para compararlas entre sí. -->
+            @if (docente.secciones().length > 1) {
+              <label class="selector-ramo">
+                <span class="etiqueta">Sección</span>
+                <!-- La selección va en el [selected] de cada opción y NO en un
+                     [value] del select. Con [value], el desplegable quedaba en
+                     «Todas» aunque el store tuviera una sección puesta: la sección
+                     se lee de localStorage al instante y las opciones llegan
+                     después, así que Angular asignaba el valor sobre un select que
+                     todavía no tenía esa opción y el navegador lo dejaba en la
+                     primera. Se veía como «cambio de sección y no pasa nada».
+                     (El de arriba no tiene el problema: el store normaliza el ramo
+                     contra la lista antes de que exista el desplegable.)
+                     Sin acentos graves acá: esto vive dentro de un template
+                     literal y uno solo lo cierra en la mitad. -->
+                <select (change)="docente.elegirSeccion($any($event.target).value)">
+                  <option value="" [selected]="!docente.seccionId()">
+                    Todas · {{ totalMatriculados() }}
+                  </option>
+                  @for (s of docente.secciones(); track s.id) {
+                    <option [value]="s.id" [selected]="docente.seccionId() === s.id">
+                      {{ s.codigo }} · {{ s.matriculados }}
+                    </option>
                   }
                 </select>
               </label>
@@ -270,6 +304,10 @@ export class MarcoComponent {
   private datos = inject(DatosService);
   private avatares = inject(AvatarService);
   private router = inject(Router);
+
+  /** El total del ramo, para que «Todas» diga cuántos son y no solo «Todas». */
+  totalMatriculados = computed(() =>
+    this.docente.secciones().reduce((n, s) => n + s.matriculados, 0));
 
   avatar = computed(() =>
     this.avatares.imagen(

@@ -69,9 +69,11 @@ import { PerfilStore } from './perfil.store';
                 Este y <strong>{{ otro }}</strong> son alternativas: se hace uno o el
                 otro, no los dos. Ya entregaste {{ otro }} y sus puntos están contados.
               </p>
-            } @else if (alternativaDe(a); as otro) {
+            } @else if (!hecha(a.id) && alternativaDe(a); as otro) {
               <!-- Decirlo **antes** de que elija, no después de que cobre: es la
-                   diferencia entre una regla y una sorpresa. -->
+                   diferencia entre una regla y una sorpresa. Y solo antes: sobre una
+                   tarjeta ya «Completada», «elige el que puedas hacer» le pide una
+                   decisión que ya tomó. -->
               <p class="chico suave" style="margin-top:8px">
                 Alternativa de <strong>{{ otro }}</strong>: al entregar uno, el otro se
                 cierra. Elige el que puedas hacer.

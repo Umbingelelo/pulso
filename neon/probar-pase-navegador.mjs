@@ -92,11 +92,14 @@ try {
     .find(x=>x.textContent.trim()==='Usar'); if(!b) return 'sin botón'; b.click(); return 'ok'; });
   rev('pudo equipar', puso, 'ok');
   await new Promise(r=>setTimeout(r,3000));
-  const [m2] = await d`select titulo_id from public.matriculas where id=${mat.id}`;
-  rev('quedó guardado', m2.titulo_id !== null, true);
+  // El título se pregunta a la base y no se compara contra una lista escrita acá:
+  // los títulos se resembraron —hoy son «Doctorado en Rizz» y compañía— y la lista
+  // vieja dejó esta comprobación en rojo por meses sin que nada estuviera roto.
+  const [m2] = await d`select c.valor from public.matriculas mt
+     left join public.cosmeticos c on c.id = mt.titulo_id where mt.id=${mat.id}`;
+  rev('quedó guardado', m2.valor !== null, true);
   rev('el título se ve en la tabla',
-    /De los que sí leen|Recién llegado|Constante|Madrugador|Sin faltar/.test(
-      await p.evaluate(()=>document.body.innerText)), true);
+    (await p.evaluate(()=>document.body.innerText)).includes(m2.valor ?? '\u0000'), true);
 
   console.log('\n5. Con prefers-reduced-motion');
   await p.emulateMediaFeatures([{ name:'prefers-reduced-motion', value:'reduce' }]);

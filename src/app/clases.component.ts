@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Clase, DatosService, Ramo } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
@@ -143,7 +143,10 @@ export class ClasesComponent {
    */
   constructor() {
     effect(() => {
-      const ramo = this.perfil.ramo();
+      // Depende de la matrícula y lee el ramo sin registrarlo: `perfil.ramo()`
+      // cambia de identidad en cada refresco del perfil y dispararía esto sin que
+      // el alumno haya tocado el selector. Ver `perfil.store.ts`, sobre `matricula`.
+      const ramo = this.perfil.matricula() ? untracked(() => this.perfil.ramo()) : null;
       if (ramo) void this.cargar(ramo);
       else this.cargando.set(false);
     });

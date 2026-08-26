@@ -815,6 +815,55 @@ npm start          # http://localhost:4200
 npm run build
 ```
 
+`ng serve` no tiene las funciones de `api/` ni la reescritura de `/db`, así que la app arranca y no puede
+entrar. Para probar contra la base y las funciones de producción, un proxy delante:
+
+```bash
+cat > /tmp/proxy.json <<'JSON'
+{ "/api": { "target": "https://pulso-rust.vercel.app", "changeOrigin": true },
+  "/db":  { "target": "https://pulso-rust.vercel.app", "changeOrigin": true } }
+JSON
+npx ng serve --proxy-config /tmp/proxy.json
+BASE=http://localhost:4200 node neon/probar-mision-navegador.mjs
+```
+
+La cookie de sesión no lleva `Domain`, así que viaja a `localhost` sin más; y Chrome acepta cookies
+`Secure` en `localhost`. Las pruebas de navegador aceptan `BASE` justamente para esto: se corrige el
+frontend y se comprueba **antes** de desplegar, en vez de desplegar para ver si quedó.
+
+### Un `effect` sobre el ramo se dispara con cada refresco del perfil
+
+`perfil.ramo()` es un `computed` que sale de un `find()` sobre el arreglo de ramos, así que cada
+`perfil.cargar(true)` **devuelve otro objeto**: mismo ramo, otra identidad. Angular compara con
+`Object.is`, ve algo distinto, y todo `effect` que lea `perfil.ramo()` se vuelve a disparar.
+
+Eso rompió la pantalla de misiones. `responder()` refresca el perfil al terminar —el encabezado muestra
+el saldo— el effect se disparaba, la misión se releía del servidor y la corrección recién hecha quedaba
+reemplazada por el relleno de «ya resuelta»: la alternativa que se había pintado verde pasaba a roja y
+la insignia caía a «+0 de experiencia», con los 25 puntos ya abonados en la base. Se veía como dos fallas
+—«las misiones no dan experiencia» y «marca buena y después mala»— y era una sola.
+
+La regla: **si el effect solo necesita saber de qué matrícula se trata, que dependa del `uuid`**, que es
+un string y no cambia de identidad al refrescar. Vive en el store, con el porqué:
+
+```ts
+readonly matricula = computed(() => this.ramo()?.matricula_id ?? '');
+```
+
+Y no se arregla poniéndole un `equal` propio a `ramo`: las plantillas leen de ahí el saldo y la sección,
+así que quedarse con el objeto viejo dejaría el saldo congelado justo después de comprar. Lo que se
+corrige es la dependencia, no el `computed`.
+
+Lo tenían las nueve pantallas que reaccionan al ramo —`misiones`, `clases`, `actividades`, `gacha`,
+`pase`, `inicio`, `puntos`, `tienda` y `ficha`— y ya dependen todas de la matrícula. En la mayoría solo
+costaba una consulta repetida, pero en `pase` costaba más: `cargar` **escribe** —`sincronizarPase`
+entrega lo desbloqueado— así que equiparse un avatar volvía a sincronizar el pase y a levantar la
+celebración recién cerrada. `reunion.store` ya se defendía solo, comparando contra la matrícula que está
+mirando; es el mismo remedio escrito a mano.
+
+Las dos que necesitan el objeto completo —`clases` y `actividades`, que filtran por asignatura y
+periodo— lo leen con `untracked`, para depender del uuid y usar el ramo fresco.
+
 ## Desplegar
 
 **Se despliega con `git push`.** El proyecto tiene la integración de Git de Vercel: cada push a `main`

@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { DatosService, Pase, Posicion, Ramo, Recompensa } from './datos.service';
+import { DatosService, Pase, Posicion, Recompensa } from './datos.service';
 import { PerfilStore } from './perfil.store';
 import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
 
@@ -252,20 +252,25 @@ export class PaseComponent {
    */
   constructor() {
     effect(() => {
-      const ramo = this.perfil.ramo();
-      if (ramo) void this.cargar(ramo);
+      // La matrícula y no el ramo. Acá importa más que en otras pantallas: `cargar`
+      // **escribe** —`sincronizarPase` entrega lo desbloqueado— y el objeto del ramo
+      // cambia de identidad en cada refresco del perfil, así que equiparse un avatar
+      // volvía a sincronizar el pase y a levantar la celebración recién cerrada.
+      // Ver `perfil.store.ts`, sobre `matricula`.
+      const matricula = this.perfil.matricula();
+      if (matricula) void this.cargar(matricula);
       else this.cargando.set(false);
     });
     void this.perfil.cargar();
   }
 
-  private async cargar(ramo: Ramo): Promise<void> {
+  private async cargar(matricula: string): Promise<void> {
     this.cargando.set(true);
     try {
 
       // Primero se entrega lo desbloqueado, después se lee: así la escalera ya
       // llega con las recompensas marcadas como obtenidas.
-      const nuevo = await this.datos.sincronizarPase(ramo.matricula_id);
+      const nuevo = await this.datos.sincronizarPase(matricula);
       if (nuevo?.nuevos?.length) this.celebrar.set(nuevo.nuevos);
 
       // Por separado y a prueba de fallos: si el ranking se cae, el pase igual
@@ -273,8 +278,8 @@ export class PaseComponent {
       // pantalla entera en blanco diciendo «no hay pase configurado», que además
       // es mentira y manda a buscar el problema al lugar equivocado.
       const [rp, rt] = await Promise.allSettled([
-        this.datos.miPase(ramo.matricula_id),
-        this.datos.posiciones(ramo.matricula_id),
+        this.datos.miPase(matricula),
+        this.datos.posiciones(matricula),
       ]);
       const p = rp.status === 'fulfilled' ? rp.value : null;
       if (rp.status === 'rejected') this.error.set('No se pudo cargar tu pase.');

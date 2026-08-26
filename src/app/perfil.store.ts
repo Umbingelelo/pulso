@@ -29,6 +29,29 @@ export class PerfilStore {
     () => this.ramos().find(r => r.matricula_id === this.ramoId()) ?? null,
   );
 
+  /**
+   * La **identidad** del ramo elegido, para quien solo quiere enterarse de un
+   * cambio de ramo.
+   *
+   * `ramo` sale de un `find()`, así que cada `cargar(true)` devuelve otro objeto:
+   * mismo ramo, otra identidad. Angular compara con `Object.is`, ve algo distinto,
+   * y **todo `effect` que lea `ramo()` se vuelve a disparar** aunque el alumno no
+   * haya tocado el selector. Y `cargar(true)` se llama seguido: después de comprar,
+   * de equiparse algo, de responder una misión —el encabezado muestra el saldo.
+   *
+   * Eso rompió la pantalla de misiones: al responder, la misión se releía del
+   * servidor y la corrección recién hecha quedaba reemplazada por el relleno de
+   * «ya resuelta», así que la alternativa que se había pintado verde pasaba a roja
+   * y la insignia caía a «+0 de experiencia», con los puntos ya abonados en la
+   * base. Se veía como dos fallas y era una sola.
+   *
+   * `ramo` no puede arreglarse con un `equal` propio: las plantillas leen de ahí
+   * el saldo y la sección, y quedarse con el objeto viejo dejaría el saldo
+   * congelado después de comprar. Lo que se arregla es la dependencia: un effect
+   * que solo quiere saber «¿cambió de ramo?» depende de esto, que es un string.
+   */
+  readonly matricula = computed(() => this.ramo()?.matricula_id ?? '');
+
   /** Los del semestre abierto: son los que se ofrecen primero para cambiar. */
   readonly ramosVigentes = computed(() => this.ramos().filter(r => r.periodo_activo && r.activa));
 

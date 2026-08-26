@@ -77,8 +77,10 @@ export class PuntosComponent {
   constructor() {
     this.perfil.cargar();
     effect(() => {
-      const ramo = this.perfil.ramo();
-      if (ramo) this.cargar(ramo.matricula_id);
+      // La matrícula y no el ramo: el objeto cambia de identidad en cada refresco
+      // del perfil. Ver `perfil.store.ts`, sobre `matricula`.
+      const matricula = this.perfil.matricula();
+      if (matricula) this.cargar(matricula);
       else this.cargando.set(false);
     });
   }

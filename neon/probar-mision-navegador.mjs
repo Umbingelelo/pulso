@@ -8,7 +8,7 @@ import { mkdtemp, rm, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os'; import { join } from 'node:path';
 import { neon } from '@neondatabase/serverless';
 
-const BASE = 'https://pulso-rust.vercel.app';
+const BASE = process.env.BASE ?? 'https://pulso-rust.vercel.app';
 const CANDIDATOS = [process.env.CHROME,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/usr/bin/google-chrome'].filter(Boolean);
@@ -82,12 +82,61 @@ try {
   rev('muestra la explicación', /aviso/.test(await p.evaluate(()=>document.querySelector('.aviso')?.className ?? '')), true);
   rev('sin errores de JavaScript', errs, []);
 
-  console.log('\n4. Al recargar sigue resuelta');
+  /**
+   * Lo corregido tiene que quedarse quieto.
+   *
+   * `responder()` refresca el perfil al terminar —el encabezado muestra el saldo—
+   * y ese refresco reescribe la señal del ramo. Si la pantalla está reaccionando
+   * al **objeto** del ramo y no a su matrícula, el refresco parece un cambio de
+   * ramo, la misión se vuelve a leer del servidor y la corrección se pierde: la
+   * alternativa que acababa de pintarse verde pasa a roja y la insignia baja a
+   * «+0 de experiencia», aunque en la base la experiencia sí se abonó.
+   *
+   * Por eso se mira **después** de que el refresco alcanzó a volver, y no en el
+   * instante siguiente al clic: en ese instante todavía está bien.
+   */
+  console.log('\n4. La corrección aguanta el refresco del perfil');
+  await new Promise(r => setTimeout(r, 4000));
+  const tras = await p.evaluate((k) => {
+    const ops = [...document.querySelectorAll('.opcion-mision')];
+    return {
+      verde: ops.filter(o => o.classList.contains('correcta')).length,
+      elegidaEnRojo: ops[k].classList.contains('incorrecta'),
+      texto: document.body.innerText,
+      explicacion: (document.querySelector('.aviso')?.textContent ?? '').trim().length > 0,
+    };
+  }, i);
+  rev('la correcta sigue en verde', tras.verde, 1);
+  rev('la que eligió no se pinta de roja', tras.elegidaEnRojo, false);
+  rev('sigue avisando la experiencia ganada', /\+25 de experiencia/.test(tras.texto), true);
+  rev('sigue mostrando la explicación', tras.explicacion, true);
+  rev('sin errores de JavaScript', errs, []);
+
+  /**
+   * Al recargar, la corrección tiene que seguir ahí.
+   *
+   * `mi_mision` baja la pauta de una misión ya respondida desde la 0033. Antes no,
+   * y el alumno que recargaba la página se quedaba con la insignia, un recuadro de
+   * color en blanco y ninguna alternativa marcada: la corrección que acababa de
+   * leer desaparecía sin que nada avisara.
+   */
+  console.log('\n5. Al recargar sigue resuelta, y con su pauta');
   await p.reload({ waitUntil: 'networkidle2' });
   for (let j=0;j<40;j++){ if (await p.evaluate(()=>document.querySelectorAll('.opcion-mision').length)) break;
     await new Promise(r=>setTimeout(r,500)); }
-  rev('no ofrece generar otra',
-    /Generar mi misión/.test(await p.evaluate(()=>document.body.innerText)), false);
+  await new Promise(r=>setTimeout(r,1500));
+  const recargada = await p.evaluate(() => ({
+    verde: document.querySelectorAll('.opcion-mision.correcta').length,
+    roja: document.querySelectorAll('.opcion-mision.incorrecta').length,
+    explicacion: (document.querySelector('.aviso')?.textContent ?? '').trim().length > 0,
+    texto: document.body.innerText,
+  }));
+  rev('no ofrece generar otra', /Generar mi misión/.test(recargada.texto), false);
+  rev('marca cuál era la correcta', recargada.verde, 1);
+  rev('no marca ninguna como equivocada', recargada.roja, 0);
+  rev('vuelve a mostrar la explicación', recargada.explicacion, true);
+  rev('sigue diciendo la experiencia ganada', /\+25 de experiencia/.test(recargada.texto), true);
+  rev('sin errores de JavaScript', errs, []);
 
   const [xp] = await d`select coalesce(sum(xp),0)::int x from public.movimientos_experiencia where matricula_id=${mat.id}`;
   rev('experiencia en la base', xp.x, 25);

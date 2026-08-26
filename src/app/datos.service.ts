@@ -158,9 +158,11 @@ export interface ClaseDocente {
 }
 
 /**
- * La misión del día. `enunciado` es lo único que baja al navegador: la pauta
- * vive en una columna sin permiso para el rol de la aplicación, y la corrección
- * la hace Postgres.
+ * La misión del día. Mientras está pendiente, `enunciado` es lo único que baja al
+ * navegador: la pauta vive en una columna sin permiso para el rol de la aplicación
+ * y la corrección la hace Postgres. Ya respondida, `mi_mision` sí la manda —el
+ * alumno acaba de verla al contestar— para que una recarga no le borre cuál era la
+ * correcta y por qué.
  */
 export interface Mision {
   id: string;
@@ -181,6 +183,8 @@ export interface Mision {
     pregunta: string;
     opciones: string[];
   };
+  /** Nula hasta que la responde. Después, la pauta que ya tiene derecho a ver. */
+  solucion: { tipo: string; correcta: string; explicacion: string } | null;
 }
 
 export interface EstadoMision {

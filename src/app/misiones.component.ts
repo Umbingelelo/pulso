@@ -1,5 +1,5 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
-import { DatosService, Mision, Ramo } from './datos.service';
+import { DatosService, Mision } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 /**
@@ -78,7 +78,7 @@ import { PerfilStore } from './perfil.store';
                     class="opcion-mision"
                     [class.elegida]="elegida() === $index"
                     [class.correcta]="resultado() && $index === correcta()"
-                    [class.incorrecta]="resultado() && elegida() === $index && $index !== correcta()"
+                    [class.incorrecta]="resultado() && elegida() === $index && !resultado()!.acertada"
                     [disabled]="!!resultado()"
                     (click)="elegir($index)">
               <span class="letra">{{ 'abcd'[$index] }}</span>
@@ -97,10 +97,12 @@ import { PerfilStore } from './perfil.store';
             Tienes un solo intento. Si te equivocas no pierdes nada, pero tampoco sumas.
           </p>
         } @else {
-          <div class="aviso" [class.ok]="resultado()!.acertada" [class.dato]="!resultado()!.acertada"
-               style="margin-top:22px">
-            {{ resultado()!.solucion.explicacion }}
-          </div>
+          @if (resultado()!.solucion?.explicacion; as porque) {
+            <div class="aviso" [class.ok]="resultado()!.acertada" [class.dato]="!resultado()!.acertada"
+                 style="margin-top:22px">
+              {{ porque }}
+            </div>
+          }
           <p class="chico suave" style="margin-top:14px">
             Tu próxima misión se habilita {{ cuando() }}.
           </p>
@@ -126,9 +128,21 @@ export class MisionesComponent {
   respondiendo = signal(false);
   error = signal('');
 
+  /**
+   * El índice de la correcta, y **-1 cuando no se sabe**.
+   *
+   * `Number(undefined)` es `NaN`, y con NaN adentro toda comparación se vuelve
+   * mentira: `$index !== NaN` da verdadero para las cuatro alternativas, así que
+   * la que el alumno eligió se pintaba roja aunque hubiera acertado. Pasaba cada
+   * vez que el resultado venía sin pauta —al releer una misión ya resuelta— y era
+   * la mitad de «la marca como buena y después aparece mala».
+   */
   correcta = computed(() => {
-    const r = this.resultado();
-    return r ? Number(r.solucion?.correcta) : -1;
+    // El `?? ''` es para que un nulo no pase por `Number` y salga 0, que pintaría
+    // de verde la primera alternativa sin que nadie lo haya dicho.
+    const bruto = this.resultado()?.solucion?.correcta ?? '';
+    const i = Number(bruto);
+    return bruto !== '' && Number.isInteger(i) ? i : -1;
   });
 
   /**
@@ -146,25 +160,44 @@ export class MisionesComponent {
    * `perfil.cargar()` escribe las señales de las que ese computed sale, así que
    * el effect se volvía a disparar solo. La pantalla de misiones dejó de ofrecer
    * el botón de generar y la prueba de navegador lo cazó.
+   *
+   * ── Y por qué depende de la matrícula y no del ramo ──
+   *
+   * Porque `perfil.ramo()` cambia de identidad en cada refresco del perfil, y
+   * `responder()` refresca el perfil al terminar: la misión se releía y la
+   * corrección recién hecha quedaba reemplazada por el relleno de «ya resuelta».
+   * La explicación completa está en `perfil.store.ts`, sobre `matricula`.
    */
   constructor() {
     effect(() => {
-      const ramo = this.perfil.ramo();
-      if (ramo) void this.cargar(ramo);
+      const matricula = this.perfil.matricula();
+      if (matricula) void this.cargar(matricula);
       else this.cargando.set(false);
     });
     void this.perfil.cargar();
   }
 
-  private async cargar(ramo: Ramo): Promise<void> {
+  private async cargar(matricula: string): Promise<void> {
     this.cargando.set(true);
+    // Lo elegido y lo corregido pertenecen a la misión que se está dejando: si
+    // sobreviven, el ramo nuevo abre con una alternativa marcada que nadie marcó.
+    this.elegida.set(null);
+    this.resultado.set(null);
     try {
-      const r = await this.datos.misionDelDia(ramo.matricula_id);
+      const r = await this.datos.misionDelDia(matricula);
       this.estado.set(r.estado);
       this.mision.set(r.mision);
-      // Si ya la respondió, se muestra resuelta con su explicación.
+      // Si ya la respondió, se muestra resuelta con su explicación. La experiencia
+      // que se anuncia es la que se abonó —`misiones.xp`, lo mismo que le sumó
+      // `mision_responder`— y no un cero que haría ver la misión como no pagada.
       if (r.mision?.resuelta_en) {
-        this.resultado.set({ acertada: r.mision.acertada, xp_ganada: 0, solucion: {} });
+        this.resultado.set({
+          acertada: r.mision.acertada,
+          xp_ganada: r.mision.acertada ? r.mision.xp : 0,
+          // La pauta de una misión ya respondida sí baja (migración 0033), así que
+          // al recargar la página vuelven la alternativa correcta y su explicación.
+          solucion: r.mision.solucion ?? {},
+        });
       }
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo cargar tu misión.');

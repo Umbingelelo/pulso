@@ -355,10 +355,15 @@ export class GachaComponent {
    */
   constructor() {
     effect(() => {
-      // `cargar` lee el ramo por su cuenta; esto es lo que declara la dependencia.
-      // Y no llama a `perfil.cargar()` adentro, que sería el ciclo: el effect
-      // depende de `perfil.ramo()` y eso escribe las señales de las que sale.
-      if (this.perfil.ramo()) void this.cargar();
+      // `cargar` lee la matrícula por su cuenta; esto es lo que declara la
+      // dependencia. Y no llama a `perfil.cargar()` adentro, que sería el ciclo:
+      // el effect depende del perfil y eso escribe las señales de las que sale.
+      //
+      // La matrícula y no el ramo: el objeto cambia de identidad en cada refresco
+      // del perfil, así que equiparse un cosmético —que refresca el perfil para
+      // que la cara nueva llegue al encabezado— recargaba la colección dos veces.
+      // Ver `perfil.store.ts`, sobre `matricula`.
+      if (this.perfil.matricula()) void this.cargar();
       else this.cargando.set(false);
     });
     void this.perfil.cargar();
@@ -400,13 +405,13 @@ export class GachaComponent {
   }
 
   private async cargar(): Promise<void> {
-    const ramo = this.perfil.ramo();
-    if (!ramo) { this.cargando.set(false); return; }
+    const matricula = this.perfil.matricula();
+    if (!matricula) { this.cargando.set(false); return; }
     this.cargando.set(true);
     try {
       const [todos, tiradas] = await Promise.all([
-        this.datos.misCosmeticos(ramo.matricula_id),
-        this.datos.misTiradas(ramo.matricula_id),
+        this.datos.misCosmeticos(matricula),
+        this.datos.misTiradas(matricula),
       ]);
       this.todos.set(todos);
       this.tiradas.set(tiradas);

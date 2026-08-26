@@ -239,8 +239,10 @@ export class FichaComponent {
     this.ruta.paramMap.subscribe(p => this.idRuta.set(p.get('matriculaId') ?? ''));
 
     effect(() => {
-      // Sin id en la URL es «mi ficha»: la del ramo que tengo elegido.
-      const id = this.idRuta() || this.perfil.ramo()?.matricula_id;
+      // Sin id en la URL es «mi ficha»: la del ramo que tengo elegido. La
+      // matrícula y no el ramo, que cambia de identidad en cada refresco del
+      // perfil. Ver `perfil.store.ts`, sobre `matricula`.
+      const id = this.idRuta() || this.perfil.matricula();
       if (id) this.cargar(id);
     });
 

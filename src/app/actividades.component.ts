@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Actividad, DatosService, EstadoLaboratorio, Ramo, Resultado, plazoVigente } from './datos.service';
 import { PerfilStore } from './perfil.store';
@@ -152,7 +152,10 @@ export class ActividadesComponent {
    */
   constructor() {
     effect(() => {
-      const ramo = this.perfil.ramo();
+      // La dependencia es la matrícula; el ramo se lee sin registrarlo, porque
+      // `perfil.ramo()` cambia de identidad en cada refresco del perfil. Ver
+      // `perfil.store.ts`, sobre `matricula`.
+      const ramo = this.perfil.matricula() ? untracked(() => this.perfil.ramo()) : null;
       if (ramo) void this.cargar(ramo);
       else this.cargando.set(false);
     });

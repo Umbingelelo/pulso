@@ -115,8 +115,10 @@ export class InicioComponent {
     // Al cambiar de ramo en la barra lateral hay que recargar saldo e historial:
     // son distintos en cada asignatura.
     effect(() => {
-      const ramo = this.perfil.ramo();
-      if (ramo) this.cargar(ramo.matricula_id);
+      // La matrícula y no el ramo: el objeto cambia de identidad en cada refresco
+      // del perfil. Ver `perfil.store.ts`, sobre `matricula`.
+      const matricula = this.perfil.matricula();
+      if (matricula) this.cargar(matricula);
     });
   }
 

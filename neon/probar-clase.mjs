@@ -14,7 +14,7 @@
  */
 import { neon } from '@neondatabase/serverless';
 import { get } from '@vercel/blob';
-import { instrumentar } from '../lib/rastreo-clase.mjs';
+import { instrumentar, paraLlevar } from '../lib/rastreo-clase.mjs';
 
 const CORREO = 'alumno.prueba@duocuc.cl';
 const args = Object.fromEntries(
@@ -110,36 +110,54 @@ revisar('saldo sin cambios', await saldoDe(), saldoInicial + clase.puntos_abrir)
 const llaves = Object.keys(clase.pauta);
 const malas = Object.fromEntries(llaves.map((k) => [k, clase.pauta[k] === 'a' ? 'b' : 'a']));
 
+// Los pasos 3 a 6 mandan «una diapositiva cualquiera del medio», y hasta ahora eran
+// las 3, 5 y 6 escritas a mano. Eso ata la prueba a un deck largo: contra L3A, que
+// tiene 5, el paso 5 dejaba `slide_max` en 6 y el paso 10 lo leía como avance
+// imposible —«vas en la 7 de 5»—. Se acotan al deck que se esté probando.
+const medio = Math.min(3, clase.slides - 1);
+const ultima = clase.slides - 1;
+
+// Un deck sin quiz es legítimo: D6, D8 y D15 tampoco tienen, y L3A —el arranque de
+// un laboratorio— es el primero publicado que llega así. Los pasos que corrigen
+// respuestas no tienen nada que comprobar ahí, y darlos por fallidos escondería un
+// fallo de verdad entre el ruido.
+const hayQuiz = llaves.length > 0;
+const saltado = (n, por) => console.log(`\n${n} — se salta: ${por}`);
+
 console.log('\n3. Responder todas mal no paga');
 const [m1] = await comoAlumno(alumno.id, (s) =>
-  s`select public.progreso_clase_guardar(${clase.id}::uuid, 3::integer,
+  s`select public.progreso_clase_guardar(${clase.id}::uuid, ${medio}::integer,
              ${JSON.stringify(malas)}::jsonb) as r`);
 revisar('puntos', m1.r.puntos_nuevos, 0);
 revisar('aciertos', m1.r.aciertos, 0);
 
 // ---------- 4. Responder bien una ----------
 
-console.log('\n4. Acertar la primera actividad');
-const una = { [llaves[0]]: clase.pauta[llaves[0]] };
-const [b1] = await comoAlumno(alumno.id, (s) =>
-  s`select public.progreso_clase_guardar(${clase.id}::uuid, 5::integer,
-             ${JSON.stringify(una)}::jsonb) as r`);
-revisar('puntos', b1.r.puntos_nuevos, clase.puntos_actividad);
-revisar('aciertos', b1.r.aciertos, 1);
+if (!hayQuiz) {
+  saltado('4 y 5. Acertar una actividad', 'este deck no tiene quiz');
+} else {
+  console.log('\n4. Acertar la primera actividad');
+  const una = { [llaves[0]]: clase.pauta[llaves[0]] };
+  const [b1] = await comoAlumno(alumno.id, (s) =>
+    s`select public.progreso_clase_guardar(${clase.id}::uuid, ${medio}::integer,
+               ${JSON.stringify(una)}::jsonb) as r`);
+  revisar('puntos', b1.r.puntos_nuevos, clase.puntos_actividad);
+  revisar('aciertos', b1.r.aciertos, 1);
 
-console.log('\n5. Reenviar la misma respuesta no vuelve a pagar');
-const [b2] = await comoAlumno(alumno.id, (s) =>
-  s`select public.progreso_clase_guardar(${clase.id}::uuid, 6::integer,
-             ${JSON.stringify(una)}::jsonb) as r`);
-revisar('puntos', b2.r.puntos_nuevos, 0);
-revisar('aciertos', b2.r.aciertos, 1);
+  console.log('\n5. Reenviar la misma respuesta no vuelve a pagar');
+  const [b2] = await comoAlumno(alumno.id, (s) =>
+    s`select public.progreso_clase_guardar(${clase.id}::uuid, ${medio}::integer,
+               ${JSON.stringify(una)}::jsonb) as r`);
+  revisar('puntos', b2.r.puntos_nuevos, 0);
+  revisar('aciertos', b2.r.aciertos, 1);
+}
 
 // ---------- 6. Basura ----------
 
 console.log('\n6. Basura en las respuestas no revienta ni paga');
 const basura = { hola: 'x', '99999': 'z', '-1': 'a', '': 'b' };
 const [g1] = await comoAlumno(alumno.id, (s) =>
-  s`select public.progreso_clase_guardar(${clase.id}::uuid, 6::integer,
+  s`select public.progreso_clase_guardar(${clase.id}::uuid, ${medio}::integer,
              ${JSON.stringify(basura)}::jsonb) as r`);
 revisar('puntos', g1.r.puntos_nuevos, 0);
 
@@ -152,7 +170,7 @@ const [t1] = await comoAlumno(alumno.id, (s) =>
              ${JSON.stringify(todas)}::jsonb) as r`);
 // Paga las 2 actividades que faltaban, pero NO los puntos de terminar.
 revisar('puntos (solo las actividades que faltaban)', t1.r.puntos_nuevos,
-  (clase.actividades - 1) * clase.puntos_actividad);
+  (clase.actividades - (hayQuiz ? 1 : 0)) * clase.puntos_actividad);
 revisar('terminada', t1.r.terminada, false);
 revisar('aciertos', t1.r.aciertos, clase.actividades);
 // Lo que convierte la negación en una postergación: el servidor dice cuánto
@@ -193,7 +211,7 @@ revisar('trae la fila', vista.length, 1);
 const columnas = Object.keys(vista[0] ?? {});
 revisar('sin columna archivo', columnas.includes('archivo'), false);
 revisar('sin columna pauta', columnas.includes('pauta'), false);
-revisar('avance visible', vista[0]?.slide_max, clase.slides - 1);
+revisar('avance visible', vista[0]?.slide_max, ultima);
 revisar('resueltas', vista[0]?.resueltas, clase.actividades);
 
 console.log('\n11. Como pulso_app, leer `clases.archivo` o `clases.pauta` está prohibido');
@@ -223,22 +241,35 @@ revisar('bajó del blob', html.length > 100000, true);
 revisar('sigue siendo el mismo archivo', html.includes('<title>'), true);
 const salida = instrumentar(html, { claseId: clase.id, docente: false, slides: clase.slides });
 // La cota es generosa a propósito: lo que interesa es cazar que no se duplique el
-// deck o se cuele algo grande, no vigilar cada comentario que se agregue al guion.
-// Hoy pesa ~6,3 KB, un 1,5% de un deck de 400 KB.
-revisar('creció solo lo del script', salida.length - html.length < 15000, true);
+// deck o se cuele algo grande, no vigilar cada comentario que se agregue a los
+// guiones. Hoy son ~17 KB entre el rastreo y lo del celular, un 4% de un deck de
+// 400 KB.
+revisar('creció solo lo de los guiones', salida.length - html.length < 30000, true);
 
-// El módulo puede estar bien y el script emitido roto: el guion se arma con un
-// template literal, y basta un backtick en un comentario para cerrarlo antes de
-// tiempo. Pasó una vez y tumbó `/api/clase` con un 500. Así que se parsea.
-const emitido = salida.slice(salida.indexOf('<script data-pulso="rastreo">') + 29,
-                             salida.lastIndexOf('</script>'));
-try {
-  new Function(emitido);
-  revisar('el script emitido parsea', true, true);
-} catch (e) {
-  revisar(`el script emitido parsea (${e.message})`, false, true);
+/**
+ * Los guiones pueden estar bien en el módulo y salir rotos por el cable: se arman
+ * con template literals, y basta un backtick en un comentario para cerrarlos antes
+ * de tiempo. Pasó una vez y tumbó `/api/clase` con un 500, y volvió a pasar dos
+ * veces al escribir el del celular. Por eso se parsean **todos** los que se
+ * inyectan y no solo el primero: mirando uno, el segundo se cuela roto.
+ */
+function revisarGuiones(etiqueta, texto, esperados) {
+  const guiones = [...texto.matchAll(/<script data-pulso="([a-z]+)">([\s\S]*?)<\/script>/g)];
+  revisar(`${etiqueta}: qué se inyecta`, guiones.map((g) => g[1]), esperados);
+  for (const [, nombre, cuerpo] of guiones) {
+    try {
+      new Function(cuerpo);
+      revisar(`${etiqueta}: «${nombre}» parsea`, true, true);
+    } catch (e) {
+      revisar(`${etiqueta}: «${nombre}» parsea (${e.message})`, false, true);
+    }
+    revisar(`${etiqueta}: «${nombre}» sin backticks sueltos`, cuerpo.includes('`'), false);
+  }
 }
-revisar('sin backticks sueltos en el script', emitido.includes('`'), false);
+
+revisarGuiones('servido', salida, ['rastreo', 'movil']);
+revisarGuiones('descargado', paraLlevar(html), ['descarga']);
+
 revisar('el script quedó antes de </body>',
   salida.lastIndexOf('data-pulso="rastreo"') < salida.lastIndexOf('</body>'), true);
 revisar('lleva el id de la clase', salida.includes(clase.id), true);

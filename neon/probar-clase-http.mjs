@@ -94,6 +94,7 @@ const html = await r1.text();
 revisar('llegó el deck completo', html.length > 700000, true);
 revisar('es el deck de verdad', html.includes('Presentación de la asignatura'), true);
 revisar('viene instrumentado', html.includes('data-pulso="rastreo"'), true);
+revisar('y con lo del celular', html.includes('data-pulso="movil"'), true);
 revisar('el script va antes de </body>',
   html.lastIndexOf('data-pulso="rastreo"') < html.lastIndexOf('</body>'), true);
 revisar('fuerza modo estudio', html.includes("cambiarModo('estudio')"), true);
@@ -152,6 +153,44 @@ revisar('estado', fantasma.status, 403);
 const esperado = s0 + clase.puntos_abrir
   + clase.actividades * clase.puntos_actividad + clase.puntos_terminar;
 revisar('saldo final', await saldo(), esperado);
+
+// ---------- 10. Descargar ----------
+
+// Se borra el progreso para poder comprobar lo que importa: que bajarse el deck
+// **no** lo crea. Con la fila puesta por el paso 3 no se distinguiría una
+// descarga que no anota de una que anota sobre lo ya anotado. Borrar acá es
+// seguro porque el libro de puntos no se toca y ya se comprobó el saldo final.
+console.log('\n10. Descargar el deck no cuenta como abrirlo');
+await dueno`delete from public.progreso_clase
+             where matricula_id = ${mat.id} and clase_id = ${clase.id}`;
+
+const bajada = await fetch(`${BASE}/api/clase?id=${clase.id}&descargar=1`,
+  { headers: { cookie: galleta } });
+revisar('estado', bajada.status, 200);
+revisar('viene como adjunto',
+  /^attachment; filename="[-A-Za-z0-9._]+\.html"$/.test(
+    bajada.headers.get('content-disposition') ?? ''), true);
+revisar('sin caché ni ETag',
+  [bajada.headers.get('cache-control'), bajada.headers.get('etag')],
+  ['private, no-store', null]);
+
+const llevado = await bajada.text();
+revisar('es el deck completo', llevado.length > 700000, true);
+revisar('sin el rastreo', llevado.includes('data-pulso="rastreo"'), false);
+revisar('sin lo del celular', llevado.includes('data-pulso="movil"'), false);
+revisar('en modo estudio', llevado.includes("cambiarModo('estudio')"), true);
+revisar('no filtra la ruta del blob', /blob\.vercel-storage\.com/.test(llevado), false);
+
+revisar('no anotó progreso', (await dueno`
+  select count(*)::int as n from public.progreso_clase
+   where matricula_id = ${mat.id} and clase_id = ${clase.id}`)[0].n, 0);
+revisar('no pagó puntos', await saldo(), esperado);
+
+console.log('\n11. Descargar sin sesión se rechaza');
+const bajadaAnon = await fetch(`${BASE}/api/clase?id=${clase.id}&descargar=1`,
+  { redirect: 'manual' });
+revisar('estado', bajadaAnon.status, 401);
+revisar('no filtra el deck', (await bajadaAnon.text()).length < 4000, true);
 
 console.log(fallos === 0
   ? `\nTodo bien por HTTP: ${esperado - s0} puntos en el recorrido completo.`

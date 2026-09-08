@@ -191,6 +191,33 @@ Pero **pospone, no niega**: si todavía no se cumple, el servidor devuelve `falt
 navegador vuelve a preguntar en ese instante; y si el alumno cerró la pestaña, `abrir_clase()` lo
 liquida la próxima vez que entre. Antes negaba, y 19 alumnos se quedaron sin sus 20 puntos.
 
+Esos tres números son **por clase**, y hay que mirarlos cuando el deck no es una sesión de materia. El
+primero que no lo fue es **L3A**, el arranque del laboratorio L3: cinco diapositivas, sin un solo quiz,
+quince minutos proyectados antes de repartir la guía. Con los 25/10/55 del resto habría pagado 80
+puntos por cuarenta segundos de recorrido, más que el diagnóstico completo. Va con 5/0/15. El mínimo de
+tiempo sí se deja en la fórmula de siempre —8 segundos por diapositiva— porque tener dos criterios de
+«¿ya la vio?» conviviendo es exactamente lo que el comentario de `subir-clase.mjs` pide no hacer.
+
+Pero lo que decide no es la etiqueta: es la densidad. El **L3A de ITY1102** también es un pre-laboratorio
+y va con 25/0/55, como una clase de materia, porque son 19 diapositivas y treinta y cinco minutos de
+clase de verdad —el diagrama que sale de ahí es una figura del informe de EP1—. Es lo mismo que paga
+`D6` de Cloud Native, que son 20 diapositivas y tampoco tiene un quiz. Antes de elegir los tres números
+hay que abrir el deck y contar diapositivas, no leer el nombre de la carpeta.
+
+El `0` del tramo del medio no es un castigo: es el único valor honesto. `subir-clase.mjs` solo saca pauta
+de `data-widget="quiz"` con `data-correcta`, y los widgets que se autocorrigen en el navegador
+—`clasificar`, `completar`, `emparejar`— no escriben en `estado.respuestas` ni llegan al servidor. El L3A
+de ITY1102 tiene tres de ésos y cero quiz, así que `actividades` queda en 0 y dejar `--actividad 10`
+sería prometer puntos que ninguna diapositiva puede pagar.
+
+Un deck de arranque se registra como cualquier clase, con el código del laboratorio y una letra:
+`--codigo L3A --orden 5`. La vista ordena por `orden` y después por `codigo`, y el `orden` que se elige
+es el que lo deja en su lugar del calendario sin renumerar nada. En Cloud Native eso es el `orden` de la
+clase de materia de esa semana —`D4` el lunes, `L3A` el martes, y `D4` gana por código—. En ITY1102 la
+semana viene al revés: el pre-lab es el martes y `D4` el jueves, así que va con el `orden` de `D3`, el
+jueves anterior, y queda `D3 → L3A → D4`. Con el de `D4` habría aparecido después de una clase que
+todavía no se ha dado.
+
 ### La ventana: llegar a tiempo vale más
 
 ```
@@ -244,6 +271,60 @@ La corrección la hace Postgres contra `clases.pauta`. La API no confía en un �
 > defiende de lo que puede —paga una sola vez cada cosa y exige el mínimo de tiempo— pero estos puntos
 > son un empujón para repasar, no una evaluación. Lo que evalúa son el diagnóstico y los laboratorios.
 
+### En el celular
+
+El deck se autora en un escenario fijo de 1920x1080 y se encoge entero con
+`min(ancho/1920, alto/1080)`. En un teléfono en vertical manda el ancho, y 390 px dan un factor de
+0,20: el cuerpo de texto, que son 31 px, sale a **6 px**, y en las diapositivas densas —que lo
+escriben en 22 px— a **4,5 px**. Y hay algo peor que el tamaño: el deck solo se navega con el teclado
+—no hay un solo `touchstart` en la plantilla—, así que en un teléfono no se podía pasar de la primera
+diapositiva.
+
+`lib/movil-clase.mjs` se inyecta junto al rastreo, por la misma vía y con el mismo criterio de no
+tocar los decks. Hace dos cosas:
+
+- **Gira el escenario** noventa grados cuando el teléfono está en vertical. El factor pasa a
+  `min(ancho/1080, alto/1920)` — 0,36, **1,78 veces más**. Es más de lo que da el teléfono acostado
+  (0,31), porque en horizontal la barra del navegador se come el alto que hacía falta. Quien tenga el
+  giro bloqueado gana todo: voltea el aparato y lee. Quien no, ve el texto de lado un segundo,
+  voltea, y el deck se dibuja solo con su propio escalado.
+- **Deslizar y dos botones**, que es lo que arregla lo que de verdad estaba roto. Despacha la misma
+  flecha que mandaría un teclado en vez de llamar a `avanzar()`: es la interfaz que el deck documenta
+  en su tabla de ayuda, y por ahí el revelado por pasos y los widgets siguen funcionando igual.
+
+El giro va con `!important` desde una hoja de estilos y no escribiendo la transformación en línea:
+`escalar()` está suscrito a `resize` y reescribe `escenario.style.transform` cada vez que la ventana
+cambia, así que una transformación en línea nuestra duraría hasta el primer giro del teléfono.
+
+Girado el escenario, el HUD del deck se esconde: sus cinco piezas son el cronómetro del docente, el
+contador, el botón de modo —que ya viene forzado—, las notas de orador, que se abren en una ventana
+emergente que el teléfono bloquea, y una tabla de atajos de un teclado que no existe. El contador se
+devuelve aparte, en una esquina que sí se lee.
+
+**Ocho píxeles siguen siendo poco.** El 1,78 es una constante de la geometría, así que la portada
+sube de 6,3 a 11,2 px pero las diapositivas densas —código, tablas, quiz, que son justo las que uno
+repasa— van de 4,5 a **7,9 px**. Eso es legible con el teléfono volteado, y era imposible antes, pero
+no es cómodo. El techo lo pone el letterbox: los 1080 px del alto del escenario tienen que caber en
+los 390 del ancho del teléfono, y ninguna transformación arregla eso.
+
+Subirlo de verdad pide remaquetar en vez de escalar —soltar el escenario de los 1920 px, apilar las
+diapositivas y reescribir la escala tipográfica—, y eso rompe los diagramas y las rejillas hechas a
+mano de varios decks. Antes de meterse ahí, mirar las capturas que deja `probar-clase-movil.mjs`.
+
+### Llevárselo
+
+El botón **Descargar** de cada tarjeta entrega `/api/clase?id=…&descargar=1`: el mismo archivo como
+adjunto, sin el rastreo —una copia en el teléfono no tiene cookie ni tiene a quién llamar— y en modo
+estudio, que importa porque con `data-modo="clase"` el deck esconde los `.solo-estudio` («Ver
+respuesta explicada»). No abre ninguna puerta nueva: el deck es un HTML autocontenido y un Ctrl+S ya
+hacía esto.
+
+Va por `descargar_clase()` y no por `abrir_clase()`, que además de autorizar **escribe**: bajarse el
+deck no cuenta como haberlo abierto ni paga puntos. Si pagara, bajar los 18 decks de un ramo de una
+sentada pagaría por no haber leído ninguno, y cada tarjeta quedaría para siempre en «En curso · vas en
+la diapositiva 1 de 38». Las dos funciones preguntan a los mismos helpers de la 0007, así que hay una
+sola definición de quién puede ver qué. Ver la migración 0034.
+
 ### Probarlo
 
 Tres capas, porque cada una ve lo que la anterior no puede. Todas usan la cuenta
@@ -257,15 +338,29 @@ node neon/probar-clase.mjs             # 1. la lógica: Postgres y el Blob
 node neon/probar-clase-http.mjs        # 2. el cable: producción por HTTP
 node neon/probar-clase-navegador.mjs   # 3. el navegador: que el inyector se ejecute
 node neon/probar-ventana.mjs           # 4. la ventana: que llegar a tiempo valga más
+node neon/probar-clase-movil.mjs       # 5. el teléfono: que se lea y se pueda avanzar
 ```
+
+**La 5 no necesita nada de lo anterior** —ni base, ni red, ni desplegar—: coge un deck de la carpeta
+de la asignatura, le pega lo que `/api/clase` le pegaría al pasar y lo sirve desde un servidor local.
+Es la única que se puede correr mientras se pelea con una transformación CSS. Acepta `--archivo`.
 
 **1. La lógica.** Abrir, reabrir sin cobrar, fallar, acertar, reenviar sin cobrar, mandar basura,
 intentar terminar antes del mínimo, terminar de verdad. Y que `mis_clases` no exponga `archivo` ni
 `pauta`, y que `pulso_app` reciba `permission denied` al intentar leer esas dos columnas. Acepta
 `--sigla` y `--codigo`.
 
+Las diapositivas por las que pasa salen del deck que se le apunte, y los pasos que corrigen respuestas
+se saltan cuando no hay quiz. Antes iban escritas a mano —la 3, la 5 y la 6— y eso ataba la prueba a un
+deck largo con quiz: contra L3A, que tiene cinco diapositivas y ninguno, dejaba `slide_max` en 6 y
+después se quejaba de un avance imposible, «vas en la 7 de 5». Tres fallos que no eran de la clase sino
+de la prueba, que es la peor clase de fallo que puede dar una prueba.
+
 **2. El cable.** Lo mismo pero contra producción: sin sesión no se abre, con cookie llega el deck
-completo, el `ETag` devuelve `304` sin reenviar 750 KB, y la ruta del blob no aparece en el HTML.
+completo, el `ETag` devuelve `304` sin reenviar 750 KB, y la ruta del blob no aparece en el HTML. Y la
+descarga: que salga como adjunto, sin rastreo y en modo estudio, y que **no** anote progreso ni pague
+—para eso borra la fila de progreso antes, porque con la del paso 3 puesta no se distinguiría una
+descarga que no anota de una que anota sobre lo ya anotado—.
 
 **3. El navegador.** La que de verdad importa, y la última que escribí. Las otras dos comprueban que el
 script inyectado **está** en el HTML; ninguna comprueba que se **ejecute**. Y el inyector se apoya en
@@ -278,6 +373,18 @@ responde un quiz y verifica que el POST salga, que pague y que el aviso aparezca
 Necesita `puppeteer-core` —ya está como devDependency, no descarga navegador— y un Chrome instalado.
 Usa un perfil temporal que borra al terminar, así que no toca el tuyo. Si tu Chrome está en otra parte:
 `CHROME=/ruta/al/binario node neon/probar-clase-navegador.mjs`.
+
+**5. El teléfono.** En un iPhone emulado de 390x750: que el escenario gire y quepa entero, que el
+texto crezca 1,78 veces —medido en la diapositiva **más densa** del deck, no en la portada, que es
+donde todo se ve bien—, que los botones midan lo que mide un dedo, y que se avance tanto con
+ellos como deslizando —hacia arriba girado, hacia la izquierda acostado, y nada con un deslizamiento
+torcido—. Comprueba también que la copia descargable no traiga el rastreo y sí arranque en modo
+estudio. El primer paso mide el deck **sin nada** encima: si esa referencia dejara de salir ilegible,
+la prueba estaría aprobando sin probar.
+
+Y deja capturas en `/tmp/pulso-movil/` —la portada antes y después, acostado, y las tres diapositivas
+más densas del deck con todos sus pasos revelados—. Están para mirarlas: si una tabla o un diagrama se
+rompe al girar, ningún número lo va a decir.
 
 **Esa cuenta se mantiene a propósito** y está matriculada en DSY1107 001D y en ITY1102 001D. Aparece en
 la nómina del docente, que es el precio de tenerla: si molesta, `matriculas.activa = false` la saca de
@@ -924,6 +1031,7 @@ Y fuera de Angular, servidas por funciones:
 |---|---|
 | `/api/auth/*` | Ingreso, registro, refresco y cierre de sesión |
 | `/api/clase?id=…` | Sirve el deck de una clase, tras comprobar sesión y matrícula |
+| `/api/clase?id=…&descargar=1` | El mismo deck como adjunto: sin rastreo, y no cuenta como abrirlo |
 | `/api/clase-avance` | Recibe el avance dentro del deck y paga los puntos |
 | `/api/laboratorio` | Leer, guardar y entregar un laboratorio |
 | `/api/docente` | Las operaciones del panel del docente |

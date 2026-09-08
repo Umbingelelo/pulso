@@ -45,6 +45,10 @@ import { PerfilStore } from './perfil.store';
             siguen sumando pero menos. Verla el día de la clase es lo que más rinde.
           </p>
         }
+        <p class="chico suave" style="margin:10px 0 0">
+          <strong>Descargar</strong> te deja el deck completo en un archivo, para leerlo
+          sin conexión. Los puntos se ganan acá, estudiándolo en Pulso: bajarlo no suma.
+        </p>
       </div>
 
       <div class="rejilla dos">
@@ -100,11 +104,18 @@ import { PerfilStore } from './perfil.store';
 
             <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
               <span class="insignia celeste">{{ porGanar(c) }} puntos por ganar</span>
-              <a class="boton chico" [class.accion]="!c.abierta" [class.contorno]="c.abierta"
-                 [href]="'/api/clase?id=' + c.id" target="_blank" rel="noopener"
-                 (click)="alVolver()">
-                {{ c.abierta ? 'Seguir' : 'Abrir la clase' }}
-              </a>
+              <div style="display:flex;align-items:center;gap:10px">
+                <a class="boton chico contorno" [href]="'/api/clase?id=' + c.id + '&descargar=1'"
+                   target="_blank" rel="noopener"
+                   title="Te llevas el archivo para estudiarlo sin conexión. No suma puntos.">
+                  Descargar
+                </a>
+                <a class="boton chico" [class.accion]="!c.abierta" [class.contorno]="c.abierta"
+                   [href]="'/api/clase?id=' + c.id" target="_blank" rel="noopener"
+                   (click)="alVolver()">
+                  {{ c.abierta ? 'Seguir' : 'Abrir la clase' }}
+                </a>
+              </div>
             </div>
 
             @if (c.dictada_el) {

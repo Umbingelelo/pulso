@@ -2,6 +2,7 @@
  * Sirve el deck de una clase, detrás de la sesión, y anota que se abrió.
  *
  *   GET /api/clase?id=<uuid de la clase>
+ *   GET /api/clase?id=<uuid>&descargar=1     ← el mismo deck, para llevárselo
  *
  * Por qué pasa por una función y no es un archivo estático: el repositorio es
  * público y el material no tiene por qué estarlo. El deck vive en un store de
@@ -17,12 +18,17 @@
  * El HTML se sirve **tal cual está subido**, más un script al final del `body`.
  * El archivo en la carpeta de la asignatura no se toca nunca: la instrumentación
  * ocurre al pasar, así que rehacer un deck no obliga a reinstrumentarlo.
+ *
+ * Con `descargar=1` sale el mismo archivo como adjunto, sin el rastreo y en modo
+ * estudio (ver `paraLlevar()`). Va por `descargar_clase()` y no por
+ * `abrir_clase()`, que además de autorizar escribe: bajarse el deck no cuenta
+ * como haberlo abierto ni paga puntos. El porqué está en la migración 0034.
  */
 import { get } from '@vercel/blob';
 import { json, mensajeDeError } from '../lib/db.mjs';
 import { comoUsuario } from '../lib/identidad.mjs';
 import { parsearCookies, leerRefresco } from '../lib/sesion.mjs';
-import { instrumentar, VERSION_RASTREO } from '../lib/rastreo-clase.mjs';
+import { instrumentar, paraLlevar, VERSION_RASTREO } from '../lib/rastreo-clase.mjs';
 
 /** Una página de error legible: esto se ve en una pestaña, no en una consola. */
 function pagina(res, estado, titulo, detalle) {
@@ -46,6 +52,23 @@ function pagina(res, estado, titulo, detalle) {
 </div></body></html>`);
 }
 
+/**
+ * «S01» + «Presentación de la asignatura» → `S01-Presentacion-de-la-asignatura.html`.
+ *
+ * Sin tildes ni espacios y solo ASCII, porque el nombre viaja en una cabecera y
+ * ahí un carácter fuera de Latin-1 es un dolor de cabeza con poca recompensa.
+ * Queda igual al nombre que el deck tiene en la carpeta de la asignatura, que es
+ * lo que uno espera al abrir la carpeta de descargas.
+ */
+function nombreDeArchivo(codigo, titulo) {
+  const limpio = `${codigo ?? ''} ${titulo ?? ''}`
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // saca las tildes
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 90);
+  return `${limpio || 'clase'}.html`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     return json(res, 405, { error: 'Método no permitido' });
@@ -53,6 +76,7 @@ export default async function handler(req, res) {
 
   const url = new URL(req.url, `https://${req.headers.host}`);
   const claseId = url.searchParams.get('id');
+  const descargar = url.searchParams.get('descargar') === '1';
   if (!claseId) return pagina(res, 400, 'Falta la clase', 'El enlace no dice qué clase abrir.');
 
   const usuarioId = await leerRefresco(parsearCookies(req));
@@ -61,13 +85,14 @@ export default async function handler(req, res) {
       'Entra a Pulso y vuelve a abrir la clase desde tu lista.');
   }
 
-  // Anota la apertura y devuelve la ruta del archivo. Si el alumno no cursa el
-  // ramo, o la clase no está publicada, la función revienta con un mensaje en
-  // español y no llegamos a tocar el Blob.
+  // Autoriza y devuelve la ruta del archivo —y, si es una apertura, la anota—. Si
+  // el alumno no cursa el ramo, o la clase no está publicada, la función revienta
+  // con un mensaje en español y no llegamos a tocar el Blob.
   let apertura;
   try {
-    const filas = await comoUsuario(usuarioId, (s) =>
-      s`select public.abrir_clase(${claseId}::uuid) as r`);
+    const filas = await comoUsuario(usuarioId, (s) => descargar
+      ? s`select public.descargar_clase(${claseId}::uuid) as r`
+      : s`select public.abrir_clase(${claseId}::uuid) as r`);
     apertura = filas[0]?.r;
   } catch (e) {
     return pagina(res, 403, 'No puedes abrir esta clase', mensajeDeError(e));
@@ -76,13 +101,22 @@ export default async function handler(req, res) {
     return pagina(res, 404, 'Clase no encontrada', 'Esa clase ya no está disponible.');
   }
 
-  // Con `no-cache` el navegador revalida siempre: así cada apertura pasa por acá
-  // —y queda anotada— pero el cuerpo se manda una sola vez. Un deck son ~400 KB
-  // que no vale la pena reenviar en cada repaso.
-  res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Referrer-Policy', 'no-referrer');
+
+  if (descargar) {
+    // Sin ETag y sin caché: una descarga se resuelve de una vez, y un 304 acá
+    // sería un archivo vacío en la carpeta del alumno.
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="${nombreDeArchivo(apertura.codigo, apertura.titulo)}"`);
+  } else {
+    // Con `no-cache` el navegador revalida siempre: así cada apertura pasa por acá
+    // —y queda anotada— pero el cuerpo se manda una sola vez. Un deck son ~400 KB
+    // que no vale la pena reenviar en cada repaso.
+    res.setHeader('Cache-Control', 'private, no-cache, must-revalidate');
+  }
 
   let blob;
   try {
@@ -100,11 +134,13 @@ export default async function handler(req, res) {
   // El ETag incluye la versión del inyector: si cambio el script de rastreo, los
   // navegadores que tenían el deck en caché se traen el nuevo en vez de quedarse
   // con uno que ya no reporta igual.
-  const etag = `W/"${blob.blob.etag}-${VERSION_RASTREO}"`;
-  res.setHeader('ETag', etag);
-  if (req.headers['if-none-match'] === etag) {
-    res.statusCode = 304;
-    return res.end();
+  if (!descargar) {
+    const etag = `W/"${blob.blob.etag}-${VERSION_RASTREO}"`;
+    res.setHeader('ETag', etag);
+    if (req.headers['if-none-match'] === etag) {
+      res.statusCode = 304;
+      return res.end();
+    }
   }
   if (req.method === 'HEAD') {
     res.statusCode = 200;
@@ -112,11 +148,13 @@ export default async function handler(req, res) {
   }
 
   const html = await new Response(blob.stream).text();
-  const salida = instrumentar(html, {
-    claseId,
-    docente: apertura.docente === true,
-    slides: apertura.slides ?? 0,
-  });
+  const salida = descargar
+    ? paraLlevar(html)
+    : instrumentar(html, {
+        claseId,
+        docente: apertura.docente === true,
+        slides: apertura.slides ?? 0,
+      });
 
   res.statusCode = 200;
   res.end(salida);

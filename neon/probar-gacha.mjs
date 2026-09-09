@@ -144,15 +144,82 @@ const [m] = await d`select mt.id from public.matriculas mt where mt.perfil_id = 
 if (!m) throw new Error('El alumno de prueba no tiene matrícula activa.');
 
 const MOTIVO = 'Prueba de gacha';
+const MOTIVO_SALDO = 'Prueba de gacha: saldo para canjear';
+
+/**
+ * Barrer lo que dejó una corrida que se murió a medias, **antes** de tomar la foto.
+ *
+ * Esto existe por una falla de la limpieza anterior, y la falla es del tipo peor:
+ * hacía que la prueba **informara verde estando sucia**.
+ *
+ * La limpieza era solo por marca de agua —`max(id)` de `movimientos_tiradas` al
+ * arrancar, más la foto de los cosméticos— y las dos cosas se recalculan en cada
+ * corrida. Así que lo que quedaba de una corrida muerta pasaba a ser la línea base de
+ * la siguiente, y los chequeos del final —«las tiradas vuelven a como estaban», «no le
+ * quedaron cosméticos de la prueba»— comparaban contra el estado ya contaminado y
+ * pasaban. Encima el +1 del canje y el −1 de la tirada se cancelan, así que el saldo
+ * tampoco delataba nada.
+ *
+ * Y pasó de verdad: quedaron colgados desde el 8 de septiembre un canje de «Una tirada
+ * de gacha», su cobro de −150 puntos, dos filas de `movimientos_tiradas` y el título
+ * «El Último Romántico del Carrete». Cuatro corridas seguidas dijeron «Todo bien».
+ *
+ * ── Por qué la fila con `MOTIVO` es la marca de agua y no `max(id)` ──
+ *
+ * No se puede barrer por `origen = 'gacha'` ni por `motivo like 'Tirada: %'`: las
+ * tiradas de la prueba entran por la misma función que las de verdad y quedan marcadas
+ * igual, así que eso le quitaría al alumno lo que se ganó jugando.
+ *
+ * Pero la fila con `MOTIVO` **solo la escribe esta prueba**. Si está ahí, es que una
+ * corrida no llegó al final, y su `creado_en` es el momento exacto desde el cual todo lo
+ * que calce con las firmas de la prueba es residuo. Eso es lo que la vuelve una marca de
+ * agua honesta: la pone la prueba, no el reloj de nadie más.
+ */
+const barrer = async () => {
+  const [resto] = await d`select min(creado_en) as desde
+     from public.movimientos_tiradas
+    where matricula_id = ${m.id} and motivo in (${MOTIVO}, ${MOTIVO_SALDO})`;
+  if (!resto?.desde) return;
+
+  const desde = resto.desde;
+  // Solo lo que calza con lo que esta prueba escribe, y solo desde esa marca en
+  // adelante. Un canje de verdad del alumno hecho después no lleva estas firmas.
+  const canjes = await d`
+    delete from public.canjes c
+     using public.articulos a
+     where a.id = c.articulo_id and c.matricula_id = ${m.id}
+       and a.codigo = 'gacha-tirada' and c.creado_en >= ${desde}
+    returning c.id`;
+  const puntos = await d`
+    delete from public.movimientos_puntos
+     where matricula_id = ${m.id}
+       and (motivo = ${MOTIVO_SALDO}
+            or (creado_en >= ${desde} and motivo = 'Canje: Una tirada de gacha'))
+    returning id`;
+  const cosmeticos = await d`
+    delete from public.alumno_cosmeticos
+     where matricula_id = ${m.id} and origen = 'gacha' and obtenido_en >= ${desde}
+    returning cosmetico_id`;
+  const tiradas = await d`
+    delete from public.movimientos_tiradas
+     where matricula_id = ${m.id}
+       and (motivo in (${MOTIVO}, ${MOTIVO_SALDO})
+            or (creado_en >= ${desde}
+                and (motivo like 'Tirada: %' or motivo like 'Canje #%: Una tirada de gacha')))
+    returning id`;
+
+  console.log(`\nBarrí lo que dejó una corrida anterior (desde ${desde.toISOString()}):`);
+  console.log(`  ${canjes.length} canjes · ${puntos.length} movimientos de puntos` +
+    ` · ${cosmeticos.length} cosméticos · ${tiradas.length} movimientos de tiradas`);
+};
+await barrer();
 
 /**
  * Lo que el alumno tenía **antes** de que esta prueba tocara nada.
  *
- * La limpieza se hace contra esta foto y no por `origen`, porque las tiradas de
- * la prueba entran por la misma función que las de verdad y quedan marcadas
- * igual: `origen = 'gacha'`. Borrar por origen le quitaría lo que se ganó de
- * verdad. Y la marca de agua sobre `movimientos_tiradas` recupera además lo que
- * haya dejado una corrida que se murió a medias.
+ * La foto se toma después de barrer, así que ahora sí es la línea base de verdad.
+ * Dentro de la corrida la marca de agua sigue sirviendo: `limpiar()` es lo que se
+ * llama al final, y lo que se le escape lo recoge el `barrer()` de la próxima.
  */
 const suyos = new Set((await d`select cosmetico_id from public.alumno_cosmeticos
    where matricula_id = ${m.id}`).map((r) => r.cosmetico_id));
@@ -486,7 +553,6 @@ if (!articulo) {
 
   // Los puntos que haga falta para poder comprar, y se devuelven al final.
   const saldoInicial = await saldoDe();
-  const MOTIVO_SALDO = 'Prueba de gacha: saldo para canjear';
   if (saldoInicial < articulo.precio) {
     await d`insert into public.movimientos_puntos (matricula_id, puntos, motivo)
             values (${m.id}, ${articulo.precio - saldoInicial + 10}, ${MOTIVO_SALDO})`;
@@ -552,6 +618,21 @@ const [colgados] = await d`select count(*)::int as n from public.alumno_cosmetic
    where matricula_id = ${m.id}
      and not (cosmetico_id = any(${[...suyos]}::uuid[]))`;
 rev('no le quedaron cosméticos de la prueba', colgados.n === 0, `quedaron ${colgados.n}`);
+
+// Las dos de arriba miran el **neto** y la foto, y por eso no vieron el residuo que
+// quedó colgado cuatro corridas seguidas: el +1 del canje y el −1 de la tirada se
+// cancelan, y la foto ya incluía el título huérfano. Esto mira las firmas, que es lo
+// único que no se puede cancelar contra sí mismo.
+const [firmas] = await d`
+  select count(*)::int as n from public.movimientos_tiradas
+   where matricula_id = ${m.id} and motivo in (${MOTIVO}, ${MOTIVO_SALDO})`;
+rev('no quedó ninguna marca de esta prueba en el libro de tiradas',
+  firmas.n === 0, `quedaron ${firmas.n}`);
+const [saldoSuelto] = await d`
+  select count(*)::int as n from public.movimientos_puntos
+   where matricula_id = ${m.id} and motivo = ${MOTIVO_SALDO}`;
+rev('ni el saldo que se le puso para poder canjear', saldoSuelto.n === 0,
+  `quedaron ${saldoSuelto.n}`);
 
 console.log(fallos === 0 ? '\nTodo bien.' : `\n${fallos} fallos.`);
 process.exit(fallos === 0 ? 0 : 1);

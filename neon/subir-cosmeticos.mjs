@@ -3,10 +3,12 @@
  *
  *   set -a; . ./.env.local; set +a
  *   node neon/subir-cosmeticos.mjs --titulos ~/Downloads/titulos_perfil_rareza.txt \
+ *     --titulos-f neon/titulos-femenino.txt \
  *     --avatares ~/Downloads/iconos_pulso [--escribir]
  *
  * Sin `--escribir` informa y no toca nada, igual que el publicador de laboratorios.
- * Cada parte es opcional: se puede subir solo títulos o solo imágenes.
+ * Cada parte es opcional: se puede subir solo títulos, solo las formas femeninas o solo
+ * imágenes.
  *
  * ── Por qué las imágenes van a Blob y no a `public/` ──
  *
@@ -38,8 +40,9 @@ const args = Object.fromEntries(
     return a;
   }, []),
 );
-if (!args.titulos && !args.avatares) {
-  console.error('Uso: node neon/subir-cosmeticos.mjs --titulos <archivo> --avatares <carpeta> [--escribir]');
+if (!args.titulos && !args.avatares && !args['titulos-f']) {
+  console.error('Uso: node neon/subir-cosmeticos.mjs --titulos <archivo> ' +
+    '[--titulos-f <archivo>] [--avatares <carpeta>] [--escribir]');
   process.exit(1);
 }
 const ESCRIBIR = !!args.escribir;
@@ -132,6 +135,41 @@ if (args.titulos) {
   }
 }
 
+// ============================== Las formas femeninas ==============================
+//
+// Archivo aparte y no una columna más en el archivo de títulos, por dos razones. La
+// primera es que el docente no tiene que re-editar 108 líneas para agregar 56. La segunda
+// es concreta: ya hay un título con barra —«Locked In 24/7»— y otros con comillas y con
+// porcentajes, así que cualquier separador puesto en la misma línea es una trampa
+// esperando a que alguien escriba el título que la pisa.
+//
+// Se refiere por **código** y no por número porque ocho títulos tienen código de palabra
+// —`titulo-madrugador`, `titulo-veterano`— y cuatro de esos necesitan forma femenina: un
+// formato de solo números los habría dejado fuera en silencio.
+
+const femeninos = new Map();
+if (args['titulos-f']) {
+  const texto = await readFile(args['titulos-f'], 'utf8');
+  let n = 0;
+  for (const linea of texto.split('\n')) {
+    n++;
+    const cruda = linea.trim();
+    if (!cruda || cruda.startsWith('#')) continue;
+    const mm = cruda.match(/^(\S+)\s*—\s*(.+?)\s*$/);
+    if (!mm) {
+      problemas.push(`formas femeninas, línea ${n}: no entendí «${cruda}»`);
+      continue;
+    }
+    const [, codigo, femenino] = mm;
+    if (femeninos.has(codigo)) {
+      problemas.push(`formas femeninas, línea ${n}: «${codigo}» aparece dos veces`);
+      continue;
+    }
+    femeninos.set(codigo, femenino);
+  }
+  console.log(`Formas fem. ${femeninos.size} leídas de ${args['titulos-f']}`);
+}
+
 // ============================== Las imágenes ==============================
 
 if (args.avatares) {
@@ -217,6 +255,22 @@ const repetidos = cosmeticos
   .filter((c, i, a) => a.indexOf(c) !== i);
 if (repetidos.length) problemas.push(`códigos repetidos: ${[...new Set(repetidos)].join(', ')}`);
 
+// Un código que no exista es un **error y no un aviso**: significa que se escribió una
+// forma femenina para un título que no está, y dejarlo pasar la perdería en silencio. Es
+// el mismo criterio que ya se usa con las rarezas desconocidas.
+//
+// Se compara contra la base y no contra `cosmeticos`, porque los ocho títulos con código
+// de palabra no salen del archivo de títulos: los sembró `sembrar-pases.mjs`.
+if (femeninos.size) {
+  const existentes = new Set((await sql`
+    select codigo from public.cosmeticos where tipo = 'titulo'`).map((r) => r.codigo));
+  for (const codigo of femeninos.keys()) {
+    if (!existentes.has(codigo)) {
+      problemas.push(`formas femeninas: «${codigo}» no corresponde a ningún título`);
+    }
+  }
+}
+
 if (problemas.length) {
   console.error('\nProblemas:');
   for (const p of problemas) console.error(`  ${p}`);
@@ -248,6 +302,10 @@ for (const [r, n] of Object.entries(porRareza)) {
   console.log(`  ${r.padEnd(11)} ${String(n.titulo).padStart(3)} títulos · ${String(n.avatar).padStart(3)} avatares`);
 }
 
+if (femeninos.size) {
+  console.log(`  ${femeninos.size} de esos títulos tienen forma femenina escrita`);
+}
+
 if (!ESCRIBIR) {
   console.log('\nSin --escribir: no subí ni escribí nada.');
   process.exit(0);
@@ -276,6 +334,26 @@ for (const c of cosmeticos) {
                         then cosmeticos.rareza
                         else excluded.rareza end,
           temporada = excluded.temporada, activo = true`;
+}
+
+// ============================== Escribir las formas femeninas ==============================
+//
+// Por código y contra la base, no contra `cosmeticos`: así también alcanza a los ocho
+// títulos con código de palabra, que no salen del archivo de títulos.
+//
+// El `where` compara antes de escribir para que el recuento diga la verdad —cuántas
+// cambiaron de verdad— y no «56 escritas» en cada corrida.
+
+if (femeninos.size) {
+  let escritas = 0;
+  for (const [codigo, femenino] of femeninos) {
+    const r = await sql`
+      update public.cosmeticos set valor_femenino = ${femenino}
+       where codigo = ${codigo} and coalesce(valor_femenino, '') <> ${femenino}
+      returning codigo`;
+    escritas += r.length;
+  }
+  console.log(`Formas fem. ${escritas} escritas · ${femeninos.size - escritas} ya estaban`);
 }
 
 // Retirar los avatares que ya no son de esta colección.

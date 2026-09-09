@@ -1,0 +1,89 @@
+# Las formas femeninas de los títulos de perfil. Una línea por título:
+#
+#   <codigo> — <forma femenina>
+#
+# El separador es raya larga y no guion, porque los códigos llevan guion.
+#
+# Solo van los títulos que **cambian**. Los que ya sirven para todos no se listan: en la
+# base quedan en nulo, y nulo significa «este título ya sirve para todos».
+#
+# Se refiere por código y no por número porque ocho títulos tienen código de palabra
+# —titulo-madrugador, titulo-veterano— y cuatro de esos necesitan forma femenina.
+#
+# Varias son decisión de voz y no de gramática —«La Dama de la Mesa» contra «La Reina de
+# la Mesa»— y esas las decides tú. Corrige acá y vuelve a correr:
+#
+#   node neon/subir-cosmeticos.mjs --titulos <archivo> \
+#     --titulos-f neon/titulos-femenino.txt --escribir
+
+titulo-001 — La Diosa del Six Seven
+titulo-002 — Farmeadora de Aura
+titulo-005 — La GOAT del Grupo
+titulo-010 — Ministra del Aura
+titulo-012 — La Elegida del Algoritmo
+titulo-014 — NPC Legendaria
+titulo-017 — Dueña del Lore
+titulo-023 — La que está Locked In
+titulo-025 — Déjenla Cocinar
+titulo-026 — La que Siempre Está Cooking
+titulo-036 — Basada de Nacimiento
+titulo-038 — Lowkey Legendaria
+titulo-041 — La Más Via del Server
+titulo-042 — La Más Via del Carrete
+titulo-043 — La Última en Irse
+titulo-044 — La Primera en Apañar
+titulo-045 — La que Apaña a Todos
+titulo-046 — Reina del Carrete
+titulo-047 — Patrona del After
+titulo-048 — Ministra del Vacile
+titulo-049 — Subsecretaria del Carrete
+titulo-050 — Presidenta del Webeo
+titulo-052 — Ingeniera en Sacar la Vuelta
+titulo-057 — La Reina del Dato
+titulo-058 — La que Siempre Tiene un Dato
+titulo-060 — La que Conoce a un Weón
+titulo-061 — La que Tiene un Amigo que Sabe
+titulo-062 — La que Nunca Anda Pato
+titulo-063 — La Última Romántica del Carrete
+titulo-064 — La Dueña de la Previa
+titulo-067 — La que Prende el Carrete
+titulo-068 — La que Llegó por un Ratito
+titulo-069 — La “Una y Me Voy”
+titulo-070 — La “Ya, la Última”
+titulo-073 — Directora de Asuntos Random
+titulo-074 — Presidenta de Nada
+titulo-075 — Ministra Sin Cartera
+titulo-076 — Embajadora del Desorden
+titulo-077 — Experta en Nada, Opinóloga en Todo
+titulo-078 — La que Tiene Más Lore
+titulo-080 — Generadora de Contenido Involuntario
+titulo-083 — Villana de una Historia Mal Contada
+titulo-084 — Heroína por Accidente
+titulo-085 — Leyenda Según Ella
+titulo-092 — La Incondicional
+titulo-093 — La que Siempre Apaña
+titulo-094 — La Buena Onda
+titulo-095 — La Dama de la Mesa
+titulo-096 — La Compañera de Todos
+titulo-097 — La que Nunca Falla
+titulo-098 — La Mujer del Momento
+titulo-100 — La Favorita del Público
+titulo-de-los-que-leen — De las que sí leen
+titulo-madrugador — Madrugadora
+titulo-recien-llegado — Recién llegada
+titulo-veterano — Veterana del pase
+
+# ── Los que quedan sin forma a propósito ──
+#
+# Anotados para que nadie los «arregle» después:
+#
+# · El sustantivo prestado es masculino, no la persona: «El Plot Twist», «El Arco de
+#   Redención», «El Facto del Día», «El Dato Calado», «El Contacto del Contacto», «El Lore
+#   Viviente», «Personaje Canónico», «Evento Canónico», «Rizz Infinito».
+# · «El alma» lleva artículo masculino por fonética y el sustantivo ya es femenino: «El
+#   Alma del Grupo», «El Alma del After».
+# · Invariables: «CEO del Aura», «Gerente de Malas Decisiones», «Protagonista sin
+#   Presupuesto», «Magíster en Cahuín», «Highkey GOAT», «Main Character», «No Cap».
+# · Ya neutros o ya femeninos: «Aura Infinita», «La Leyenda del Grupo», «Constante»,
+#   «Imparable», «Sin faltar una», «Leyenda del semestre», «Doctorado en Rizz»,
+#   «Doctorado en Webeo».

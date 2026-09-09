@@ -617,20 +617,27 @@ if (!articulo) {
 
 console.log('\nLos títulos en dos formas');
 
-// Se prefiere un título que además sea recompensa del pase **de este ramo**: así la
-// comprobación de `mi_pase` no se salta, y ese es justo el sitio cuyo desacuerdo con
-// `tabla_posiciones` dejaba al pase sin marcar «Puesto».
+// El título con el que se mide se elige **desde el pase que `mi_pase` devuelve**, y no
+// por «es recompensa de algún pase de este ramo». Esa primera versión parecía bastar y no
+// bastaba: la asignatura tiene varios pases, `mi_pase` devuelve solo el vigente, y el
+// título elegido resultó ser premio de otro. La comprobación de `mi_pase` se saltaba en
+// silencio — y ese es justo el sitio cuyo desacuerdo con `tabla_posiciones` dejaba al pase
+// sin marcar «Puesto».
+const [{ p: paseAhora }] = await como(alumno.id, (s) =>
+  s`select public.mi_pase(${m.id}::uuid) as p`);
+const idsDelPaseVigente = (paseAhora?.recompensas ?? [])
+  .filter((r) => r.cosmetico?.tipo === 'titulo')
+  .map((r) => r.cosmetico.id);
+
 const [conForma] = await d`
   select c.id, c.valor, c.valor_femenino from public.cosmeticos c
    where c.tipo = 'titulo' and c.activo and c.valor_femenino is not null
-   order by exists (
-     select 1 from public.pase_recompensas pr
-       join public.pases p on p.id = pr.pase_id
-       join public.secciones s on s.asignatura_id = p.asignatura_id
-                              and s.periodo_id = p.periodo_id
-       join public.matriculas mt on mt.seccion_id = s.id
-      where pr.cosmetico_id = c.id and mt.id = ${m.id}) desc
+   order by (c.id = any(${idsDelPaseVigente}::uuid[])) desc
    limit 1`;
+const enElPase = conForma && idsDelPaseVigente.includes(conForma.id);
+rev('el título con que se mide es del pase vigente, así que mi_pase también se comprueba',
+  Boolean(enElPase),
+  'ninguna recompensa del pase vigente tiene forma femenina: mi_pase quedó sin medir');
 rev('hay al menos un título con forma femenina escrita', Boolean(conForma),
   'sin eso esta sección no prueba nada');
 
@@ -756,6 +763,42 @@ try {
     rev('un título sin forma femenina se ve igual con las dos',
       dice.masculino === sinForma.valor && dice.femenino === sinForma.valor,
       `masculino «${dice.masculino}», femenino «${dice.femenino}»`);
+  }
+  // ── El quinto sitio: lo que el gacha anuncia al entregarlo ──
+  //
+  // Se comprueba aparte porque es el único que no se puede leer de una consulta: hay que
+  // gastar una tirada. Y se compara contra lo que la base misma resolvería, así que la
+  // prueba falla si `gacha_tirar` devolviera `valor` crudo.
+  await d`update public.perfiles set forma_titulo = 'femenino' where id = ${alumno.id}`;
+  await d`insert into public.movimientos_tiradas (matricula_id, cantidad, motivo)
+          values (${m.id}, 1, ${MOTIVO})`;
+  const [{ r: sacado }] = await como(alumno.id, (s) =>
+    s`select public.gacha_tirar(${m.id}::uuid, 'titulo') as r`);
+  const [debia] = await d`
+    select public.titulo_texto(valor, valor_femenino, 'femenino') as texto
+      from public.cosmeticos where id = ${sacado.id}`;
+  rev(`gacha_tirar anuncia «${sacado.valor}» en femenino`,
+    sacado.valor === debia.texto, `la base resolvería «${debia.texto}»`);
+  await d`delete from public.alumno_cosmeticos
+           where matricula_id = ${m.id} and cosmetico_id = ${sacado.id}`;
+
+  // ── El archivo está cargado ──
+  const [conFemenino] = await d`
+    select count(*)::int as n from public.cosmeticos
+     where tipo = 'titulo' and activo and valor_femenino is not null`;
+  rev('los títulos con forma femenina están cargados', conFemenino.n >= 50,
+    `hay ${conFemenino.n}, esperaba al menos 50`);
+
+  // Aviso y no fallo: el mecanismo tiene que poder desplegarse con el archivo a medias, y
+  // el número dice cuánto falta. La heurística tiene falsos positivos a propósito —«El
+  // Plot Twist» lleva artículo masculino porque el sustantivo prestado lo es— así que
+  // hacerla fallar obligaría a mantener una lista de excepciones en dos lugares.
+  const [pendientes] = await d`
+    select count(*)::int as n from public.cosmeticos
+     where tipo = 'titulo' and activo and valor_femenino is null
+       and (valor ~ '^(El|Los) ' or valor ~ '(dor|ero|ista|ano|ino|oso)$')`;
+  if (pendientes.n > 0) {
+    console.log(`  · ${pendientes.n} títulos con pinta de tener género siguen sin forma femenina`);
   }
 } finally {
   // Dejarlo como estaba, pase lo que pase.

@@ -54,3 +54,7 @@ Thumbs.db
 
 # Banco de términos: sale de los decks, que no se versionan.
 neon/banco-*.md
+
+# Estado local de Claude Code: acá viven los worktrees, que son copias completas
+# del repositorio. Ocho megas que no son código de nadie.
+.claude/

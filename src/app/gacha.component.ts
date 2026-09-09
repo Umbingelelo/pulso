@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { Cosmetico, DatosService, TiradaGacha } from './datos.service';
+import { Cosmetico, DatosService, Pozo, TiradaGacha } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 /**
@@ -24,6 +24,14 @@ import { PerfilStore } from './perfil.store';
  * lo común pasa rápido y **un clic en el sobre se salta la espera**. El que
  * quiere la ceremonia la tiene; el que va por la número quince, no la sufre.
  *
+ * ── Dos pozos y una sola moneda ──
+ *
+ * Las caras y los títulos se sortean por separado, así que hay dos botones y un
+ * solo contador: la tirada se gana una vez y el alumno elige dónde gastarla. Bajo
+ * cada botón va cuántos le faltan en ese pozo, que es la pregunta que se hace
+ * antes de elegir; y el pozo que ya completó queda deshabilitado en vez de
+ * dejarlo tirar para recibir un error.
+ *
  * ── Se muestra el pozo completo ──
  *
  * Incluido lo que no tiene, en gris. Saber qué falta es la mitad de la gracia de
@@ -35,7 +43,10 @@ import { PerfilStore } from './perfil.store';
   template: `
     <div class="encabezado">
       <h1>Gacha</h1>
-      <p>Gasta una tirada y llévate un título o una cara para tu perfil.</p>
+      <p>
+        Gasta una tirada y llévate un título o una cara para tu perfil. Se sortean
+        por separado: tú eliges en cuál de los dos tiras.
+      </p>
     </div>
 
     @if (!perfil.ramo()) {
@@ -91,10 +102,18 @@ import { PerfilStore } from './perfil.store';
           }
         </div>
 
+        <!-- Un botón por pozo sobre el mismo contador. La leyenda de abajo no es
+             decoración: sin ella, el alumno no tiene cómo saber en cuál de los dos
+             le queda algo por sacar, y elegiría a ciegas. -->
         <div class="acciones">
-          <button class="boton" [disabled]="girando() || tiradas() < 1" (click)="tirar()">
-            {{ girando() ? 'Abriendo…' : tiradas() < 1 ? 'Sin tiradas' : 'Tirar' }}
-          </button>
+          @for (p of pozos; track p.id) {
+            <div class="pozo">
+              <button class="boton" [disabled]="apagado(p.id)" (click)="tirar(p.id)">
+                {{ rotulo(p) }}
+              </button>
+              <span class="chico suave">{{ leyendaPozo(p.id) }}</span>
+            </div>
+          }
           @if (error()) { <div class="aviso malo" style="margin-top:12px">{{ error() }}</div> }
         </div>
       </div>
@@ -163,6 +182,12 @@ import { PerfilStore } from './perfil.store';
       .mesa{ grid-template-columns:200px 1fr 200px; align-items:center; text-align:left; }
       .mesa .acciones{ text-align:right; }
     }
+
+    /* Los dos botones apilados, cada uno con su leyenda pegada debajo: si la
+       leyenda flotara suelta no se sabría a qué pozo se refiere. */
+    .acciones{ display:grid; gap:14px; }
+    .pozo{ display:grid; gap:4px; }
+    .pozo .boton{ width:100%; }
 
     /* ── El tono de cada rareza ──
        Un color por nivel, y la mítica en magenta y no en otro dorado: si
@@ -300,6 +325,18 @@ export class GachaComponent {
   protected perfil = inject(PerfilStore);
   private datos = inject(DatosService);
 
+  /**
+   * Los dos pozos.
+   *
+   * Se llaman «cara» y «título» y no «imagen» y «título» porque es el vocabulario
+   * que ya usa el resto de la pantalla —el filtro de la colección dice «Caras»— y
+   * cambiarlo acá haría parecer que son cosas distintas.
+   */
+  protected readonly pozos: { id: Pozo; boton: string }[] = [
+    { id: 'imagen', boton: 'Tirar una cara' },
+    { id: 'titulo', boton: 'Tirar un título' },
+  ];
+
   protected readonly filtros = [
     { id: '', nombre: 'Todo' },
     { id: 'falta', nombre: 'Me falta' },
@@ -317,11 +354,58 @@ export class GachaComponent {
   rarezaEnCurso = signal('');
   filtro = signal('');
   cargando = signal(true);
-  girando = signal(false);
+  /** En qué pozo se está tirando, o vacío si no se está tirando. */
+  girando = signal<Pozo | ''>('');
   poniendo = signal('');
   error = signal('');
 
   cuantosTengo = computed(() => this.todos().filter(c => c.tengo).length);
+
+  /**
+   * Cuántos quedan por sacar en cada pozo.
+   *
+   * Sin lo que ya tiene y **sin lo del pase**, que no sale tirando: contarlo haría
+   * que un pozo dijera «te faltan 3» y el botón devolviera un error, que es
+   * exactamente la confusión que la colección ya evita marcándolos.
+   */
+  private faltanPorPozo = computed(() => {
+    const n: Record<Pozo, number> = { imagen: 0, titulo: 0 };
+    for (const c of this.todos()) {
+      if (c.tengo || c.del_pase) continue;
+      if (c.tipo === 'avatar') n.imagen++;
+      else if (c.tipo === 'titulo') n.titulo++;
+    }
+    return n;
+  });
+
+  protected faltan(pozo: Pozo): number {
+    return this.faltanPorPozo()[pozo];
+  }
+
+  /**
+   * Los tres estados del botón de un pozo, y todos cuidan lo mismo: **no afirmar
+   * nada mientras la colección no ha llegado**.
+   *
+   * Con `todos()` vacío, `faltan` da cero, y sin esta guarda la pantalla arrancaba
+   * diciendo «Ya los tienes todos» en los dos pozos —con la colección todavía en
+   * blanco— hasta que respondía la consulta. Es un parpadeo de medio segundo que
+   * dice exactamente lo contrario de la verdad.
+   */
+  protected apagado(pozo: Pozo): boolean {
+    return this.cargando() || this.girando() !== '' || this.tiradas() < 1
+        || this.faltan(pozo) === 0;
+  }
+
+  protected rotulo(p: { id: Pozo; boton: string }): string {
+    if (this.girando() === p.id) return 'Abriendo…';
+    if (!this.cargando() && this.tiradas() < 1) return 'Sin tiradas';
+    return p.boton;
+  }
+
+  protected leyendaPozo(pozo: Pozo): string {
+    if (this.cargando()) return '';
+    return this.faltan(pozo) === 0 ? 'Ya los tienes todos' : `Te faltan ${this.faltan(pozo)}`;
+  }
 
   private visibles = computed(() => {
     const f = this.filtro();
@@ -453,10 +537,10 @@ export class GachaComponent {
     });
   }
 
-  async tirar(): Promise<void> {
+  async tirar(pozo: Pozo): Promise<void> {
     const ramo = this.perfil.ramo();
-    if (!ramo || this.girando() || this.tiradas() < 1) return;
-    this.girando.set(true);
+    if (!ramo || this.girando() || this.tiradas() < 1 || this.faltan(pozo) === 0) return;
+    this.girando.set(pozo);
     this.error.set('');
     this.ultima.set(null);
     this.rarezaEnCurso.set('');
@@ -467,7 +551,7 @@ export class GachaComponent {
       // parpadee: sin él, en una red buena la fase de carga no se alcanza a ver y
       // el premio aparece de golpe.
       const [r] = await Promise.all([
-        this.datos.tirarGacha(ramo.matricula_id),
+        this.datos.tirarGacha(ramo.matricula_id, pozo),
         this.pausa(500),
       ]);
 
@@ -486,7 +570,7 @@ export class GachaComponent {
       this.fase.set('quieto');
     } finally {
       this.esperando = null;
-      this.girando.set(false);
+      this.girando.set('');
     }
   }
 

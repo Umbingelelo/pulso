@@ -194,9 +194,17 @@ if (args.avatares) {
       nombre: personaje,
       descripcion: serie,
       valor: url,
-      // Todas comunes: dentro de una rareza el sorteo es uniforme, así que es lo
-      // que hace que las 220 tengan exactamente la misma probabilidad entre sí.
-      rareza: 'comun',
+      // La rareza de una imagen **no se decide acá**: la pone la base con
+      // `rareza_de_imagen`, que la deriva del código. Ver la 0035.
+      //
+      // Antes eran todas comunes, porque con un pozo único eso era lo que les daba
+      // a las 220 la misma probabilidad entre sí. Con el pozo de imágenes aparte,
+      // compartir rareza deja el sorteo sin nada que anunciar.
+      //
+      // Nula y no calculada en JS: la regla vive en un solo lugar. Calcularla acá
+      // sería tener el mismo md5 escrito en dos lenguajes, y el día que se muevan
+      // los cortes solo se corregiría uno.
+      rareza: null,
     });
   }
   console.log(`Imágenes   ${archivos.length} · ${subidos} por subir · ${reusados} ya estaban`);
@@ -215,10 +223,25 @@ if (problemas.length) {
   process.exit(1);
 }
 
+// La rareza de las imágenes la pone la base, así que para informarla hay que
+// preguntársela: es un `select`, así que esto también funciona sin `--escribir`.
+// Calcularla en JS para el informe sería tener el md5 en dos lenguajes, y el día
+// que el informe y la base no coincidan, el informe miente.
+const rarezaImagenes = new Map();
+const codigosImagen = cosmeticos.filter((c) => c.tipo === 'avatar').map((c) => c.codigo);
+if (codigosImagen.length) {
+  for (const r of await sql`
+    select codigo, public.rareza_de_imagen(codigo) as rareza
+      from unnest(${codigosImagen}::text[]) as codigo`) {
+    rarezaImagenes.set(r.codigo, r.rareza);
+  }
+}
+
 const porRareza = {};
 for (const c of cosmeticos) {
-  porRareza[c.rareza] ??= { titulo: 0, avatar: 0 };
-  porRareza[c.rareza][c.tipo]++;
+  const rareza = c.rareza ?? rarezaImagenes.get(c.codigo) ?? 'sin rareza';
+  porRareza[rareza] ??= { titulo: 0, avatar: 0 };
+  porRareza[rareza][c.tipo]++;
 }
 console.log(`\nCosméticos ${cosmeticos.length}`);
 for (const [r, n] of Object.entries(porRareza)) {
@@ -236,11 +259,23 @@ for (const c of cosmeticos) {
   await sql`
     insert into public.cosmeticos (codigo, tipo, nombre, descripcion, valor, rareza, temporada, activo)
     values (${c.codigo}, ${c.tipo}, ${c.nombre}, ${c.descripcion}, ${c.valor},
-            ${c.rareza}, ${TEMPORADA}, true)
+            -- Los títulos traen su rareza del archivo del docente; las imágenes la
+            -- reciben de la base, derivada del código.
+            coalesce(${c.rareza}, public.rareza_de_imagen(${c.codigo})),
+            ${TEMPORADA}, true)
     on conflict (codigo) do update
       set tipo = excluded.tipo, nombre = excluded.nombre,
           descripcion = excluded.descripcion, valor = excluded.valor,
-          rareza = excluded.rareza, temporada = excluded.temporada, activo = true`;
+          -- La rareza de una imagen del pase se puso a mano —René Puente es
+          -- legendaria por ser el premio final del semestre— y esta línea es lo
+          -- que impide que la próxima corrida la pise. En los títulos no aplica:
+          -- ahí la rareza es del archivo del docente y tiene que poder corregirla.
+          rareza = case when excluded.tipo = 'avatar'
+                         and exists (select 1 from public.pase_recompensas pr
+                                      where pr.cosmetico_id = cosmeticos.id)
+                        then cosmeticos.rareza
+                        else excluded.rareza end,
+          temporada = excluded.temporada, activo = true`;
 }
 
 // Retirar los avatares que ya no son de esta colección.

@@ -460,6 +460,15 @@ export interface Cosmetico {
   nivel_pase: number | null;
 }
 
+/**
+ * En qué pozo se tira.
+ *
+ * Son dos desde la 0035, y con una sola moneda. Con un pozo único las imágenes
+ * —todas comunes— se llevaban el 95% de la rareza común y ninguna podía salir con
+ * brillo, mientras que épica y para arriba eran siempre títulos.
+ */
+export type Pozo = 'imagen' | 'titulo';
+
 export interface TiradaGacha {
   id: string;
   codigo: string;
@@ -874,9 +883,16 @@ export class DatosService {
     return Number(data ?? 0);
   }
 
-  /** Gasta una tirada y devuelve lo que salió. Revienta si no le quedan. */
-  async tirarGacha(matriculaId: string): Promise<TiradaGacha> {
-    const { data, error } = await this.db.rpc('gacha_tirar', { p_matricula: matriculaId });
+  /**
+   * Gasta una tirada en un pozo y devuelve lo que salió. Revienta si no le quedan.
+   *
+   * La tirada es **una sola moneda**: el pozo se elige acá, al gastarla, y no al
+   * ganarla. Así el que ya completó las imágenes no se queda con tiradas muertas.
+   */
+  async tirarGacha(matriculaId: string, pozo: Pozo): Promise<TiradaGacha> {
+    const { data, error } = await this.db.rpc('gacha_tirar', {
+      p_matricula: matriculaId, p_pozo: pozo,
+    });
     if (error) throw error;
     return data as TiradaGacha;
   }

@@ -661,7 +661,8 @@ salen ahora de `tiene_texto()`.
 ## Gacha y cosméticos
 
 El pase reparte **tiradas** y la tienda las vende; el gacha es donde se gastan. Cada tirada entrega un
-cosmético: un **título** que se muestra bajo el nombre, o una **cara** para el perfil.
+cosmético: un **título** que se muestra bajo el nombre, o una **cara** para el perfil. Son **dos pozos
+separados** y una sola moneda: el alumno elige en cuál tira.
 
 ### Una tirada se compra con puntos, y eso estuvo roto doce veces
 
@@ -674,7 +675,8 @@ que no les quedaban tiradas: sin un error en ninguna parte.
 
 Lo arregla la `0031`. Los dos artículos se retiran —se dejan `activo = false`, no se borran, porque hay
 canjes apuntándolos y `canjes.articulo_id` es `on delete restrict`—, se devuelve lo pagado al
-`precio_pagado` de cada uno, y queda **uno solo**: «Una tirada de gacha», que tira del pozo general.
+`precio_pagado` de cada uno, y queda **uno solo**: «Una tirada de gacha», que se gasta en el pozo que
+el alumno quiera.
 
 Y el mecanismo pasa a estar en el catálogo, no en un `if`: **`articulos.tiradas`** dice cuántas entrega
 cada artículo. Así un paquete de cinco tiradas es una fila y no una migración. Con un check que prohíbe
@@ -687,26 +689,54 @@ el docente aprobara nada. En vez de dejar ese camino a medias, la combinación n
 Primero se sortea **la rareza** con los pesos de `gacha_rarezas`, y después se elige **uniforme entre
 los cosméticos de esa rareza** que al alumno le faltan.
 
-| Rareza | Peso | Qué hay |
-|---|---|---|
-| Común | 30 % | 7 títulos + **todas las imágenes** |
-| Poco común | 28 % | 17 títulos |
-| Rara | 25 % | 28 títulos |
-| Épica | 12 % | 29 títulos |
-| Legendaria | 4 % | 15 títulos |
-| Mítica | 1 % | 4 títulos |
+Los pesos son los mismos en los dos pozos. Lo que hay en cada uno, contando solo lo **sacable** —lo
+que es recompensa del pase no entra, ver más abajo—:
+
+| Rareza | Peso | Imágenes | Títulos |
+|---|---|---|---|
+| Común | 30 % | 62 | 9 |
+| Poco común | 28 % | 49 | 13 |
+| Rara | 25 % | 39 | 24 |
+| Épica | 12 % | 24 | 18 |
+| Legendaria | 4 % | 11 | 12 |
+| Mítica | 1 % | 4 | 4 |
 
 La alternativa —un peso por ítem y un solo sorteo— parece más simple y está mal: con 220 imágenes
 comunes y 4 títulos míticos, el mítico saldría **una vez cada dos mil tiradas** y no lo vería nadie en
 todo el semestre. Con dos pasos es exactamente 1 de cada 100, y sigue siéndolo cuando se suban más
 imágenes.
 
-Y de paso resuelve lo de las imágenes: como dentro de una rareza el sorteo es uniforme, **las 220
-tienen exactamente la misma probabilidad entre sí**, hoy y cuando sean 400.
-
 **Sin repetidos.** Se sortea solo entre lo que falta, y la rareza solo entre las que todavía tienen
 algo — si no, al que ya tiene los cuatro míticos le saldría «rareza mítica» un 1 % de las veces y no
 habría nada que entregarle. La tirada se gasta **después** de que hay algo que dar.
+
+### Dos pozos, y por qué las imágenes dejaron de ser todas comunes
+
+Hasta la `0035` había un pozo y las 220 imágenes eran **todas comunes**. Tenía sentido: dentro de una
+rareza el sorteo es uniforme, así que compartir rareza era lo que les daba la misma probabilidad entre
+sí. Pero el pozo único quedaba torcido, y se puede calcular: de 269 cosméticos sorteables, 189 eran
+imágenes comunes, así que común era 30 % de las tiradas y dentro de común el 95 % era imagen.
+Resultado real: **~71 % de las tiradas entregaba título y ~29 % imagen**, y ninguna imagen podía salir
+con brillo. Épica y para arriba eran siempre títulos.
+
+La `0035` los separa. Cada pozo reparte sus seis rarezas, y para eso cada imagen necesita una rareza
+propia. El reparto es **al azar y no curado** —un personaje secundario puede quedar mítico y el
+protagonista común— y se deriva del código con `rareza_de_imagen(codigo)`: `md5 % 100` con cortes
+fijos. Es una función y no un sorteo de una vez porque `subir-cosmeticos.mjs` se corre muchas veces y
+hace `set rareza = excluded.rareza`; un `order by random()` se lo llevaría a la primera subida y —peor—
+la segunda corrida le cambiaría la etiqueta a imágenes que el alumno ya tiene. Las del pase no se
+recalculan: su rareza se puso a mano, y el `on conflict` del subidor tiene la guarda que lo impide.
+
+**Una sola moneda.** `movimientos_tiradas` no cambia: la tirada se gana una vez y el pozo se elige al
+gastarla, con `gacha_tirar(matricula, pozo)`. Una moneda por pozo obligaría a repartir los 30 niveles
+del pase entre los dos, a migrar los saldos que ya existen y a duplicar el artículo de la tienda; y al
+que completó las imágenes le dejaría tiradas muertas.
+
+`p_pozo` tiene **omisión nula** —nulo es el pozo completo, como antes— y eso no es comodidad: es lo que
+permite aplicar la migración antes del despliegue sin que el sitio publicado, que llama con un solo
+argumento, se caiga en el medio. El filtro por pozo entra en los **dos** lugares donde se mira el pozo,
+el sorteo de rareza y la elección del ítem: solo en el segundo, se sortearía «mítica» mirando ambos
+pozos y después no habría mítica de ese tipo que entregar.
 
 ### La cara ya no se elige: se gana
 
@@ -812,13 +842,21 @@ omisión choca con el token de los decks y Vercel no deja conectarla.
 
 ```bash
 set -a; . ./.env.local; set +a
-node neon/probar-gacha.mjs [--tiradas 4000]
+node neon/probar-gacha.mjs [--tiradas 8000]
 ```
 
 Un gacha es una promesa numérica: si la pantalla dice que un mítico sale 1 de cada 100 y en realidad
 sale 1 de cada 2.000, eso **no falla en ninguna parte** —los alumnos simplemente nunca ven uno y nadie
 sabe por qué—. Por eso el grueso de la prueba es contar: tira unos miles y compara la frecuencia
 observada contra los pesos declarados.
+
+Las tiradas se **reparten entre los dos pozos** y cada uno se mide por separado, porque el promedio de
+ambos escondería que uno está torcido: si el de imágenes entregara siempre común y el de títulos
+compensara, el total seguiría cuadrando. De ahí que el `--tiradas` útil sea el doble que antes. Y se
+vigilan dos cosas más: que cada imagen tenga la rareza que le toca por su código —lo que atrapa una
+corrida de `subir-cosmeticos.mjs` que las vuelva a dejar todas comunes— y que **ninguna rareza del
+pozo de imágenes quede con menos de tres**, porque una rareza con un ítem se agota en la primera
+tirada y desaparece del sorteo.
 
 Lo otro que vigila es la puerta: que `pulso_app` **no tenga** grant de `update` sobre `perfiles.avatar`
 y sí sobre `nombre`, y que un `update` directo lo rechace Postgres. Se comprueba el grant y no que la

@@ -81,21 +81,60 @@ const vacias = pesos.filter((p) => !pozo.some((x) => x.rareza === p.rareza));
 rev('ninguna rareza con peso quedó sin ítems', vacias.length === 0,
   `${vacias.map((p) => p.nombre).join(', ')} — se sortearían y no habría qué entregar`);
 
-// Lo pedido para las imágenes: todas con la misma probabilidad entre sí. Como
-// dentro de una rareza el sorteo es uniforme, eso equivale a que las del **pozo
-// del gacha** compartan rareza.
+// ---------- El reparto de rarezas de las imágenes ----------
 //
-// Se miran solo las sacables, no todas las activas: las del pase están fuera del
-// sorteo, así que su rareza no afecta la probabilidad de nadie. René Puente es
-// legendaria por ser el premio final del semestre, y contarla acá haría fallar la
-// prueba por algo que no cambia ninguna probabilidad.
-const rarezasSacables = await d`
-  select distinct c.rareza from public.cosmeticos c
+// Hasta la 0035 las imágenes eran **todas comunes**, y eso tenía sentido con un
+// pozo único: dentro de una rareza el sorteo es uniforme, así que compartir
+// rareza era lo que les daba a las 220 la misma probabilidad entre sí.
+//
+// Con el pozo de imágenes aparte, esa misma decisión deja el sorteo sin nada que
+// anunciar: cada tirada de imagen saldría en gris. Ahora la rareza se deriva del
+// md5 del código —`rareza_de_imagen`— y lo que hay que vigilar es otra cosa.
+//
+// Se miran solo las sacables: las del pase están fuera del sorteo, y su rareza se
+// puso a mano —René Puente es legendaria por ser el premio final del semestre—,
+// así que recalcularla sería pisarla.
+
+console.log('\nEl reparto de rarezas de las imágenes');
+
+const imagenes = await d`
+  select c.codigo, c.rareza, public.rareza_de_imagen(c.codigo) as toca
+    from public.cosmeticos c
    where c.activo and c.tipo = 'avatar'
      and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)`;
-rev('las imágenes que se pueden sacar están todas en una sola rareza',
-  rarezasSacables.length <= 1,
-  `están en: ${rarezasSacables.map((r) => r.rareza).join(', ')}`);
+
+// El invariante que de verdad importa, y no el recuento exacto: el recuento
+// cambia en cuanto el docente sube una imagen más, pero esto tiene que seguir
+// valiendo siempre. Es lo que atrapa una corrida de `subir-cosmeticos.mjs` que
+// vuelva a dejarlas todas comunes.
+const desalineadas = imagenes.filter((i) => i.rareza !== i.toca);
+rev('cada imagen tiene la rareza que le toca por su código',
+  desalineadas.length === 0,
+  `${desalineadas.length} desalineadas, p. ej. ${desalineadas.slice(0, 3)
+    .map((i) => `${i.codigo}: es ${i.rareza} y toca ${i.toca}`).join(' · ')}`);
+
+const porRarezaImg = {};
+for (const i of imagenes) porRarezaImg[i.rareza] = (porRarezaImg[i.rareza] ?? 0) + 1;
+for (const p of pesos) {
+  const n = porRarezaImg[p.rareza] ?? 0;
+  console.log(`  ${p.nombre.padEnd(11)} ${String(n).padStart(3)} imágenes` +
+    ` (${((n / imagenes.length) * 100).toFixed(1)}%)`);
+}
+
+// Una rareza con uno o dos ítems se agota en la primera tirada y desaparece del
+// pozo: el peso se reparte entre las demás y la promesa de la pantalla deja de
+// cumplirse a mitad de semestre. Tres es el piso.
+const flacas = pesos.filter((p) => (porRarezaImg[p.rareza] ?? 0) < 3);
+rev('ninguna rareza del pozo de imágenes quedó con menos de tres',
+  flacas.length === 0,
+  flacas.map((p) => `${p.nombre}: ${porRarezaImg[p.rareza] ?? 0}`).join(', '));
+
+// Y las del pase conservan la suya, que se puso a mano.
+const [rene] = await d`select rareza from public.cosmeticos where codigo = 'avatar-loco-rene'`;
+if (rene) {
+  rev('el premio final del pase sigue siendo legendario', rene.rareza === 'legendaria',
+    `quedó ${rene.rareza}`);
+}
 
 // ---------- La matrícula de prueba ----------
 
@@ -201,6 +240,40 @@ const [{ n: sacables }] = await d`
      and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)`;
 console.log(`  · ${sacables} sacables en el gacha · ${idsPase.size} solo en el pase`);
 
+// Lo que la colección ofrece tiene que ser lo que el pozo tiene, y eso estuvo
+// mal hasta la 0036: `mis_cosmeticos` calculaba `del_pase` **por ramo** y
+// `gacha_tirar` excluye lo del pase de **cualquier** ramo, así que el filtro
+// «Puedo sacarlo» ofrecía 15 imágenes y 14 títulos que el pozo no tenía. El
+// alumno tiraba doscientas veces esperando algo que no estaba.
+//
+// Se revisa sobre **todas** las matrículas del alumno de prueba, y ahí está la
+// gracia: con una sola no se habría notado nunca, porque el desajuste son
+// justamente los premios del pase del *otro* ramo.
+const mias = await d`select mt.id, a.sigla from public.matriculas mt
+   join public.secciones s on s.id = mt.seccion_id
+   join public.asignaturas a on a.id = s.asignatura_id
+  where mt.perfil_id = ${alumno.id} and mt.activa`;
+rev('el alumno de prueba tiene más de un ramo, que es lo que lo destapa',
+  mias.length > 1, `tiene ${mias.length}`);
+for (const mia of mias) {
+  const [pantalla] = await como(alumno.id, (s) => s`
+    select count(*) filter (where tipo = 'avatar')::int as img,
+           count(*) filter (where tipo = 'titulo')::int as tit
+      from public.mis_cosmeticos(${mia.id}::uuid) where not tengo and not del_pase`);
+  const [pozo] = await d`
+    select count(*) filter (where c.tipo = 'avatar')::int as img,
+           count(*) filter (where c.tipo = 'titulo')::int as tit
+      from public.cosmeticos c
+     where c.activo
+       and not exists (select 1 from public.alumno_cosmeticos ac
+                        where ac.matricula_id = ${mia.id} and ac.cosmetico_id = c.id)
+       and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)`;
+  rev(`${mia.sigla}: lo que la colección ofrece es lo que el pozo tiene`,
+    pantalla.img === pozo.img && pantalla.tit === pozo.tit,
+    `la pantalla ofrece ${pantalla.img} imágenes y ${pantalla.tit} títulos,` +
+    ` y el pozo tiene ${pozo.img} y ${pozo.tit}`);
+}
+
 // ---------- Ni el gacha ni el pase pagan puntos ----------
 // Los puntos son de las actividades y se gastan en la tienda. Que el gacha o el
 // pase los repartieran haría que dos economías separadas se mezclaran, y que
@@ -224,34 +297,58 @@ rev('la columna xp_por_punto ya no existe',
   (await d`select count(*)::int as n from information_schema.columns
      where table_schema='public' and table_name='pases' and column_name='xp_por_punto'`)[0].n === 0);
 
-// ---------- El sorteo respeta los pesos ----------
+// ---------- Ningún sacable queda fuera de los dos pozos ----------
 //
-// Se tira muchas veces sobre una matrícula que se limpia después. Como el gacha
-// no repite, hay que devolverle el pozo entre tirada y tirada: si no, a las 320
-// tiradas se acabaría y las frecuencias saldrían deformadas.
+// Los pozos filtran por tipo, así que un cosmético sacable que no sea imagen ni
+// título **no saldría en ninguno de los dos** y quedaría inalcanzable sin que
+// nada falle. Hoy los tres marcos son todos del pase, así que no se pierde nada;
+// esto es lo que avisa el día que se suba uno que no lo sea.
 
-console.log(`\nEl sorteo, con ${N.toLocaleString('es')} tiradas`);
+console.log('\nLos dos pozos cubren todo');
+const huerfanos = await d`
+  select c.codigo, c.tipo from public.cosmeticos c
+   where c.activo and c.tipo not in ('avatar', 'titulo')
+     and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)`;
+rev('todo lo sacable es imagen o título', huerfanos.length === 0,
+  `${huerfanos.map((h) => `${h.codigo} (${h.tipo})`).join(', ')} — no saldría en ningún pozo`);
+
+await debeFallar('un pozo que no existe se rechaza', alumno.id, (s) =>
+  s`select public.gacha_tirar(${m.id}::uuid, 'cualquiera')`, 'Ese pozo no existe');
+
+// ---------- El sorteo respeta los pesos, en cada pozo ----------
+//
+// Desde la 0035 hay dos pozos y una sola moneda, así que se mide **cada pozo por
+// separado** y con las tiradas repartidas entre los dos. Medir el promedio de
+// ambos escondería que uno está torcido: si el de imágenes entregara siempre
+// común y el de títulos compensara, el total seguiría cuadrando con los pesos.
+//
+// Se tira sobre una matrícula que se limpia después. Como el gacha no repite, hay
+// que devolverle el pozo entre tirada y tirada: si no, a las pocas decenas se
+// acabaría y las frecuencias saldrían deformadas.
+
+const POR_POZO = Math.floor(N / 2);
 await d`insert into public.movimientos_tiradas (matricula_id, cantidad, motivo)
-        values (${m.id}, ${N}, ${MOTIVO})`;
+        values (${m.id}, ${POR_POZO * 2 + 3}, ${MOTIVO})`;
 
-const cuenta = {};
 const salieronDelPase = [];
-for (let i = 0; i < N; i++) {
-  const [{ r }] = await como(alumno.id, (s) => s`select public.gacha_tirar(${m.id}::uuid) as r`);
-  cuenta[r.rareza] = (cuenta[r.rareza] ?? 0) + 1;
-  if (idsPase.has(r.id)) salieronDelPase.push(r.nombre);
-  // Devolver lo que salió, para que el pozo no se agote y el reparto se mida
-  // sobre la distribución de verdad.
-  await d`delete from public.alumno_cosmeticos
-           where matricula_id = ${m.id} and cosmetico_id = ${r.id}`;
-  if ((i + 1) % 1000 === 0) console.log(`  … ${i + 1}`);
-}
 
-rev('ninguna de las tiradas entregó algo del pase',
-  salieronDelPase.length === 0,
-  salieronDelPase.slice(0, 4).join(', '));
-rev('y el saldo de puntos no se movió ni un punto', await puntosDe() === puntosAntes,
-  `quedó en ${await puntosDe()}, estaba en ${puntosAntes}`);
+/** Tira `n` veces en un pozo y cuenta lo que salió, por rareza y por tipo. */
+async function sortear(pozo, n) {
+  const cuenta = {}; const tipos = {};
+  for (let i = 0; i < n; i++) {
+    const [{ r }] = await como(alumno.id, (s) =>
+      s`select public.gacha_tirar(${m.id}::uuid, ${pozo}) as r`);
+    cuenta[r.rareza] = (cuenta[r.rareza] ?? 0) + 1;
+    tipos[r.tipo] = (tipos[r.tipo] ?? 0) + 1;
+    if (idsPase.has(r.id)) salieronDelPase.push(r.nombre);
+    // Devolver lo que salió, para que el pozo no se agote y el reparto se mida
+    // sobre la distribución de verdad.
+    await d`delete from public.alumno_cosmeticos
+             where matricula_id = ${m.id} and cosmetico_id = ${r.id}`;
+    if ((i + 1) % 1000 === 0) console.log(`  … ${i + 1}`);
+  }
+  return { cuenta, tipos };
+}
 
 /**
  * El margen se calcula, no se fija a ojo.
@@ -260,44 +357,88 @@ rev('y el saldo de puntos no se movió ni un punto', await puntosDe() === puntos
  * con 600 tiradas la mítica se espera 6 veces, y ±35% son ±2,1 — más angosto que
  * una sola desviación típica, así que una corrida normal la hacía fallar.
  *
- * Cada rareza es un binomial de `N` intentos con probabilidad `p`, así que su
- * desviación típica es `√(N·p·(1−p))`. Se admiten cuatro: la probabilidad de que
+ * Cada rareza es un binomial de `n` intentos con probabilidad `p`, así que su
+ * desviación típica es `√(n·p·(1−p))`. Se admiten cuatro: la probabilidad de que
  * una corrida sana se salga de ahí es ínfima, y en cambio un peso mal aplicado se
  * ve como el doble o el triple, no como un 20%. El piso de 3 evita que una
  * esperanza chiquita deje un margen de cero.
  *
  * Una prueba que falla por azar es peor que no tenerla: se aprende a ignorarla, y
  * el día que la falla es de verdad, nadie la mira.
+ *
+ * `presentes` es la parte que no se puede omitir: si a un pozo le falta una
+ * rareza, su peso se reparte entre las que quedan y comparar contra los pesos
+ * declarados haría fallar la prueba por algo que está bien.
  */
-const sumaPesos = pesos.reduce((s, p) => s + p.peso, 0);
-for (const p of pesos) {
-  const prob = p.peso / sumaPesos;
-  const esperado = prob * N;
-  const sigma = Math.sqrt(N * prob * (1 - prob));
-  const margen = Math.max(4 * sigma, 3);
-  const visto = cuenta[p.rareza] ?? 0;
-  const pct = ((visto / N) * 100).toFixed(1);
-  const objetivo = (prob * 100).toFixed(1);
-  rev(`${p.nombre.padEnd(11)} ${pct}% (esperado ${objetivo}%)`,
-    Math.abs(visto - esperado) <= margen,
-    `salió ${visto}, esperaba ${esperado.toFixed(1)} ± ${margen.toFixed(1)}`);
+function revisarPesos(cuenta, n, presentes) {
+  const suyos = pesos.filter((p) => presentes.has(p.rareza));
+  const suma = suyos.reduce((s, p) => s + p.peso, 0);
+  for (const p of suyos) {
+    const prob = p.peso / suma;
+    const esperado = prob * n;
+    const margen = Math.max(4 * Math.sqrt(n * prob * (1 - prob)), 3);
+    const visto = cuenta[p.rareza] ?? 0;
+    rev(`${p.nombre.padEnd(11)} ${((visto / n) * 100).toFixed(1)}%` +
+        ` (esperado ${(prob * 100).toFixed(1)}%)`,
+      Math.abs(visto - esperado) <= margen,
+      `salió ${visto}, esperaba ${esperado.toFixed(1)} ± ${margen.toFixed(1)}`);
+  }
+  if (suyos.length < pesos.length) {
+    console.log(`  · a este pozo le faltan ${pesos.filter((p) => !presentes.has(p.rareza))
+      .map((p) => p.nombre).join(', ')}: los pesos se renormalizan entre las que quedan`);
+  }
+  const ciegas = suyos.filter((p) => {
+    const prob = p.peso / suma;
+    return Math.max(4 * Math.sqrt(n * prob * (1 - prob)), 3) >= prob * n;
+  });
+  if (ciegas.length) {
+    console.log(`  · con ${n} tiradas no distinguiría un peso al doble en: ` +
+      `${ciegas.map((p) => p.nombre).join(', ')}. Para eso, --tiradas 8000`);
+  }
 }
-console.log(`  · margen usado: cuatro desviaciones típicas sobre ${N} tiradas`);
 
-// Qué puede y qué no puede detectar esta corrida.
-//
-// Con pocas tiradas, el margen de una rareza rara llega a ser más grande que su
-// propia esperanza: ahí la prueba confirma que el sorteo no está roto, pero no
-// distinguiría un peso al doble. Decirlo es la diferencia entre una prueba que
-// mide y una que tranquiliza.
-const ciegas = pesos.filter((p) => {
-  const prob = p.peso / sumaPesos;
-  return Math.max(4 * Math.sqrt(N * prob * (1 - prob)), 3) >= prob * N;
-});
-if (ciegas.length) {
-  console.log(`  · con ${N} tiradas no distinguiría un peso al doble en: ` +
-    `${ciegas.map((p) => p.nombre).join(', ')}. Para eso, --tiradas 4000`);
+/** Las rarezas que ese pozo tiene de verdad, que son las que pueden salir. */
+async function rarezasDe(tipo) {
+  const r = await d`
+    select distinct c.rareza from public.cosmeticos c
+     where c.activo and c.tipo = ${tipo}
+       and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)`;
+  return new Set(r.map((x) => x.rareza));
 }
+
+for (const pozo of ['imagen', 'titulo']) {
+  const tipo = pozo === 'imagen' ? 'avatar' : 'titulo';
+  console.log(`\nEl pozo de ${pozo === 'imagen' ? 'imágenes' : 'títulos'},` +
+    ` con ${POR_POZO.toLocaleString('es')} tiradas`);
+  const { cuenta, tipos } = await sortear(pozo, POR_POZO);
+  const ajenos = Object.keys(tipos).filter((t) => t !== tipo);
+  rev(`solo entrega ${tipo}`, ajenos.length === 0,
+    `también salió: ${ajenos.map((t) => `${tipos[t]} ${t}`).join(', ')}`);
+  revisarPesos(cuenta, POR_POZO, await rarezasDe(tipo));
+}
+
+rev('ninguna de las tiradas entregó algo del pase',
+  salieronDelPase.length === 0,
+  salieronDelPase.slice(0, 4).join(', '));
+rev('y el saldo de puntos no se movió ni un punto', await puntosDe() === puntosAntes,
+  `quedó en ${await puntosDe()}, estaba en ${puntosAntes}`);
+
+// ---------- Sin pozo se sigue pudiendo tirar ----------
+//
+// El parámetro tiene omisión nula a propósito: nulo es el pozo completo, como
+// antes de la 0035. No es una comodidad, es lo que permite aplicar la migración
+// **antes** del despliegue sin que el sitio publicado —que llama con un solo
+// argumento— se caiga en el medio.
+
+console.log('\nLa llamada de un solo argumento sigue sirviendo');
+const surtido = new Set();
+for (let i = 0; i < 3; i++) {
+  const [{ r }] = await como(alumno.id, (s) => s`select public.gacha_tirar(${m.id}::uuid) as r`);
+  surtido.add(r.tipo);
+  await d`delete from public.alumno_cosmeticos
+           where matricula_id = ${m.id} and cosmetico_id = ${r.id}`;
+}
+rev('sin pozo entrega del pozo completo', surtido.size > 0, `salió: ${[...surtido].join(', ')}`);
 
 // ---------- La tienda entrega la tirada ----------
 //

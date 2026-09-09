@@ -608,6 +608,163 @@ if (!articulo) {
     `quedó con ${saldoFinal}, tenía ${saldoInicial}`);
 }
 
+// ---------- Los títulos en dos formas ----------
+//
+// Lo que se vigila es la **coherencia entre los cinco sitios**. Cada uno por separado
+// puede estar bien y el conjunto estar roto: eso es exactamente lo que rompía el pase,
+// que averiguaba el título puesto comparando el texto de `tabla_posiciones` contra el
+// de `mi_pase`.
+
+console.log('\nLos títulos en dos formas');
+
+// Se prefiere un título que además sea recompensa del pase **de este ramo**: así la
+// comprobación de `mi_pase` no se salta, y ese es justo el sitio cuyo desacuerdo con
+// `tabla_posiciones` dejaba al pase sin marcar «Puesto».
+const [conForma] = await d`
+  select c.id, c.valor, c.valor_femenino from public.cosmeticos c
+   where c.tipo = 'titulo' and c.activo and c.valor_femenino is not null
+   order by exists (
+     select 1 from public.pase_recompensas pr
+       join public.pases p on p.id = pr.pase_id
+       join public.secciones s on s.asignatura_id = p.asignatura_id
+                              and s.periodo_id = p.periodo_id
+       join public.matriculas mt on mt.seccion_id = s.id
+      where pr.cosmetico_id = c.id and mt.id = ${m.id}) desc
+   limit 1`;
+rev('hay al menos un título con forma femenina escrita', Boolean(conForma),
+  'sin eso esta sección no prueba nada');
+
+const [sinForma] = await d`
+  select c.id, c.valor from public.cosmeticos c
+   where c.tipo = 'titulo' and c.activo and c.valor_femenino is null limit 1`;
+
+// `titulo_texto` es la regla, y tiene que ser total: nunca nula, nunca vacía.
+const [reglas] = await d`
+  select public.titulo_texto('El Elegido', 'La Elegida', 'masculino') as m,
+         public.titulo_texto('El Elegido', 'La Elegida', 'femenino')  as f,
+         public.titulo_texto('Constante',  null,         'femenino')  as nula,
+         public.titulo_texto('Constante',  null,         'otra')      as rara`;
+rev('en masculino devuelve el valor', reglas.m === 'El Elegido', reglas.m);
+rev('en femenino devuelve la forma femenina', reglas.f === 'La Elegida', reglas.f);
+rev('sin forma femenina cae en masculino', reglas.nula === 'Constante', reglas.nula);
+rev('una forma que no existe cae en masculino y no en nulo',
+  reglas.rara === 'Constante', String(reglas.rara));
+
+// El grant por columna: se abre `forma_titulo` y **no** se reabre `avatar`.
+const [permisosForma] = await d`
+  select bool_or(privilege_type = 'UPDATE' and column_name = 'forma_titulo') as puede_forma,
+         bool_or(privilege_type = 'UPDATE' and column_name = 'avatar')       as puede_avatar
+    from information_schema.column_privileges
+   where table_schema = 'public' and table_name = 'perfiles' and grantee = 'pulso_app'`;
+rev('pulso_app puede escribir forma_titulo', permisosForma.puede_forma === true);
+rev('y sigue sin poder escribir avatar', permisosForma.puede_avatar !== true);
+
+const formaOriginal = (await d`select forma_titulo from public.perfiles
+   where id = ${alumno.id}`)[0].forma_titulo;
+const tituloOriginal = (await d`select titulo_id from public.matriculas
+   where id = ${m.id}`)[0].titulo_id;
+const [ocultoOriginal] = await d`select oculto_en_ranking from public.perfiles
+   where id = ${alumno.id}`;
+
+// `try/finally` y no restaurar al final del bloque: esta sección da vuelta dos flags del
+// perfil —la forma y `oculto_en_ranking`— y si algo revienta en medio, la cuenta de
+// prueba queda visible en el ranking y con los títulos en femenino. Eso el `barrer()` no
+// lo recoge, porque después no hay forma de saber cuál era el valor original.
+try {
+  // El check no deja escribir cualquier cosa.
+  try {
+    await d`update public.perfiles set forma_titulo = 'otra' where id = ${alumno.id}`;
+    rev('el check rechaza una forma inválida', false, 'la base lo aceptó');
+  } catch (e) {
+    rev('el check rechaza una forma inválida',
+      (e.message ?? '').includes('perfiles_forma_titulo_check'), e.message);
+  }
+
+  // ── La coherencia entre los cinco sitios ──
+  //
+  // Se le pone un título con forma femenina, se cambia la preferencia, y los cinco
+  // tienen que decir lo mismo. La cuenta de prueba está oculta del ranking a propósito,
+  // así que para que salga en su propia tabla hay que mostrarla.
+  if (conForma) {
+    await d`update public.perfiles set oculto_en_ranking = false where id = ${alumno.id}`;
+    // Se le regala el cosmético para poder equiparlo; el `limpiar()` de más abajo lo saca.
+    await d`insert into public.alumno_cosmeticos (matricula_id, cosmetico_id, origen)
+            values (${m.id}, ${conForma.id}, 'gacha')
+            on conflict (matricula_id, cosmetico_id) do nothing`;
+    await d`update public.matriculas set titulo_id = ${conForma.id} where id = ${m.id}`;
+
+    for (const forma of ['masculino', 'femenino']) {
+      await d`update public.perfiles set forma_titulo = ${forma} where id = ${alumno.id}`;
+      const esperado = forma === 'femenino' ? conForma.valor_femenino : conForma.valor;
+
+      const [ramo] = await como(alumno.id, (s) =>
+        s`select titulo, titulo_id from public.mis_ramos where matricula_id = ${m.id}`);
+      const [pos] = await como(alumno.id, (s) =>
+        s`select titulo, titulo_id from public.tabla_posiciones(${m.id}::uuid, 200)
+           where soy_yo`);
+      const [cos] = await como(alumno.id, (s) =>
+        s`select valor from public.mis_cosmeticos(${m.id}::uuid) where id = ${conForma.id}`);
+      const [{ p: pase }] = await como(alumno.id, (s) =>
+        s`select public.mi_pase(${m.id}::uuid) as p`);
+      const delPase = (pase?.recompensas ?? [])
+        .find((r) => r.cosmetico && r.cosmetico.id === conForma.id)?.cosmetico?.valor ?? null;
+
+      rev(`${forma}: mis_ramos dice «${ramo?.titulo}»`,
+        ramo?.titulo === esperado, `esperaba «${esperado}»`);
+      rev(`${forma}: tabla_posiciones dice «${pos?.titulo}»`,
+        pos?.titulo === esperado, `esperaba «${esperado}»`);
+      rev(`${forma}: mis_cosmeticos dice «${cos?.valor}»`,
+        cos?.valor === esperado, `esperaba «${esperado}»`);
+      if (delPase !== null) {
+        rev(`${forma}: mi_pase dice «${delPase}»`, delPase === esperado, `esperaba «${esperado}»`);
+      }
+      // El id es lo que el pase compara desde ahora, y no puede depender de la forma.
+      rev(`${forma}: mis_ramos y tabla_posiciones traen el mismo titulo_id`,
+        ramo?.titulo_id === conForma.id && pos?.titulo_id === conForma.id,
+        `${ramo?.titulo_id} vs ${pos?.titulo_id}`);
+    }
+
+    // La forma sigue al portador: en una misma respuesta tienen que convivir las dos.
+    await d`update public.perfiles set forma_titulo = 'femenino' where id = ${alumno.id}`;
+    const filas = await como(alumno.id, (s) =>
+      s`select soy_yo, titulo from public.tabla_posiciones(${m.id}::uuid, 200)
+         where titulo is not null`);
+    const mia = filas.find((f) => f.soy_yo);
+    const ajenas = filas.filter((f) => !f.soy_yo);
+    rev('mi fila sale en femenino', mia?.titulo === conForma.valor_femenino,
+      `dice «${mia?.titulo}»`);
+    if (ajenas.length) {
+      const [enFemenino] = await d`
+        select count(*)::int as n from public.cosmeticos
+         where valor_femenino = any(${ajenas.map((a) => a.titulo)}::text[])`;
+      rev('las filas de mis compañeros no salen en femenino', enFemenino.n === 0,
+        `${enFemenino.n} de ${ajenas.length} filas ajenas salieron con forma femenina`);
+    } else {
+      console.log('  · su sección no tiene compañeros con título puesto: ese caso no se midió');
+    }
+  }
+
+  // Un título sin forma femenina se ve igual con las dos.
+  if (sinForma) {
+    const dice = {};
+    for (const forma of ['masculino', 'femenino']) {
+      await d`update public.perfiles set forma_titulo = ${forma} where id = ${alumno.id}`;
+      const [cos] = await como(alumno.id, (s) =>
+        s`select valor from public.mis_cosmeticos(${m.id}::uuid) where id = ${sinForma.id}`);
+      dice[forma] = cos?.valor;
+    }
+    rev('un título sin forma femenina se ve igual con las dos',
+      dice.masculino === sinForma.valor && dice.femenino === sinForma.valor,
+      `masculino «${dice.masculino}», femenino «${dice.femenino}»`);
+  }
+} finally {
+  // Dejarlo como estaba, pase lo que pase.
+  await d`update public.perfiles set forma_titulo = ${formaOriginal} where id = ${alumno.id}`;
+  await d`update public.perfiles set oculto_en_ranking = ${ocultoOriginal.oculto_en_ranking}
+           where id = ${alumno.id}`;
+  await d`update public.matriculas set titulo_id = ${tituloOriginal} where id = ${m.id}`;
+}
+
 // ---------- Dejarlo como estaba ----------
 
 await limpiar();

@@ -738,6 +738,47 @@ argumento, se caiga en el medio. El filtro por pozo entra en los **dos** lugares
 el sorteo de rareza y la elección del ítem: solo en el segundo, se sortearía «mítica» mirando ambos
 pozos y después no habría mítica de ese tipo que entregar.
 
+### Los títulos se leen en masculino o en femenino
+
+De los 108 títulos activos, **56 marcaban género masculino**, así que a más de la mitad del curso el
+juego le ponía un texto que no la nombra: «El Elegido del Algoritmo», «Rey del Carrete», «El Compañero
+de Todas». La `0037` les da segunda forma.
+
+**La forma femenina es dato y no una regla.** Derivarla —`el → la`, `-o → -a`— falla en silencio: «Rey»
+no da «Reya», «GOAT» daría «GOATa», y hay dos casos que cierran la discusión. «El Caballero de la Mesa»
+hay que reescribirlo («La Dama de la Mesa»), y «El Compañero de Todas» gira **también el complemento**
+(«La Compañera de Todos»). Así que va en `cosmeticos.valor_femenino` y la escribe una persona, en
+`neon/titulos-femenino.txt`. Nulo ahí significa «este título ya sirve para todos», y es además la
+degradación elegante: un título con género cuya forma no está escrita se muestra en masculino, así que
+el mecanismo se pudo desplegar antes de tener el archivo completo.
+
+**La forma sigue a quien lleva el título, no a quien mira.** Es la restricción que ordena todo el resto:
+en la tabla de posiciones veo el título de una compañera y ahí tiene que leerse en **su** forma. Eso
+descarta resolverlo en el navegador con una preferencia local, y obliga a resolverlo en los cinco
+lugares donde un título se junta con una persona: `mis_ramos`, `tabla_posiciones`, `mis_cosmeticos`,
+`mi_pase` y `gacha_tirar`. Cada uno con `titulo_texto(valor, valor_femenino, forma)` y con el perfil de
+quien lleva el título.
+
+**La preferencia es de redacción, no de identidad.** `perfiles.forma_titulo`, con omisión `'masculino'`
+—que es exactamente lo que había, así que la migración no le cambió el texto a nadie—. En «Mi perfil»
+hay dos botones y un ejemplo en vivo: no se le pregunta su género ni se infiere del nombre, que en un
+curso de cuarenta es misgendering garantizado y además un dato que la app no necesita para nada más.
+
+**Y se resuelve `nombre`, no solo `valor`.** Esto salió mirando la pantalla y no el esquema, y era el
+error que habría hecho fracasar el cambio sin que nada fallara: la escalera del pase dibuja
+`cosmetico.nombre`, y la colección dibuja las dos —la chapa con `valor` y la etiqueta con `nombre`—.
+Resolver solo `valor` dejaba el pase entero en masculino y la colección contradiciéndose consigo misma
+a dos centímetros. Para un título las dos columnas son la misma cadena, y ese invariante ahora lo
+vigila la migración: el día que alguien las separe, revienta en vez de mentir.
+
+**Lo que esto obligó a arreglar.** El pase averiguaba cuál título llevabas puesto **comparando texto**
+entre `tabla_posiciones` y `mi_pase`. Calzaba por casualidad —dos funciones distintas devolviendo la
+misma cadena— y con dos formas habría dejado la escalera sin marcar «Puesto» para toda alumna que
+eligiera femenino, sin error en ninguna parte. Ahora `mis_ramos` y `tabla_posiciones` devuelven
+`titulo_id` y la comparación es por id. Las columnas van **al final** porque una vista solo acepta
+columnas nuevas ahí, y porque así el sitio publicado sigue sirviendo durante la ventana en que la Data
+API tiene el esquema viejo.
+
 ### La cara ya no se elige: se gana
 
 Antes el alumno abría una galería de DiceBear, elegía un dibujo y la app escribía `perfiles.avatar`
@@ -818,6 +859,7 @@ El sobrante se sigue informando, porque es cierto y se ve en la barra. Lo que se
 ```bash
 set -a; . ./.env.local; set +a
 node neon/subir-cosmeticos.mjs --titulos ~/Downloads/titulos_perfil_rareza.txt \
+  --titulos-f neon/titulos-femenino.txt \
   --avatares ~/Downloads/iconos_pulso              # valida e informa
 node neon/subir-cosmeticos.mjs --titulos … --avatares … --escribir
 ```

@@ -59,7 +59,7 @@ Puppeteer contra el sitio.
   `mis_ramos.titulo_id uuid`; `tabla_posiciones(...)` con `titulo_id uuid` como **novena**
   columna del `returns table`.
 
-- [ ] **Paso 1: Escribir la prueba que falla**
+- [x] **Paso 1: Escribir la prueba que falla**
 
 En `neon/probar-gacha.mjs`, justo antes del comentario `// ---------- Dejarlo como estaba ----------`:
 
@@ -202,7 +202,7 @@ if (sinForma) {
 }
 ```
 
-- [ ] **Paso 2: Correrla y ver que falla**
+- [x] **Paso 2: Correrla y ver que falla**
 
 ```bash
 set -a; . ./.env.local; set +a
@@ -211,7 +211,7 @@ node neon/probar-gacha.mjs --tiradas 60
 
 Esperado: revienta con `column c.valor_femenino does not exist`.
 
-- [ ] **Paso 3: Escribir la migración**
+- [x] **Paso 3: Escribir la migración**
 
 Crear `neon/migrations/0037_titulos_en_dos_formas.sql` con, en este orden:
 
@@ -674,7 +674,7 @@ begin
 end $$;
 ```
 
-- [ ] **Paso 4: Aplicarla y avisar a la Data API**
+- [x] **Paso 4: Aplicarla y avisar a la Data API**
 
 ```bash
 set -a; . ./.env.local; set +a
@@ -685,7 +685,7 @@ node neon/refrescar-api.mjs
 
 Esperado: `ALTER TABLE`, `CREATE FUNCTION`, `CREATE VIEW`, `GRANT`, `DO`, sin errores.
 
-- [ ] **Paso 5: Escribir una forma femenina a mano y correr la prueba**
+- [x] **Paso 5: Escribir una forma femenina a mano y correr la prueba**
 
 Sin al menos una escrita, la sección no mide nada (su primer `rev` lo dice). Se escribe una
 sola, provisoria, para cerrar esta tarea; el archivo completo es la Tarea 2.
@@ -698,7 +698,7 @@ node neon/probar-gacha.mjs --tiradas 60
 
 Esperado: todo en verde, incluidas las comprobaciones nuevas de los cinco sitios.
 
-- [ ] **Paso 6: Commit**
+- [x] **Paso 6: Commit**
 
 ```bash
 git add neon/migrations/0037_titulos_en_dos_formas.sql neon/probar-gacha.mjs
@@ -734,12 +734,12 @@ Se usa el código y no el número porque ocho títulos tienen código de palabra
 (`titulo-madrugador`, `titulo-veterano`…) y cuatro de esos necesitan forma femenina: un
 formato que solo aceptara números los dejaría fuera.
 
-- [ ] **Paso 1: Escribir el archivo**
+- [x] **Paso 1: Escribir el archivo**
 
 Crear `neon/titulos-femenino.txt` con las 56 formas (contenido completo en el apéndice de
 este plan).
 
-- [ ] **Paso 2: Escribir la prueba que falla**
+- [x] **Paso 2: Escribir la prueba que falla**
 
 Al final de la sección «Los títulos en dos formas» de `neon/probar-gacha.mjs`:
 
@@ -761,7 +761,7 @@ if (pendientes.n > 0) {
 }
 ```
 
-- [ ] **Paso 3: Correrla y ver que falla**
+- [x] **Paso 3: Correrla y ver que falla**
 
 ```bash
 node neon/probar-gacha.mjs --tiradas 60
@@ -769,7 +769,7 @@ node neon/probar-gacha.mjs --tiradas 60
 
 Esperado: `✗ los títulos con forma femenina están cargados: hay 1, esperaba al menos 50`.
 
-- [ ] **Paso 4: Agregar la bandera al subidor**
+- [x] **Paso 4: Agregar la bandera al subidor**
 
 En `neon/subir-cosmeticos.mjs`, después del bloque que parsea `--titulos` y antes del de
 `--avatares`:
@@ -868,7 +868,7 @@ if (femeninos.size) {
 }
 ```
 
-- [ ] **Paso 5: Correr el subidor en seco y después escribiendo**
+- [x] **Paso 5: Correr el subidor en seco y después escribiendo**
 
 ```bash
 node neon/subir-cosmeticos.mjs --titulos ~/Downloads/titulos_perfil_rareza.txt \
@@ -880,7 +880,7 @@ node neon/subir-cosmeticos.mjs --titulos ~/Downloads/titulos_perfil_rareza.txt \
 Esperado: `Formas fem. 56 leídas`, y en la segunda corrida `56 escritas`. Correrlo una
 tercera vez tiene que decir `0 escritas · 56 ya estaban`.
 
-- [ ] **Paso 6: Correr la prueba**
+- [x] **Paso 6: Correr la prueba**
 
 ```bash
 node neon/probar-gacha.mjs --tiradas 60
@@ -888,7 +888,7 @@ node neon/probar-gacha.mjs --tiradas 60
 
 Esperado: todo en verde.
 
-- [ ] **Paso 7: Commit**
+- [x] **Paso 7: Commit**
 
 ```bash
 git add neon/titulos-femenino.txt neon/subir-cosmeticos.mjs neon/probar-gacha.mjs
@@ -911,7 +911,7 @@ git commit
 - Produce: `DatosService.cambiarFormaTitulo(forma: FormaTitulo): Promise<void>`;
   `export type FormaTitulo = 'masculino' | 'femenino'`.
 
-- [ ] **Paso 1: Los tipos y el método**
+- [x] **Paso 1: Los tipos y el método**
 
 En `src/app/datos.service.ts`, junto a `export interface Perfil`:
 
@@ -969,7 +969,7 @@ El método, junto a `equiparCosmetico`:
   }
 ```
 
-- [ ] **Paso 2: Arreglar el pase, que compara por texto**
+- [x] **Paso 2: Arreglar el pase, que compara por texto**
 
 `src/app/pase.component.ts`, reemplazar:
 
@@ -990,7 +990,7 @@ por:
       this.tituloPuesto.set(this.tabla().find(x => x.soy_yo)?.titulo_id ?? null);
 ```
 
-- [ ] **Paso 3: El control en «Mi perfil»**
+- [x] **Paso 3: El control en «Mi perfil»**
 
 En `src/app/perfil.component.ts`, dentro de la tarjeta «Cómo te ven», después del `<div>`
 que cierra el bloque del nombre y antes de cerrar la tarjeta:
@@ -1077,7 +1077,7 @@ Y en `cargar()`, después de setear `mias`, guardar un título de ejemplo:
 Importar `FormaTitulo` desde `./datos.service` y `computed` desde `@angular/core` si no
 están.
 
-- [ ] **Paso 4: Compilar**
+- [x] **Paso 4: Compilar**
 
 ```bash
 npx ng build
@@ -1085,7 +1085,7 @@ npx ng build
 
 Esperado: `Application bundle generation complete`, sin errores de TypeScript.
 
-- [ ] **Paso 5: Verlo en el navegador local contra la base de producción**
+- [x] **Paso 5: Verlo en el navegador local contra la base de producción**
 
 ```bash
 cat > /tmp/pulso-proxy.json <<'EOF'
@@ -1098,7 +1098,7 @@ npx ng serve --port 4321 --proxy-config /tmp/pulso-proxy.json
 Entrar con `alumno.prueba@duocuc.cl` / `pulso-prueba-2026`, ir a «Mi perfil», apretar «En
 femenino», y comprobar que el título del encabezado y el de la tarjeta cambian.
 
-- [ ] **Paso 6: Commit**
+- [x] **Paso 6: Commit**
 
 ```bash
 git add src/app/datos.service.ts src/app/perfil.component.ts src/app/pase.component.ts
@@ -1115,7 +1115,7 @@ git commit
 **Interfaces:**
 - Consume: todo lo anterior. Acepta `BASE` como las otras pruebas de navegador.
 
-- [ ] **Paso 1: Escribir la prueba**
+- [x] **Paso 1: Escribir la prueba**
 
 Crear `neon/probar-titulos-navegador.mjs`, con la misma forma que
 `neon/probar-pase-navegador.mjs`: busca Chrome, entra con la cuenta de prueba, y **deja el
@@ -1160,13 +1160,13 @@ Lo que comprueba, en este orden:
  */
 ```
 
-- [ ] **Paso 2: Correrla contra el sitio local y ver que pasa**
+- [x] **Paso 2: Correrla contra el sitio local y ver que pasa**
 
 ```bash
 BASE=http://localhost:4321 node neon/probar-titulos-navegador.mjs
 ```
 
-- [ ] **Paso 3: Commit**
+- [x] **Paso 3: Commit**
 
 ```bash
 git add neon/probar-titulos-navegador.mjs
@@ -1177,7 +1177,7 @@ git commit
 
 ### Tarea 5: A producción
 
-- [ ] **Paso 1: Correr todo lo que hay**
+- [x] **Paso 1: Correr todo lo que hay**
 
 ```bash
 set -a; . ./.env.local; set +a
@@ -1185,7 +1185,7 @@ npx ng build
 node neon/probar-gacha.mjs --tiradas 600
 ```
 
-- [ ] **Paso 2: Empujar**
+- [x] **Paso 2: Empujar**
 
 ```bash
 git push origin main
@@ -1195,7 +1195,7 @@ La migración ya está aplicada desde la Tarea 1, y `titulo_id` entró **al fina
 la vista como en el `returns table`, así que el sitio publicado —que no lee esas
 columnas— siguió sirviendo durante toda la ventana.
 
-- [ ] **Paso 3: Comprobar en producción**
+- [x] **Paso 3: Comprobar en producción**
 
 Esperar a que el despliegue quede `Ready` y correr la prueba de navegador contra
 `https://pulso-rust.vercel.app`. Si el RPC responde `PGRST202`, es la caché de esquema:

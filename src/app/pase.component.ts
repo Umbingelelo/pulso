@@ -286,9 +286,12 @@ export class PaseComponent {
       this.pase.set(p);
       if (rt.status === 'fulfilled') this.tabla.set(rt.value);
       else this.errorTabla.set('No se pudo cargar la tabla de posiciones.');
-      const mio = this.tabla().find(x => x.soy_yo)?.titulo ?? null;
-      this.tituloPuesto.set(
-        mio ? (p?.recompensas.find(r => r.cosmetico?.valor === mio)?.cosmetico?.id ?? null) : null);
+      // Por id y no por texto. Antes se comparaba `tabla_posiciones().titulo` contra
+      // `mi_pase().recompensas[].cosmetico.valor`, y calzaba **por casualidad**: son dos
+      // funciones distintas que devolvían la misma cadena. Desde que los títulos tienen
+      // dos formas, cualquier desacuerdo entre ellas dejaba al pase sin marcar «Puesto»
+      // —sin error en ninguna parte, solo la escalera viéndose como si no llevara nada—.
+      this.tituloPuesto.set(this.tabla().find(x => x.soy_yo)?.titulo_id ?? null);
 
       // El llenado se aplica después de pintar, para que la transición tenga
       // desde dónde salir. Sin este respiro el navegador une los dos estados y

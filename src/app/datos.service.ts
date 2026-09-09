@@ -21,11 +21,22 @@ export interface Seccion {
   periodo_id: string;
 }
 
+/**
+ * Cómo se escriben los títulos de una persona.
+ *
+ * Es una preferencia de **redacción y no de identidad**: no se le pregunta quién es, se
+ * le pregunta cómo quiere que se lea su título. Inferirlo del nombre sería misgendering
+ * garantizado en un curso de cuarenta, y además es un dato que la app no necesita para
+ * nada más.
+ */
+export type FormaTitulo = 'masculino' | 'femenino';
+
 export interface Perfil {
   id: string;
   nombre: string;
   avatar: string;
   creado_en: string;
+  forma_titulo: FormaTitulo;
 }
 
 /**
@@ -49,10 +60,16 @@ export interface Ramo {
   periodo_activo: boolean;
   puntos: number;
   /**
-   * El título que lleva puesto **en este ramo**. Se equipa por matrícula, así que
-   * el mismo alumno puede llevar uno en Cloud Native y otro en Arquitectura.
+   * El título que lleva puesto **en este ramo**, ya resuelto en la forma que él eligió.
+   * Se equipa por matrícula, así que el mismo alumno puede llevar uno en Cloud Native y
+   * otro en Arquitectura.
    */
   titulo: string | null;
+  /**
+   * El id de ese título. Existe porque `titulo` **cambia con la forma**: comparar el
+   * texto para saber cuál lleva puesto se rompe en cuanto alguien elige femenino.
+   */
+  titulo_id: string | null;
 }
 
 export interface Movimiento {
@@ -229,11 +246,13 @@ export interface Posicion {
   matricula_id: string;
   nombre: string;
   avatar: string;
+  /** Resuelto en la forma que eligió **el dueño de esta fila**, no la de quien mira. */
   titulo: string | null;
   xp: number;
   lugar: number;
   orden: number;
   soy_yo: boolean;
+  titulo_id: string | null;
 }
 
 export interface AlumnoNomina {
@@ -824,7 +843,7 @@ export class DatosService {
     if (!u) return null;
     const { data, error } = await this.db
       .from('perfiles')
-      .select('id, nombre, avatar, creado_en')
+      .select('id, nombre, avatar, creado_en, forma_titulo')
       .eq('id', u.id)
       .maybeSingle();
     if (error) throw error;
@@ -895,6 +914,24 @@ export class DatosService {
     });
     if (error) throw error;
     return data as TiradaGacha;
+  }
+
+  /**
+   * Cambia cómo se escriben sus títulos.
+   *
+   * Escribe la columna directo por la Data API y no por una función: `perfiles` tiene el
+   * `update` cerrado y abierto **por columna** —`nombre` y `forma_titulo`—, así que el
+   * permiso ya es el control y no hace falta un `security definer` para eso. Es el mismo
+   * criterio con que `avatar` quedó fuera de alcance en la 0024.
+   */
+  async cambiarFormaTitulo(forma: FormaTitulo): Promise<void> {
+    const u = this.usuario();
+    if (!u) throw new Error('No hay sesión');
+    const { error } = await this.db
+      .from('perfiles')
+      .update({ forma_titulo: forma })
+      .eq('id', u.id);
+    if (error) throw error;
   }
 
   /** Se pone un cosmético ya ganado. `null` saca el título puesto. */

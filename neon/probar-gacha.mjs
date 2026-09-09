@@ -710,11 +710,12 @@ try {
         s`select titulo, titulo_id from public.tabla_posiciones(${m.id}::uuid, 200)
            where soy_yo`);
       const [cos] = await como(alumno.id, (s) =>
-        s`select valor from public.mis_cosmeticos(${m.id}::uuid) where id = ${conForma.id}`);
+        s`select valor, nombre from public.mis_cosmeticos(${m.id}::uuid)
+           where id = ${conForma.id}`);
       const [{ p: pase }] = await como(alumno.id, (s) =>
         s`select public.mi_pase(${m.id}::uuid) as p`);
-      const delPase = (pase?.recompensas ?? [])
-        .find((r) => r.cosmetico && r.cosmetico.id === conForma.id)?.cosmetico?.valor ?? null;
+      const suyo = (pase?.recompensas ?? [])
+        .find((r) => r.cosmetico && r.cosmetico.id === conForma.id)?.cosmetico ?? null;
 
       rev(`${forma}: mis_ramos dice «${ramo?.titulo}»`,
         ramo?.titulo === esperado, `esperaba «${esperado}»`);
@@ -722,8 +723,16 @@ try {
         pos?.titulo === esperado, `esperaba «${esperado}»`);
       rev(`${forma}: mis_cosmeticos dice «${cos?.valor}»`,
         cos?.valor === esperado, `esperaba «${esperado}»`);
-      if (delPase !== null) {
-        rev(`${forma}: mi_pase dice «${delPase}»`, delPase === esperado, `esperaba «${esperado}»`);
+      // `nombre` y no solo `valor`: la escalera del pase dibuja `nombre`, y la colección
+      // dibuja las dos. Resolver una sola dejaba la pantalla contradiciéndose consigo
+      // misma, con la chapa en femenino y su etiqueta en masculino a dos centímetros.
+      rev(`${forma}: mis_cosmeticos resuelve también el nombre`,
+        cos?.nombre === esperado, `el nombre dice «${cos?.nombre}»`);
+      if (suyo) {
+        rev(`${forma}: mi_pase dice «${suyo.valor}»`, suyo.valor === esperado,
+          `esperaba «${esperado}»`);
+        rev(`${forma}: mi_pase resuelve también el nombre, que es lo que la escalera dibuja`,
+          suyo.nombre === esperado, `el nombre dice «${suyo.nombre}»`);
       }
       // El id es lo que el pase compara desde ahora, y no puede depender de la forma.
       rev(`${forma}: mis_ramos y tabla_posiciones traen el mismo titulo_id`,
@@ -779,6 +788,8 @@ try {
       from public.cosmeticos where id = ${sacado.id}`;
   rev(`gacha_tirar anuncia «${sacado.valor}» en femenino`,
     sacado.valor === debia.texto, `la base resolvería «${debia.texto}»`);
+  rev('y su nombre también viene resuelto', sacado.nombre === debia.texto,
+    `el nombre dice «${sacado.nombre}»`);
   await d`delete from public.alumno_cosmeticos
            where matricula_id = ${m.id} and cosmetico_id = ${sacado.id}`;
 

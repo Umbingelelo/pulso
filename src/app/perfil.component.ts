@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
-import { Cosmetico, DatosService } from './datos.service';
+import { Cosmetico, DatosService, FormaTitulo } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 @Component({
@@ -32,6 +32,28 @@ import { PerfilStore } from './perfil.store';
               <p class="chico suave">Sección {{ r.seccion }} · {{ r.periodo }}</p>
             }
           </div>
+        </div>
+
+        <!-- La pregunta es sobre **los títulos y no sobre la persona**: no se le pide su
+             género ni se infiere del nombre, que en un curso es misgendering garantizado
+             y además un dato que la app no necesita para nada más. El ejemplo en vivo es
+             lo que hace la opción evidente sin tener que explicarla. -->
+        <div class="forma-titulo">
+          <p class="etiqueta">Cómo se escriben tus títulos</p>
+          <div class="botones-forma">
+            @for (f of formas; track f.id) {
+              <button type="button" class="boton chico"
+                      [class.contorno]="forma() !== f.id"
+                      [disabled]="guardandoForma()"
+                      (click)="cambiarForma(f.id)">{{ f.nombre }}</button>
+            }
+          </div>
+          @if (ejemplo(); as e) {
+            <p class="chico suave">Así se te vería: «{{ e }}»</p>
+          }
+          <p class="chico suave">
+            Es solo cómo se escribe el texto. No cambia lo que ganaste ni lo que puedes ganar.
+          </p>
         </div>
       </div>
 
@@ -94,6 +116,11 @@ import { PerfilStore } from './perfil.store';
       @if (error()) { <div class="aviso malo" style="margin-top:14px">{{ error() }}</div> }
     </div>
   `,
+  styles: [`
+    .forma-titulo{ margin-top:18px; padding-top:16px; border-top:1px solid var(--borde); }
+    .forma-titulo .botones-forma{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .forma-titulo p.chico{ margin:8px 0 0; }
+  `],
 })
 export class PerfilComponent {
   protected perfil = inject(PerfilStore);
@@ -120,6 +147,24 @@ export class PerfilComponent {
   actual = computed(() => this.perfil.perfil()?.avatar ?? AVATAR_POR_DEFECTO);
   vistaPrevia = computed(() => this.avatares.imagen(this.actual(), 152));
 
+  protected readonly formas: { id: FormaTitulo; nombre: string }[] = [
+    { id: 'masculino', nombre: 'En masculino' },
+    { id: 'femenino', nombre: 'En femenino' },
+  ];
+
+  guardandoForma = signal(false);
+  forma = computed<FormaTitulo>(() => this.perfil.perfil()?.forma_titulo ?? 'masculino');
+
+  /**
+   * Un título de ejemplo, para que la opción no sea abstracta.
+   *
+   * Sale del que lleva puesto —que ya viene resuelto de la base, así que cambia solo al
+   * apretar— y si no lleva ninguno, de alguno de los que tiene. Sin caso concreto nadie
+   * sabe qué está eligiendo: «en femenino» no dice nada, «La Elegida del Algoritmo» sí.
+   */
+  private algunTitulo = signal<Cosmetico | null>(null);
+  ejemplo = computed(() => this.perfil.ramo()?.titulo ?? this.algunTitulo()?.valor ?? null);
+
   constructor() {
     this.perfil.cargar().then(() => this.cargar());
   }
@@ -131,10 +176,36 @@ export class PerfilComponent {
     try {
       const todos = await this.datos.misCosmeticos(ramo.matricula_id);
       this.mias.set(todos.filter(c => c.tipo === 'avatar' && c.tengo));
+      // Para el ejemplo: primero uno que tenga, y si no tiene ninguno, cualquiera del
+      // pozo. Da igual cuál sea: lo que importa es que se lea la diferencia.
+      this.algunTitulo.set(
+        todos.find(c => c.tipo === 'titulo' && c.tengo)
+        ?? todos.find(c => c.tipo === 'titulo')
+        ?? null);
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudieron cargar tus caras.');
     } finally {
       this.cargando.set(false);
+    }
+  }
+
+  async cambiarForma(f: FormaTitulo): Promise<void> {
+    if (this.guardandoForma() || this.forma() === f) return;
+    this.guardandoForma.set(true);
+    this.mensaje.set(''); this.error.set('');
+    try {
+      await this.datos.cambiarFormaTitulo(f);
+      // El texto viene ya resuelto de la base, así que hay que recargar: el perfil para
+      // que el encabezado cambie, y la colección para que el ejemplo cambie con él.
+      await this.perfil.cargar(true);
+      await this.cargar();
+      this.mensaje.set(f === 'femenino'
+        ? 'Tus títulos se escribirán en femenino'
+        : 'Tus títulos se escribirán en masculino');
+    } catch (e: any) {
+      this.error.set(e?.message ?? 'No se pudo cambiar.');
+    } finally {
+      this.guardandoForma.set(false);
     }
   }
 

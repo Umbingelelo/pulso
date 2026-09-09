@@ -27,6 +27,19 @@
 -- que permite desplegar el mecanismo antes de tener el archivo completo, en vez de que
 -- sea todo o nada.
 --
+-- ── Se resuelve `nombre` y no solo `valor` ──
+--
+-- Esto salió mirando la pantalla y no el esquema, y era el error que habría hecho fracasar
+-- el cambio en silencio: **la escalera del pase muestra `cosmetico.nombre`**, no `valor`.
+-- Y la colección del gacha muestra las dos cosas —la chapa con `valor` y la etiqueta de
+-- abajo con `nombre`—. Resolver solo `valor` habría dejado el pase entero en masculino y la
+-- colección contradiciéndose consigo misma, con la chapa en femenino y su etiqueta en
+-- masculino a dos centímetros.
+--
+-- Para un título las dos columnas son **la misma cadena**: `subir-cosmeticos.mjs` hace
+-- `valor: nombre`, y está comprobado contra la base —108 de 108—. El bloque del final lo
+-- vigila, porque el día que alguien las separe esta decisión deja de ser válida.
+--
 -- ── Dos formas y no tres ──
 --
 -- No hay forma neutra. Varios títulos no la tienen natural —«El Dios del Six Seven»
@@ -197,7 +210,11 @@ stable
 security definer
 set search_path = public
 as $$
-  select c.id, c.codigo, c.tipo, c.nombre, c.descripcion,
+  select c.id, c.codigo, c.tipo,
+         -- `nombre` también: la etiqueta bajo cada pieza de la colección lo usa, y sin
+         -- esto la chapa saldría en femenino y su etiqueta en masculino.
+         public.titulo_texto(c.nombre, c.valor_femenino, pf.forma_titulo),
+         c.descripcion,
          public.titulo_texto(c.valor, c.valor_femenino, pf.forma_titulo),
          c.rareza, g.nombre, g.orden,
          ac.matricula_id is not null,
@@ -315,8 +332,12 @@ begin
        select jsonb_agg(jsonb_build_object(
                 'nivel', r.nivel,
                 'tiradas', r.tiradas,
+                -- `nombre` resuelto porque **es lo que la escalera dibuja**; `valor` por
+                -- si algún día se muestra. Los dos con `valor_femenino`, que en un título
+                -- es la forma femenina de la misma cadena.
                 'cosmetico', case when c.id is null then null else jsonb_build_object(
-                    'id', c.id, 'tipo', c.tipo, 'nombre', c.nombre,
+                    'id', c.id, 'tipo', c.tipo,
+                    'nombre', public.titulo_texto(c.nombre, c.valor_femenino, v_forma),
                     'descripcion', c.descripcion,
                     'valor', public.titulo_texto(c.valor, c.valor_femenino, v_forma),
                     'rareza', c.rareza) end,
@@ -428,8 +449,12 @@ begin
   insert into public.movimientos_tiradas (matricula_id, cantidad, motivo)
   values (p_matricula, -1, 'Tirada: ' || v_c.nombre);
 
+  -- En la respuesta, `nombre` resuelto —el revelado lo usa— y en el `motivo` de arriba el
+  -- crudo. Es la misma distinción de siempre: lo que se muestra se adapta a quien mira, lo
+  -- que se registra no.
   return jsonb_build_object(
-    'id', v_c.id, 'codigo', v_c.codigo, 'tipo', v_c.tipo, 'nombre', v_c.nombre,
+    'id', v_c.id, 'codigo', v_c.codigo, 'tipo', v_c.tipo,
+    'nombre', public.titulo_texto(v_c.nombre, v_c.valor_femenino, v_forma),
     'descripcion', v_c.descripcion,
     'valor', public.titulo_texto(v_c.valor, v_c.valor_femenino, v_forma),
     'rareza', v_c.rareza,
@@ -462,6 +487,15 @@ begin
    where table_schema = 'public' and table_name = 'mis_ramos' and column_name = 'titulo_id';
   if v_cols <> 1 then
     raise exception 'mis_ramos quedó sin titulo_id';
+  end if;
+
+  -- El invariante del que depende resolver `nombre` con `valor_femenino`: en un título
+  -- las dos columnas son la misma cadena. Si algún día se separan, esta migración deja de
+  -- ser correcta y hay que darle a `nombre` su propia forma femenina.
+  if exists (select 1 from public.cosmeticos
+              where tipo = 'titulo' and nombre is distinct from valor) then
+    raise exception 'Hay títulos donde nombre y valor difieren: resolver nombre con '
+                    'valor_femenino dejó de ser correcto';
   end if;
 
   -- Y la regla tiene que ser total: ninguna combinación puede devolver nulo.

@@ -32,6 +32,9 @@ Por eso vive en `2026-02/Pulso`, al mismo nivel que las asignaturas y no dentro 
 - **Tienda de canjes**: 16 artículos por ramo —décimas, desbloquear una pregunta, prórrogas, pistas—.
   Los que no tocan una nota ni un plazo se entregan al instante; el resto queda como solicitud y
   espera el visto bueno del docente, que puede aprobar o rechazar devolviendo los puntos
+- **Puntos para evaluaciones**: las décimas se compran al instante, se guardan en el perfil y se usan
+  cuando el alumno quiera; el docente marca el uso como aplicado al poner la nota. Cada compra
+  encarece la siguiente. Ver [Puntos para evaluaciones](#puntos-para-evaluaciones)
 - **Vista de docente**: se elige la asignatura y el periodo, y desde ahí la nómina por sección, los
   promedios del diagnóstico, la bandeja de canjes por resolver, y otorgar o descontar puntos —en
   «Resumen» y también en «Alumnos», que es donde se busca: es la pantalla que lleva el nombre y que
@@ -117,6 +120,9 @@ declaró dictar.
   `security definer` —`solicitar_canje`, `resolver_canje`, `cancelar_canje`— que son las que cobran,
   devuelven y comprueban precio, saldo, límite y stock. Si el alumno pudiera insertar en la tabla, se
   llevaría el artículo sin pagar.
+- **Décimas**: `usos_decimas` tampoco tiene políticas de escritura. `usar_decimas` comprueba el saldo
+  con la matrícula bloqueada, y solo el docente de la sección puede marcar un uso aplicado o
+  rechazado (`resolver_uso_decimas`).
 - **Ficha**: una sola función para el alumno y para el docente, y la autorización se decide adentro.
   Cambiar el id de la matrícula en la URL no abre la ficha de nadie más.
 - **Clases**: el deck vive en un store de Blob **privado**, y su ruta está en `clases.archivo`, una
@@ -903,6 +909,64 @@ tirada y desaparece del sorteo.
 Lo otro que vigila es la puerta: que `pulso_app` **no tenga** grant de `update` sobre `perfiles.avatar`
 y sí sobre `nombre`, y que un `update` directo lo rechace Postgres. Se comprueba el grant y no que la
 pantalla esconda el botón, porque el botón no es lo que lo impide.
+
+## Puntos para evaluaciones
+
+«0,2», «0,5» y «1 punto en una evaluación» ya no son solicitudes atadas a una evaluación. Son dos pasos:
+
+1. **Comprar** es inmediato: las décimas entran al saldo del alumno, que vive en *Mi perfil*.
+2. **Usarlas** es cuando él quiera: elige la evaluación y cuántas décimas. Eso sí espera al docente, que
+   lo ve en `/curso`, tarjeta *Puntos para evaluaciones por aplicar*, y lo marca **Aplicado** al poner
+   la nota. **Rechazar** devuelve las décimas al saldo, no los puntos: la compra ya se hizo.
+
+Un uso pendiente ya no está disponible —si no, las mismas décimas se podrían pedir para dos
+evaluaciones mientras el docente no responde— y el alumno lo puede cancelar mientras siga pendiente.
+
+### El precio sube con cada compra
+
+```
+precio = base × (1 + 0,5 × canjes de décimas previos)
+```
+
+| | Base | 2.ª compra | 3.ª compra |
+|---|---|---|---|
+| 0,2 | 300 | 450 | 600 |
+| 0,5 | 675 | 1013 | 1350 |
+| 1 punto | 1350 | 2025 | 2700 |
+
+Tres decisiones, las tres a propósito:
+
+- **Sobre la base, no sobre el último pagado**: el aumento es lineal, no compuesto.
+- **La cuenta es compartida** entre los tres artículos. Por separado, bastaría con comprar 0,2 cinco veces
+  para esquivarla.
+- **Lo comprado antes de la `0038` cuenta**. Quien ya tenía un punto paga el siguiente a 1,5 veces la base.
+  Lo que ya tenía se mantiene y quedó disponible en su saldo; lo que estaba esperando visto bueno se
+  entregó al precio que había pagado.
+
+El tope de 3 por artículo sigue. El descuento de reunión se aplica **después**, sobre el precio ya
+escalado. Cancelados y rechazados no cuentan, porque se devolvieron.
+
+### Dónde vive cada número
+
+- `articulos.decimas` dice cuántas décimas entrega un artículo, igual que `tiradas`. No se usa
+  `categoria = 'nota'` porque la ruleta también es de nota y no entrega décimas.
+- `precio_escalado(base, previos)` es pura y la usan las dos: `vitrina.precio` —lo que se muestra— y
+  `solicitar_canje` —lo que se cobra—. En la vitrina, `precio` es **el precio de ese alumno ahora** y
+  `precio_base` el de lista; así la pantalla publicada mostró el precio correcto desde el minuto en que
+  se aplicó la migración, sin esperar a que la Data API viera las columnas nuevas.
+- El saldo no tiene libro propio: son los canjes de décimas entregados menos los usos pendientes y
+  aplicados. La vista es `saldos_decimas`.
+
+### Probarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/probar-decimas.mjs [--sigla ITY1102]
+```
+
+Con la cuenta de prueba: la escalada compartida, que se cobre lo que muestra la vitrina, el tope de 3,
+usar, no pasarse del saldo, cancelar, rechazar y aplicar, y que nadie inserte en `usos_decimas` a mano.
+Borra lo que creó al terminar.
 
 ## Modo reunión
 

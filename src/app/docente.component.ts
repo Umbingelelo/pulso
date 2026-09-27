@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import {
   Actividad, AlumnoNomina, Canje, DatosService, FilaResumenDiagnostico,
-  SeccionReunion,
+  SeccionReunion, UsoDecimas, enPuntos, mensajeDeError,
 } from './datos.service';
 import { DocenteStore } from './docente.store';
 
@@ -262,6 +262,69 @@ import { DocenteStore } from './docente.store';
         }
       </div>
 
+      <!-- ============ Puntos para evaluaciones por aplicar ============ -->
+      <div class="tarjeta" style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+          <h2>Puntos para evaluaciones por aplicar</h2>
+          @if (usosPendientes().length) {
+            <span class="insignia amarilla">{{ usosPendientes().length }} esperando</span>
+          }
+        </div>
+
+        @if (usosPendientes().length === 0) {
+          <div class="aviso dato" style="margin-top:14px">
+            Nada pendiente. Cuando un alumno use sus puntos en una evaluación, aparece acá para que
+            lo marques al poner la nota.
+          </div>
+        } @else {
+          <table style="margin-top:14px">
+            <tr>
+              <th>Alumno</th><th>Evaluación</th><th class="der">Puntos</th>
+              <th class="der">Hace</th><th></th>
+            </tr>
+            @for (u of usosPendientes(); track u.id) {
+              <tr>
+                <td>
+                  {{ u.alumno }}
+                  <div class="chico suave">Sección {{ u.seccion }}</div>
+                </td>
+                <td>{{ u.evaluacion }}</td>
+                <td class="der num" style="font-weight:600">{{ enPuntos(u.decimas) }}</td>
+                <td class="der num suave chico">{{ u.creado_en | date:'dd/MM' }}</td>
+                <td class="der" style="white-space:nowrap">
+                  <button class="boton chico" (click)="resolverUso(u, 'aplicado')"
+                          [disabled]="resolviendoUso() === u.id">Aplicado</button>
+                  <button class="boton contorno chico" style="margin-left:6px"
+                          (click)="rechazandoUso.set(u.id)"
+                          [disabled]="resolviendoUso() === u.id">Rechazar</button>
+                </td>
+              </tr>
+              @if (rechazandoUso() === u.id) {
+                <tr>
+                  <td colspan="5">
+                    <form (ngSubmit)="resolverUso(u, 'rechazado')"
+                          style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+                      <label style="flex:1;min-width:240px">
+                        <span class="etiqueta">Por qué lo rechazas (le llega al alumno)</span>
+                        <input name="comentarioUso" [(ngModel)]="comentarioUso"
+                               placeholder="La EP2 ya está cerrada, úsalos en la EP3">
+                      </label>
+                      <button class="boton chico" type="submit">Rechazar y devolver al saldo</button>
+                      <button class="boton contorno chico" type="button"
+                              (click)="rechazandoUso.set(null)">Cancelar</button>
+                    </form>
+                  </td>
+                </tr>
+              }
+            }
+          </table>
+          <p class="chico suave" style="margin-top:12px">
+            Marca «Aplicado» cuando los sumes a la nota. Rechazar los devuelve a su saldo para que
+            los use en otra evaluación.
+          </p>
+        }
+      </div>
+
       <!-- ============ Nómina ============ -->
       <div class="tarjeta">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
@@ -353,11 +416,16 @@ export class DocenteComponent {
   diagnostico = signal<Actividad | null>(null);
   resumen = signal<FilaResumenDiagnostico[]>([]);
   canjes = signal<Canje[]>([]);
+  usos = signal<UsoDecimas[]>([]);
+  protected readonly enPuntos = enPuntos;
   cargando = signal(true);
 
   rechazando = signal<number | null>(null);
   resolviendo = signal<number | null>(null);
   comentario = '';
+  rechazandoUso = signal<number | null>(null);
+  resolviendoUso = signal<number | null>(null);
+  comentarioUso = '';
 
   elegido = signal<AlumnoNomina | null>(null);
   puntos: number | null = null;
@@ -397,6 +465,7 @@ export class DocenteComponent {
   /** Cuántos rindieron: el resumen lo informa por sección, y todas traen el mismo total. */
   rendidos = computed(() => this.resumen()[0]?.rendidos ?? 0);
   porResolver = computed(() => this.canjes().filter(c => c.estado === 'solicitado'));
+  usosPendientes = computed(() => this.usos().filter(u => u.estado === 'solicitado'));
   /** Los códigos de las secciones que están en reunión ahora, para el rótulo de arriba. */
   enReunion = computed(() => this.seccionesReunion().filter(s => s.en_reunion).map(s => s.codigo));
 
@@ -427,14 +496,16 @@ export class DocenteComponent {
 
     this.cargando.set(true);
     try {
-      const [alumnos, actividades, canjes, reuniones] = await Promise.all([
+      const [alumnos, actividades, canjes, usos, reuniones] = await Promise.all([
         this.datos.nomina(r.sigla, r.periodo),
         this.datos.actividadesDe(r.asignatura_id, r.periodo_id),
         this.datos.canjesDelRamo(r.asignatura_id, r.periodo_id),
+        this.datos.usosDecimasDelRamo(r.asignatura_id, r.periodo_id),
         this.datos.seccionesEnReunion(r.asignatura_id, r.periodo_id),
       ]);
       this.alumnos.set(alumnos);
       this.canjes.set(canjes);
+      this.usos.set(usos);
       this.seccionesReunion.set(reuniones);
 
       const diag = actividades.find(a => a.tipo === 'diagnostico') ?? null;
@@ -499,6 +570,21 @@ export class DocenteComponent {
       this.error.set(e?.message ?? 'No se pudo resolver el canje.');
     } finally {
       this.resolviendo.set(null);
+    }
+  }
+
+  async resolverUso(u: UsoDecimas, estado: 'aplicado' | 'rechazado'): Promise<void> {
+    this.resolviendoUso.set(u.id);
+    this.error.set('');
+    try {
+      await this.datos.resolverUsoDecimas(u.id, estado, estado === 'rechazado' ? this.comentarioUso : '');
+      this.rechazandoUso.set(null);
+      this.comentarioUso = '';
+      await this.cargarRamo();
+    } catch (e) {
+      this.error.set(mensajeDeError(e, 'No se pudo resolver el uso.'));
+    } finally {
+      this.resolviendoUso.set(null);
     }
   }
 

@@ -1,7 +1,8 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Articulo, Canje, Categoria, DatosService, precioConDescuento } from './datos.service';
+import { Articulo, Canje, Categoria, DatosService, enPuntos, precioConDescuento } from './datos.service';
+import { RouterLink } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ICONOS } from './iconos';
 import { PerfilStore } from './perfil.store';
@@ -19,7 +20,7 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
 
 @Component({
   selector: 'app-tienda',
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, RouterLink],
   template: `
     <div class="encabezado">
       <h1>Tienda</h1>
@@ -102,8 +103,19 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
                 <p class="letra-chica">{{ a.detalle }}</p>
               }
 
+              <!-- La escalada a la vista: sin esto el alumno ve un precio distinto al de su
+                   compañero y no sabe por qué. Se cuenta sobre la base, no sobre el último. -->
+              @if (a.decimas && a.precio_base) {
+                <p class="letra-chica">
+                  Base {{ a.precio_base }}. Cada canje de décimas —de cualquiera de los tres—
+                  sube el siguiente en la mitad de la base.
+                </p>
+              }
+
               <div class="pie-articulo">
-                @if (a.requiere_aprobacion) {
+                @if (a.decimas) {
+                  <span class="insignia verde">+{{ enPuntos(a.decimas) }} para evaluaciones</span>
+                } @else if (a.requiere_aprobacion) {
                   <span class="insignia amarilla">Necesita visto bueno</span>
                 } @else {
                   <span class="insignia verde">Al instante</span>
@@ -115,10 +127,17 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
 
               @if (eligiendo() === a.id) {
                 <form (ngSubmit)="confirmar(a)" style="margin-top:14px">
-                  <label>
-                    <span class="etiqueta">¿Para qué lo quieres? (opcional)</span>
-                    <input name="nota" [(ngModel)]="nota" placeholder="Ej: para la EP2">
-                  </label>
+                  @if (!a.decimas) {
+                    <label>
+                      <span class="etiqueta">¿Para qué lo quieres? (opcional)</span>
+                      <input name="nota" [(ngModel)]="nota" placeholder="Ej: para la EP2">
+                    </label>
+                  } @else {
+                    <p class="chico suave">
+                      Van a tus <a routerLink="/perfil">puntos para evaluaciones</a>. La evaluación la
+                      eliges después, cuando quieras usarlos.
+                    </p>
+                  }
                   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
                     <button class="boton chico" type="submit" [disabled]="guardando()">
                       {{ guardando() ? 'Canjeando…' : 'Confirmar canje' }}
@@ -188,6 +207,7 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
   `],
 })
 export class TiendaComponent {
+  protected readonly enPuntos = enPuntos;
   private datos = inject(DatosService);
   private limpiador = inject(DomSanitizer);
 
@@ -313,7 +333,9 @@ export class TiendaComponent {
       const rebaja = a.precio !== null && pagado < a.precio
         ? ` (${this.descuento()}% menos por la reunión)` : '';
       await this.datos.solicitarCanje(ramo.matricula_id, a.id, this.nota);
-      this.aviso.set(a.requiere_aprobacion
+      this.aviso.set(a.decimas
+        ? `Sumaste ${enPuntos(a.decimas)} a tus puntos para evaluaciones por ${pagado} puntos${rebaja}. Los usas desde tu perfil cuando quieras.`
+        : a.requiere_aprobacion
         ? `Pediste «${a.nombre}». Te descontamos ${pagado} puntos${rebaja} y queda esperando respuesta; si te la rechazan, se devuelven solos.`
         : `Canjeaste «${a.nombre}» por ${pagado} puntos${rebaja}. Ya es tuyo.`);
       this.eligiendo.set('');

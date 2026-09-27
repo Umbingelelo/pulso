@@ -1,12 +1,16 @@
+import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
-import { Cosmetico, DatosService, FormaTitulo } from './datos.service';
+import {
+  Cosmetico, DatosService, FormaTitulo, SaldoDecimas, UsoDecimas, enPuntos, mensajeDeError,
+} from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 @Component({
   selector: 'app-perfil',
-  imports: [RouterLink],
+  imports: [RouterLink, FormsModule, DatePipe],
   template: `
     <div class="encabezado">
       <h1>Mi perfil</h1>
@@ -80,6 +84,85 @@ import { PerfilStore } from './perfil.store';
       </div>
     </div>
 
+    <!-- ============ Puntos para evaluaciones ============ -->
+    <div class="tarjeta" style="margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+        <h2>Puntos para evaluaciones</h2>
+        <a class="boton contorno chico" routerLink="/tienda">Conseguir más</a>
+      </div>
+      <p class="chico suave" style="margin-top:8px">
+        Los que compraste en la tienda de {{ perfil.ramo()?.sigla ?? 'este ramo' }}. Los usas cuando
+        quieras: eliges la evaluación y cuánto, y el profe los suma al poner la nota.
+      </p>
+
+      <div class="rejilla tres" style="margin-top:16px">
+        <div>
+          <p class="etiqueta">Disponibles</p>
+          <p class="cifra destacada">{{ enPuntos(disponibles()) }}</p>
+        </div>
+        <div>
+          <p class="etiqueta">Esperando al profe</p>
+          <p class="cifra">{{ enPuntos(saldo().pendientes) }}</p>
+        </div>
+        <div>
+          <p class="etiqueta">Ya aplicados</p>
+          <p class="cifra">{{ enPuntos(saldo().aplicadas) }}</p>
+        </div>
+      </div>
+
+      @if (disponibles() > 0) {
+        <form class="usar-decimas" (ngSubmit)="usar()">
+          <label>
+            <span class="etiqueta">¿En qué evaluación?</span>
+            <input name="evaluacion" [(ngModel)]="evaluacion" maxlength="120"
+                   placeholder="Ej: EP2" required>
+          </label>
+          <label class="cuanto">
+            <span class="etiqueta">¿Cuánto?</span>
+            <select name="cuanto" [(ngModel)]="cuanto">
+              @for (d of opciones(); track d) {
+                <option [ngValue]="d">{{ enPuntos(d) }}</option>
+              }
+            </select>
+          </label>
+          <button class="boton chico" type="submit" [disabled]="usando() || !evaluacion.trim()">
+            {{ usando() ? 'Enviando…' : 'Usar' }}
+          </button>
+        </form>
+      } @else if (saldo().ganadas === 0) {
+        <div class="aviso dato" style="margin-top:14px">
+          Todavía no tienes. Se compran en la <a routerLink="/tienda">tienda</a>, en la categoría Nota.
+        </div>
+      }
+
+      @if (avisoDecimas()) { <div class="aviso ok" style="margin-top:14px">{{ avisoDecimas() }}</div> }
+      @if (errorDecimas()) { <div class="aviso malo" style="margin-top:14px">{{ errorDecimas() }}</div> }
+
+      @if (usos().length) {
+        <table style="margin-top:16px">
+          <tr><th>Evaluación</th><th class="der">Puntos</th><th>Estado</th><th class="der">Pedido</th><th></th></tr>
+          @for (u of usos(); track u.id) {
+            <tr>
+              <td>
+                {{ u.evaluacion }}
+                @if (u.comentario_docente) {
+                  <div class="chico suave"><strong>Respuesta:</strong> {{ u.comentario_docente }}</div>
+                }
+              </td>
+              <td class="der num">{{ enPuntos(u.decimas) }}</td>
+              <td><span class="insignia" [class]="claseUso(u)">{{ rotuloUso(u) }}</span></td>
+              <td class="der num suave chico">{{ u.creado_en | date:'dd/MM' }}</td>
+              <td class="der">
+                @if (u.estado === 'solicitado') {
+                  <button class="boton contorno chico" (click)="cancelarUso(u)">Cancelar</button>
+                }
+              </td>
+            </tr>
+          }
+        </table>
+      }
+    </div>
+
     <div class="tarjeta">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
         <h2>Tus caras</h2>
@@ -120,6 +203,10 @@ import { PerfilStore } from './perfil.store';
     .forma-titulo{ margin-top:18px; padding-top:16px; border-top:1px solid var(--borde); }
     .forma-titulo .botones-forma{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .forma-titulo p.chico{ margin:8px 0 0; }
+    .usar-decimas{ display:flex; flex-direction:row; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-top:16px; }
+    .usar-decimas label{ flex:1 1 220px; }
+    .usar-decimas label.cuanto{ flex:0 0 auto; }
+    .usar-decimas select{ min-width:90px; }
   `],
 })
 export class PerfilComponent {
@@ -165,8 +252,81 @@ export class PerfilComponent {
   private algunTitulo = signal<Cosmetico | null>(null);
   ejemplo = computed(() => this.perfil.ramo()?.titulo ?? this.algunTitulo()?.valor ?? null);
 
+  protected readonly enPuntos = enPuntos;
+
+  saldo = signal<SaldoDecimas>({ matricula_id: '', ganadas: 0, pendientes: 0, aplicadas: 0 });
+  usos = signal<UsoDecimas[]>([]);
+  disponibles = computed(() => {
+    const s = this.saldo();
+    return Math.max(0, s.ganadas - s.pendientes - s.aplicadas);
+  });
+  /** De a una décima, hasta lo que tiene: una nota se ajusta en décimas. */
+  opciones = computed(() => Array.from({ length: this.disponibles() }, (_, i) => i + 1).reverse());
+  evaluacion = '';
+  cuanto = 0;
+  usando = signal(false);
+  avisoDecimas = signal('');
+  errorDecimas = signal('');
+
   constructor() {
-    this.perfil.cargar().then(() => this.cargar());
+    this.perfil.cargar().then(() => Promise.all([this.cargar(), this.cargarDecimas()]));
+  }
+
+  private async cargarDecimas(): Promise<void> {
+    const ramo = this.perfil.ramo();
+    if (!ramo) return;
+    try {
+      const [s, u] = await Promise.all([
+        this.datos.saldoDecimas(ramo.matricula_id),
+        this.datos.misUsosDecimas(ramo.matricula_id),
+      ]);
+      this.saldo.set(s);
+      this.usos.set(u);
+      // Por omisión, todo lo que tiene: es lo que casi siempre se quiere.
+      this.cuanto = this.disponibles();
+    } catch (e) {
+      this.errorDecimas.set(mensajeDeError(e, 'No se pudieron cargar tus puntos para evaluaciones.'));
+    }
+  }
+
+  async usar(): Promise<void> {
+    const ramo = this.perfil.ramo();
+    if (!ramo || this.usando() || !this.evaluacion.trim() || this.cuanto <= 0) return;
+    this.usando.set(true);
+    this.avisoDecimas.set(''); this.errorDecimas.set('');
+    try {
+      await this.datos.usarDecimas(ramo.matricula_id, this.cuanto, this.evaluacion);
+      this.avisoDecimas.set(
+        `Pediste ${enPuntos(this.cuanto)} para «${this.evaluacion.trim()}». El profe los suma al poner la nota; si no se pueden usar ahí, vuelven a tu saldo.`);
+      this.evaluacion = '';
+      await this.cargarDecimas();
+    } catch (e) {
+      this.errorDecimas.set(mensajeDeError(e, 'No se pudo enviar.'));
+    } finally {
+      this.usando.set(false);
+    }
+  }
+
+  async cancelarUso(u: UsoDecimas): Promise<void> {
+    this.avisoDecimas.set(''); this.errorDecimas.set('');
+    try {
+      await this.datos.cancelarUsoDecimas(u.id);
+      this.avisoDecimas.set(`Cancelaste el uso en «${u.evaluacion}». Los ${enPuntos(u.decimas)} vuelven a tu saldo.`);
+      await this.cargarDecimas();
+    } catch (e) {
+      this.errorDecimas.set(mensajeDeError(e, 'No se pudo cancelar.'));
+    }
+  }
+
+  claseUso(u: UsoDecimas): string {
+    return u.estado === 'aplicado' ? 'verde' : u.estado === 'solicitado' ? 'amarilla' : 'roja';
+  }
+
+  rotuloUso(u: UsoDecimas): string {
+    return u.estado === 'aplicado' ? 'Aplicado'
+         : u.estado === 'solicitado' ? 'Esperando al profe'
+         : u.estado === 'rechazado' ? 'Rechazado'
+         : 'Cancelado';
   }
 
   private async cargar(): Promise<void> {

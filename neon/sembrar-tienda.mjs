@@ -39,16 +39,16 @@ const PREMIOS = [
   ['gacha-tirada',         'Una tirada de gacha',                     'gacha',      'Baja',        150, 'dices',         null,
    'Una tirada en el pozo del gacha. Puede salir un ícono o un título, de cualquier rareza, '
    + 'de todo lo que todavía no tengas. Lo del pase no entra: eso se gana subiendo de nivel.'],
-  ['decimas-02',           '0,2 puntos en una evaluación',            'nota',       'Baja',        200, 'trending-up',      3,
-   'Se suman a la nota de la evaluación que elijas. Uno por parcial.'],
+  ['decimas-02',           '0,2 puntos en una evaluación',            'nota',       'Baja',        300, 'trending-up',      3,
+   'Suma 0,2 a tus puntos para evaluaciones. Los usas desde tu perfil, en la evaluación que quieras y cuando quieras.'],
   ['llegar-tarde',         'Llegar tarde a clase',                    'comodin',    'Media',       350, 'alarm-clock',      3,
    'Entras después de la hora sin que cuente como atraso. Una vez por parcial.'],
   ['cambiar-orden',        'Cambiar el orden de presentación',        'evaluacion', 'Media',       350, 'arrow-up-down',    3,
    'Eliges en qué lugar de la lista presenta tu equipo.'],
   ['cambiar-pregunta',     'Cambiar una pregunta de la defensa',      'evaluacion', 'Media',       400, 'repeat-2',         3,
    'Pides que te cambien una pregunta por otra. Se responde igual.'],
-  ['decimas-05',           '0,5 puntos en una evaluación',            'nota',       'Media',       450, 'chart-line',       3,
-   'Se suman a la nota de la evaluación que elijas. Uno por parcial.'],
+  ['decimas-05',           '0,5 puntos en una evaluación',            'nota',       'Media',       675, 'chart-line',       3,
+   'Suma 0,5 a tus puntos para evaluaciones. Los usas desde tu perfil, en la evaluación que quieras y cuando quieras.'],
   ['napping-day',          'Napping Day: faltar a una clase',         'comodin',    'Alta',        700, 'bed',              2,
    'Una inasistencia que no cuenta. Avisa antes, no después.'],
   ['perdonazo',            'Perdonazo por atraso a presentación',     'comodin',    'Alta',        700, 'shield-check',     2,
@@ -61,16 +61,26 @@ const PREMIOS = [
    'Saltas una pregunta de la defensa sin que cuente como error.'],
   ['reentregar',           'Volver a entregar tras conocer la nota',  'plazo',      'Alta',        850, 'rotate-ccw',       1,
    'Corriges y vuelves a entregar dentro de las 24 horas siguientes a la nota.'],
-  ['punto-completo',       '1 punto en una evaluación',               'nota',       'Alta',        900, 'award',            3,
-   'Un punto entero sobre la nota de la evaluación que elijas. Uno por parcial.'],
+  ['punto-completo',       '1 punto en una evaluación',               'nota',       'Alta',       1350, 'award',            3,
+   'Suma un punto entero a tus puntos para evaluaciones. Lo usas desde tu perfil, en la evaluación que quieras y cuando quieras.'],
   ['ruleta-nota',          'No dar la prueba y tirar la ruleta',      'nota',       'Muy alta',   1800, 'dice-5',           1,
    'Cambias tu evaluación por un sorteo: 50% un 1, 40% un 4, 9% un 5, 0,8% un 6 y 0,2% un 7.'],
   ['desbloquear-defensa',  'Desbloquear las preguntas de la defensa', 'evaluacion', 'Muy alta',   2200, 'key-round',        1,
    'Ves las preguntas de tu defensa antes del día. Una sola vez en el semestre.'],
 ];
 
-/** Los que tocan nota o plazo pasan por el visto bueno del docente. */
-const SIN_APROBACION = new Set(['gacha-tirada']);
+/**
+ * Los que tocan nota o plazo pasan por el visto bueno del docente. Las décimas no:
+ * comprarlas es inmediato y lo que espera al docente es **usarlas**. Ver la 0038.
+ */
+const SIN_APROBACION = new Set(['gacha-tirada', 'decimas-02', 'decimas-05', 'punto-completo']);
+
+/**
+ * Cuántas décimas suma cada artículo a los puntos para evaluaciones. El precio de
+ * la tabla es la **base**: cada canje de décimas encarece el siguiente en la mitad
+ * de su base, y eso lo calcula la base de datos, no este archivo.
+ */
+const DECIMAS = new Map([['decimas-02', 2], ['decimas-05', 5], ['punto-completo', 10]]);
 
 /**
  * Cuántas tiradas de gacha entrega cada artículo al canjearlo.
@@ -116,18 +126,18 @@ for (const am of ambitos) {
     await sql`
       insert into public.articulos (asignatura_id, periodo_id, codigo, nombre, descripcion,
                                     detalle, categoria, icono, precio, requiere_aprobacion,
-                                    limite_por_alumno, activo, orden, tiradas)
+                                    limite_por_alumno, activo, orden, tiradas, decimas)
       values (${am.asignatura_id}, ${am.periodo_id}, ${codigo}, ${nombre}, ${descripcion},
               ${'Esfuerzo ' + esfuerzo}, ${categoria}, ${icono}, ${precio},
               ${!SIN_APROBACION.has(codigo)}, ${limite}, true, ${orden},
-              ${TIRADAS.get(codigo) ?? null})
+              ${TIRADAS.get(codigo) ?? null}, ${DECIMAS.get(codigo) ?? null})
       on conflict (asignatura_id, periodo_id, codigo) do update
         set nombre = excluded.nombre, descripcion = excluded.descripcion,
             detalle = excluded.detalle, categoria = excluded.categoria,
             icono = excluded.icono, precio = excluded.precio,
             requiere_aprobacion = excluded.requiere_aprobacion,
             limite_por_alumno = excluded.limite_por_alumno, orden = excluded.orden,
-            tiradas = excluded.tiradas, activo = true`;
+            tiradas = excluded.tiradas, decimas = excluded.decimas, activo = true`;
   }
   console.log(`${am.sigla}: ${PREMIOS.length} premios`);
 }

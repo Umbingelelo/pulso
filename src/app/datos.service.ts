@@ -424,6 +424,54 @@ export interface Articulo {
   saldo: number;
   ya_canjeados: number;
   colocados: number;
+  /** Precio de lista sin escalar. En los artículos de décimas, `precio` ya viene escalado. */
+  precio_base: number | null;
+  /** Cuántas décimas suma a los puntos para evaluaciones. null = no es de décimas. */
+  decimas: number | null;
+}
+
+export type EstadoUsoDecimas = 'solicitado' | 'aplicado' | 'rechazado' | 'cancelado';
+
+/** Los puntos para evaluaciones de una matrícula, en décimas. */
+export interface SaldoDecimas {
+  matricula_id: string;
+  ganadas: number;
+  /** Pedidas para una evaluación y esperando al docente: ya no están disponibles. */
+  pendientes: number;
+  aplicadas: number;
+}
+
+export interface UsoDecimas {
+  id: number;
+  matricula_id: string;
+  decimas: number;
+  evaluacion: string;
+  estado: EstadoUsoDecimas;
+  comentario_docente: string | null;
+  creado_en: string;
+  resuelto_en: string | null;
+  perfil_id: string;
+  alumno: string;
+  avatar: string;
+  seccion: string;
+  asignatura_id: string;
+  periodo_id: string;
+}
+
+/** 15 décimas → «1,5». Así se habla de una nota en Chile. */
+export function enPuntos(decimas: number): string {
+  return (decimas / 10).toLocaleString('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+/**
+ * El texto de un error, venga de donde venga. Los de la Data API son objetos con
+ * `message` y no siempre instancias de Error, así que se mira la forma, no la clase.
+ */
+export function mensajeDeError(e: unknown, porDefecto: string): string {
+  if (e && typeof e === 'object' && 'message' in e && typeof e.message === 'string' && e.message) {
+    return e.message;
+  }
+  return porDefecto;
 }
 
 export interface Canje {
@@ -1293,6 +1341,67 @@ export class DatosService {
   ): Promise<void> {
     const { error } = await this.db.rpc('resolver_canje', {
       p_canje: canjeId,
+      p_estado: estado,
+      p_comentario: comentario?.trim() || null,
+    });
+    if (error) throw error;
+  }
+
+  // ---------- Puntos para evaluaciones ----------
+
+  async saldoDecimas(matriculaId: string): Promise<SaldoDecimas> {
+    const { data, error } = await this.db
+      .from('saldos_decimas')
+      .select('*')
+      .eq('matricula_id', matriculaId)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as SaldoDecimas | null)
+      ?? { matricula_id: matriculaId, ganadas: 0, pendientes: 0, aplicadas: 0 };
+  }
+
+  async misUsosDecimas(matriculaId: string): Promise<UsoDecimas[]> {
+    const { data, error } = await this.db
+      .from('usos_decimas_detalle')
+      .select('*')
+      .eq('matricula_id', matriculaId)
+      .order('creado_en', { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as UsoDecimas[];
+  }
+
+  /** Pide aplicar décimas a una evaluación. Dejan de estar disponibles al tiro. */
+  async usarDecimas(matriculaId: string, decimas: number, evaluacion: string): Promise<number> {
+    const { data, error } = await this.db.rpc('usar_decimas', {
+      p_matricula: matriculaId,
+      p_decimas: decimas,
+      p_evaluacion: evaluacion.trim(),
+    });
+    if (error) throw error;
+    return data as number;
+  }
+
+  async cancelarUsoDecimas(usoId: number): Promise<void> {
+    const { error } = await this.db.rpc('cancelar_uso_decimas', { p_uso: usoId });
+    if (error) throw error;
+  }
+
+  async usosDecimasDelRamo(asignaturaId: string, periodoId: string): Promise<UsoDecimas[]> {
+    const { data, error } = await this.db
+      .from('usos_decimas_detalle')
+      .select('*')
+      .eq('asignatura_id', asignaturaId)
+      .eq('periodo_id', periodoId)
+      .order('creado_en', { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as UsoDecimas[];
+  }
+
+  async resolverUsoDecimas(
+    usoId: number, estado: 'aplicado' | 'rechazado', comentario?: string,
+  ): Promise<void> {
+    const { error } = await this.db.rpc('resolver_uso_decimas', {
+      p_uso: usoId,
       p_estado: estado,
       p_comentario: comentario?.trim() || null,
     });

@@ -39,6 +39,7 @@
 import { cuerpo, json, mensajeDeError } from '../lib/db.mjs';
 import { comoUsuario } from '../lib/identidad.mjs';
 import { parsearCookies, leerRefresco } from '../lib/sesion.mjs';
+import { mandarAvisos } from '../lib/avisos.mjs';
 
 /**
  * Cada acción declara qué consulta hace. El despacho es una tabla y no un
@@ -112,7 +113,36 @@ const ACCIONES = {
  */
 const ABIERTAS = new Set(['reunion-ver']);
 
+/**
+ * El cron de los avisos por correo: `GET /api/docente?avisos=1`.
+ *
+ * Vive acá por el techo de doce funciones de arriba. No lleva cookie: lo llama
+ * Vercel, que manda `Authorization: Bearer $CRON_SECRET` cuando esa variable
+ * existe. Sin `CRON_SECRET` configurado no corre para nadie, porque cualquiera
+ * podría pedir la URL y hacer que se manden correos.
+ *
+ * `?forzar=1` manda aunque ya se haya mandado hoy; `?seco=1` arma el correo y lo
+ * devuelve sin mandarlo. Los dos exigen el mismo secreto.
+ */
+async function cronAvisos(req, res) {
+  const secreto = process.env.CRON_SECRET;
+  if (!secreto) return json(res, 500, { error: 'Falta CRON_SECRET' });
+  if (req.headers.authorization !== `Bearer ${secreto}`) {
+    return json(res, 401, { error: 'No autorizado' });
+  }
+  const q = new URL(req.url, 'http://x').searchParams;
+  try {
+    const informe = await mandarAvisos({ forzar: q.get('forzar') === '1', seco: q.get('seco') === '1' });
+    return json(res, 200, { informe });
+  } catch (e) {
+    return json(res, 500, { error: e?.message ?? 'No se pudieron mandar los avisos' });
+  }
+}
+
 export default async function handler(req, res) {
+  if (req.method === 'GET' && new URL(req.url, 'http://x').searchParams.has('avisos')) {
+    return cronAvisos(req, res);
+  }
   if (req.method !== 'POST') return json(res, 405, { error: 'Método no permitido' });
 
   const usuarioId = await leerRefresco(parsearCookies(req));

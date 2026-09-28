@@ -145,14 +145,18 @@ import { AVATAR_POR_DEFECTO, AvatarService } from './avatar.service';
       <div class="tarjeta" style="margin-top:20px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap">
           <h2>Tabla de posiciones</h2>
-          <span class="chico suave">Los diez primeros lugares de tu sección</span>
+          <!-- El ranking cuenta el XP del parcial, igual que el nivel: se reinicia solo
+               con cada pase (0039). Decirlo evita que el primer día parezca un error. -->
+          <span class="chico suave">
+            Los diez primeros de tu sección en el {{ pase()?.nombre ?? 'parcial' }}
+          </span>
         </div>
 
         @if (errorTabla()) {
           <div class="aviso malo" style="margin-top:14px">{{ errorTabla() }}</div>
         } @else if (podio().length === 0) {
           <div class="aviso dato" style="margin-top:14px">
-            Todavía nadie ha sumado experiencia. Haz tu misión del día y encabeza la tabla.
+            Todavía nadie ha sumado experiencia en este parcial. Haz tu misión del día y encabeza la tabla.
           </div>
         } @else {
           <div style="margin-top:14px">
@@ -223,7 +227,9 @@ export class PaseComponent {
    * lugares» pueden ser más de diez filas; se corta en 12 para que la tarjeta
    * no se vuelva una lista de sesenta nombres y se dice cuántos quedaron fuera.
    */
-  private hastaDiez = computed(() => this.tabla().filter(p => p.lugar <= 10));
+  // Con cero no se compite: la tabla trae la fila propia aunque vaya en cero, para
+  // mostrarla aparte, pero no la sube al podio.
+  private hastaDiez = computed(() => this.tabla().filter(p => p.lugar <= 10 && p.xp > 0));
   podio = computed(() => this.hastaDiez().slice(0, 12));
   masEmpatados = computed(() => Math.max(0, this.hastaDiez().length - 12));
 

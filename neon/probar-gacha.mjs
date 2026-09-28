@@ -17,6 +17,10 @@
  * cargadas— y se sostiene con un grant por columna, así que hay que comprobar que
  * el grant esté puesto y no que la pantalla no ofrezca el botón.
  *
+ * Desde la 0039 una tirada puede ser una **bolsa de puntos**, y esa es la otra
+ * promesa numérica: cuántas salen, de qué rareza y cuánto pagan. Una bolsa que
+ * pagara de más convertiría la tienda en una máquina de farmear puntos.
+ *
  * Deja el estado como estaba: todo corre sobre una matrícula de prueba y se borra.
  */
 import { neon } from '@neondatabase/serverless';
@@ -59,7 +63,8 @@ async function debeFallar(etiqueta, usuarioId, consulta, contiene) {
 
 // ---------- El pozo ----------
 
-const pesos = await d`select rareza, peso, nombre from public.gacha_rarezas order by orden`;
+const pesos = await d`select rareza, peso, nombre, puntos, prob_puntos::float as prob_puntos
+   from public.gacha_rarezas order by orden`;
 const pozo = await d`select rareza, tipo, count(*)::int as n from public.cosmeticos
    where activo group by rareza, tipo order by rareza, tipo`;
 const total = pozo.reduce((s, p) => s + p.n, 0);
@@ -194,7 +199,8 @@ const barrer = async () => {
     delete from public.movimientos_puntos
      where matricula_id = ${m.id}
        and (motivo = ${MOTIVO_SALDO}
-            or (creado_en >= ${desde} and motivo = 'Canje: Una tirada de gacha'))
+            or (creado_en >= ${desde}
+                and (motivo = 'Canje: Una tirada de gacha' or motivo like 'Gacha: bolsa %')))
     returning id`;
   const cosmeticos = await d`
     delete from public.alumno_cosmeticos
@@ -341,12 +347,12 @@ for (const mia of mias) {
     ` y el pozo tiene ${pozo.img} y ${pozo.tit}`);
 }
 
-// ---------- Ni el gacha ni el pase pagan puntos ----------
-// Los puntos son de las actividades y se gastan en la tienda. Que el gacha o el
-// pase los repartieran haría que dos economías separadas se mezclaran, y que
-// alguien pudiera farmear la tienda tirando.
+// ---------- El pase no paga puntos; el gacha sí, y solo en bolsas ----------
+// Desde la 0039 una tirada puede ser una bolsa de puntos. Lo que se vigila es que
+// cada bolsa pague exactamente lo que dice `gacha_rarezas` y nada más: fuera de
+// las bolsas, el saldo no se mueve.
 
-console.log('\nNi el gacha ni el pase pagan puntos');
+console.log('\nEl pase no promete puntos');
 const puntosDe = async () => {
   const [r] = await d`select coalesce(sum(puntos),0)::int as p
      from public.movimientos_puntos where matricula_id = ${m.id}`;
@@ -398,6 +404,26 @@ await d`insert into public.movimientos_tiradas (matricula_id, cantidad, motivo)
         values (${m.id}, ${POR_POZO * 2 + 3}, ${MOTIVO})`;
 
 const salieronDelPase = [];
+/** Por rareza: cuántas bolsas salieron y cuántas pagaron mal. */
+const bolsas = { cuenta: {}, n: 0, malPagadas: [] };
+
+/**
+ * Una bolsa tiene que haber escrito **una** fila en `movimientos_puntos` con lo que
+ * dice su rareza. Se comprueba y se borra en el mismo paso, para que el saldo del
+ * alumno de prueba no crezca con miles de bolsas.
+ */
+async function deshacerBolsa(r) {
+  const debe = pesos.find((p) => p.rareza === r.rareza)?.puntos;
+  const borradas = await d`
+    delete from public.movimientos_puntos
+     where id = (select max(id) from public.movimientos_puntos
+                  where matricula_id = ${m.id} and motivo like 'Gacha: bolsa %')
+       and puntos = ${r.puntos}
+    returning puntos`;
+  if (r.puntos !== debe || borradas.length !== 1) {
+    bolsas.malPagadas.push(`${r.rareza}: anunció ${r.puntos}, debía ${debe}, escribió ${borradas.length}`);
+  }
+}
 
 /** Tira `n` veces en un pozo y cuenta lo que salió, por rareza y por tipo. */
 async function sortear(pozo, n) {
@@ -405,17 +431,24 @@ async function sortear(pozo, n) {
   for (let i = 0; i < n; i++) {
     const [{ r }] = await como(alumno.id, (s) =>
       s`select public.gacha_tirar(${m.id}::uuid, ${pozo}) as r`);
-    cuenta[r.rareza] = (cuenta[r.rareza] ?? 0) + 1;
-    tipos[r.tipo] = (tipos[r.tipo] ?? 0) + 1;
-    if (idsPase.has(r.id)) salieronDelPase.push(r.nombre);
-    // Devolver lo que salió, para que el pozo no se agote y el reparto se mida
-    // sobre la distribución de verdad.
-    await d`delete from public.alumno_cosmeticos
-             where matricula_id = ${m.id} and cosmetico_id = ${r.id}`;
+    if (r.tipo === 'puntos') {
+      bolsas.n++;
+      bolsas.cuenta[r.rareza] = (bolsas.cuenta[r.rareza] ?? 0) + 1;
+      await deshacerBolsa(r);
+    } else {
+      cuenta[r.rareza] = (cuenta[r.rareza] ?? 0) + 1;
+      tipos[r.tipo] = (tipos[r.tipo] ?? 0) + 1;
+      if (idsPase.has(r.id)) salieronDelPase.push(r.nombre);
+      // Devolver lo que salió, para que el pozo no se agote y el reparto se mida
+      // sobre la distribución de verdad.
+      await d`delete from public.alumno_cosmeticos
+               where matricula_id = ${m.id} and cosmetico_id = ${r.id}`;
+    }
     if ((i + 1) % 1000 === 0) console.log(`  … ${i + 1}`);
   }
   return { cuenta, tipos };
 }
+const sumar = (o) => Object.values(o).reduce((s, x) => s + x, 0);
 
 /**
  * El margen se calcula, no se fija a ojo.
@@ -479,16 +512,82 @@ for (const pozo of ['imagen', 'titulo']) {
     ` con ${POR_POZO.toLocaleString('es')} tiradas`);
   const { cuenta, tipos } = await sortear(pozo, POR_POZO);
   const ajenos = Object.keys(tipos).filter((t) => t !== tipo);
-  rev(`solo entrega ${tipo}`, ajenos.length === 0,
+  rev(`fuera de las bolsas, solo entrega ${tipo}`, ajenos.length === 0,
     `también salió: ${ajenos.map((t) => `${tipos[t]} ${t}`).join(', ')}`);
-  revisarPesos(cuenta, POR_POZO, await rarezasDe(tipo));
+  // Los cosméticos se miden contra los pesos entre ellos: la bolsa se lleva la misma
+  // fracción de cada rareza, así que no tuerce el reparto de lo que no es bolsa.
+  revisarPesos(cuenta, sumar(cuenta), await rarezasDe(tipo));
 }
 
 rev('ninguna de las tiradas entregó algo del pase',
   salieronDelPase.length === 0,
   salieronDelPase.slice(0, 4).join(', '));
-rev('y el saldo de puntos no se movió ni un punto', await puntosDe() === puntosAntes,
+
+// ---------- Las bolsas de puntos ----------
+//
+// Tres promesas: cuántas salen, de qué rareza, y cuánto pagan. La tercera es la
+// que importa para la economía: una bolsa que pagara de más convierte la tienda
+// en una máquina de farmear.
+
+console.log(`\nLas bolsas de puntos (${bolsas.n} de ${POR_POZO * 2} tiradas)`);
+{
+  const nTot = POR_POZO * 2;
+  const W = pesos.reduce((s, p) => s + p.peso, 0);
+  const prob = pesos.reduce((s, p) => s + p.peso * p.prob_puntos, 0) / W;
+  const margen = Math.max(4 * Math.sqrt(nTot * prob * (1 - prob)), 3);
+  rev(`salen ${((bolsas.n / nTot) * 100).toFixed(1)}% (esperado ${(prob * 100).toFixed(1)}%)`,
+    Math.abs(bolsas.n - prob * nTot) <= margen,
+    `salieron ${bolsas.n}, esperaba ${(prob * nTot).toFixed(1)} ± ${margen.toFixed(1)}`);
+  // La bolsa sale de las seis rarezas, sin importar qué le falte al alumno.
+  revisarPesos(bolsas.cuenta, bolsas.n, new Set(pesos.map((p) => p.rareza)));
+  rev('cada bolsa pagó lo que dice su rareza, en una sola fila', bolsas.malPagadas.length === 0,
+    bolsas.malPagadas.slice(0, 3).join(' · '));
+
+  const esperado = pesos.reduce((s, p) => s + p.peso * p.prob_puntos * p.puntos, 0) / W;
+  const [tienda] = await d`select min(precio / tiradas)::int as precio from public.articulos
+     where activo and tiradas > 0`;
+  rev(`una tirada devuelve en promedio ${esperado.toFixed(1)} puntos: menos de la mitad de lo que cuesta (${tienda?.precio})`,
+    tienda?.precio > esperado * 2);
+}
+rev('y fuera de las bolsas, el saldo de puntos no se movió ni un punto', await puntosDe() === puntosAntes,
   `quedó en ${await puntosDe()}, estaba en ${puntosAntes}`);
+
+// ---------- Con el pozo completo, la tirada es una bolsa ----------
+//
+// Antes era un error y el botón quedaba apagado con tiradas en la mano. Se le da
+// todo lo sacable de los títulos y se tira ahí: tiene que salir una bolsa.
+
+console.log('\nCon el pozo completo, la tirada es una bolsa');
+await d`insert into public.alumno_cosmeticos (matricula_id, cosmetico_id, origen)
+        select ${m.id}, c.id, 'gacha' from public.cosmeticos c
+         where c.activo and c.tipo = 'titulo'
+           and not exists (select 1 from public.pase_recompensas pr where pr.cosmetico_id = c.id)
+        on conflict do nothing`;
+{
+  const [{ r }] = await como(alumno.id, (s) =>
+    s`select public.gacha_tirar(${m.id}::uuid, 'titulo') as r`);
+  rev('sale una bolsa de puntos', r?.tipo === 'puntos' && r.puntos > 0, JSON.stringify(r));
+  if (r?.tipo === 'puntos') await deshacerBolsa(r);
+  rev('y paga lo que dice su rareza', bolsas.malPagadas.length === 0, bolsas.malPagadas.at(-1));
+}
+await limpiar();
+await d`insert into public.movimientos_tiradas (matricula_id, cantidad, motivo)
+        values (${m.id}, 60, ${MOTIVO})`;
+
+/**
+ * Tira hasta que salga un cosmético. Desde las bolsas, una tirada puede no entregar
+ * nada que equipar, y las comprobaciones de más abajo necesitan uno.
+ */
+async function tirarCosmetico(pozo) {
+  for (let i = 0; i < 40; i++) {
+    const [{ r }] = await como(alumno.id, (s) => pozo
+      ? s`select public.gacha_tirar(${m.id}::uuid, ${pozo}) as r`
+      : s`select public.gacha_tirar(${m.id}::uuid) as r`);
+    if (r.tipo !== 'puntos') return r;
+    await deshacerBolsa(r);
+  }
+  throw new Error('Cuarenta bolsas seguidas: algo está mal en el sorteo');
+}
 
 // ---------- Sin pozo se sigue pudiendo tirar ----------
 //
@@ -500,7 +599,7 @@ rev('y el saldo de puntos no se movió ni un punto', await puntosDe() === puntos
 console.log('\nLa llamada de un solo argumento sigue sirviendo');
 const surtido = new Set();
 for (let i = 0; i < 3; i++) {
-  const [{ r }] = await como(alumno.id, (s) => s`select public.gacha_tirar(${m.id}::uuid) as r`);
+  const r = await tirarCosmetico(null);
   surtido.add(r.tipo);
   await d`delete from public.alumno_cosmeticos
            where matricula_id = ${m.id} and cosmetico_id = ${r.id}`;
@@ -585,6 +684,7 @@ if (!articulo) {
   rev('la tirada comprada se puede gastar', Boolean(premio?.nombre),
     JSON.stringify(premio));
   rev('y queda en cero de nuevo', (await tiradasDe()) === tiradasAntes);
+  if (premio?.tipo === 'puntos') await deshacerBolsa(premio);
 
   // Un artículo con tiradas no puede quedar esperando visto bueno: se cobraría al
   // solicitar y la tirada se entregaría igual, antes de que el docente aprobara.
@@ -781,8 +881,7 @@ try {
   await d`update public.perfiles set forma_titulo = 'femenino' where id = ${alumno.id}`;
   await d`insert into public.movimientos_tiradas (matricula_id, cantidad, motivo)
           values (${m.id}, 1, ${MOTIVO})`;
-  const [{ r: sacado }] = await como(alumno.id, (s) =>
-    s`select public.gacha_tirar(${m.id}::uuid, 'titulo') as r`);
+  const sacado = await tirarCosmetico('titulo');
   const [debia] = await d`
     select public.titulo_texto(valor, valor_femenino, 'femenino') as texto
       from public.cosmeticos where id = ${sacado.id}`;

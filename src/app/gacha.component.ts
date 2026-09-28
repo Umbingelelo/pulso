@@ -29,8 +29,15 @@ import { PerfilStore } from './perfil.store';
  * Las caras y los títulos se sortean por separado, así que hay dos botones y un
  * solo contador: la tirada se gana una vez y el alumno elige dónde gastarla. Bajo
  * cada botón va cuántos le faltan en ese pozo, que es la pregunta que se hace
- * antes de elegir; y el pozo que ya completó queda deshabilitado en vez de
- * dejarlo tirar para recibir un error.
+ * antes de elegir.
+ *
+ * ── Una de cada cuatro es una bolsa de puntos ──
+ *
+ * Desde la 0039 el premio puede ser puntos para el saldo del ramo, con la misma
+ * rareza y la misma animación que un cosmético. Por eso un pozo completo **ya no
+ * se apaga**: antes el botón quedaba deshabilitado con tiradas en la mano, y ahora
+ * tirar ahí entrega siempre una bolsa. La leyenda lo dice, para que se elija a
+ * sabiendas.
  *
  * ── Se muestra el pozo completo ──
  *
@@ -45,7 +52,8 @@ import { PerfilStore } from './perfil.store';
       <h1>Gacha</h1>
       <p>
         Gasta una tirada y llévate un título o una cara para tu perfil. Se sortean
-        por separado: tú eliges en cuál de los dos tiras.
+        por separado: tú eliges en cuál de los dos tiras. A veces sale una bolsa de
+        puntos para tu saldo: mientras más rara, más puntos.
       </p>
     </div>
 
@@ -84,7 +92,10 @@ import { PerfilStore } from './perfil.store';
             </div>
           } @else if (ultima(); as u) {
             <div class="premio" [attr.data-rareza]="u.rareza">
-              @if (u.tipo === 'avatar') {
+              @if (u.tipo === 'puntos') {
+                <div class="titulo-premio">+{{ u.puntos }} puntos</div>
+                <p class="chico suave">Se sumaron a tu saldo del ramo.</p>
+              } @else if (u.tipo === 'avatar') {
                 <div class="aro"><img [src]="u.valor" [alt]="u.nombre"></div>
                 <p class="nombre">{{ u.nombre }}</p>
               } @else {
@@ -92,7 +103,7 @@ import { PerfilStore } from './perfil.store';
                      mostrarlo dos veces no agrega nada y le quita fuerza. -->
                 <div class="titulo-premio">«{{ u.valor }}»</div>
               }
-              @if (u.descripcion) { <p class="chico suave">{{ u.descripcion }}</p> }
+              @if (u.descripcion && u.tipo !== 'puntos') { <p class="chico suave">{{ u.descripcion }}</p> }
               <span class="insignia" [class]="'insignia ' + claseRareza(u.rareza)">
                 {{ nombreRareza(u.rareza) }}
               </span>
@@ -108,7 +119,10 @@ import { PerfilStore } from './perfil.store';
         <div class="acciones">
           @for (p of pozos; track p.id) {
             <div class="pozo">
-              <button class="boton" [disabled]="apagado(p.id)" (click)="tirar(p.id)">
+              <!-- Apagado mientras la colección no llegó: con ella vacía, la pantalla no
+                   sabe qué falta. Un pozo completo ya no se apaga: ahí sale una bolsa. -->
+              <button class="boton" [disabled]="cargando() || girando() !== '' || tiradas() < 1"
+                      (click)="tirar(p.id)">
                 {{ rotulo(p) }}
               </button>
               <span class="chico suave">{{ leyendaPozo(p.id) }}</span>
@@ -382,20 +396,6 @@ export class GachaComponent {
     return this.faltanPorPozo()[pozo];
   }
 
-  /**
-   * Los tres estados del botón de un pozo, y todos cuidan lo mismo: **no afirmar
-   * nada mientras la colección no ha llegado**.
-   *
-   * Con `todos()` vacío, `faltan` da cero, y sin esta guarda la pantalla arrancaba
-   * diciendo «Ya los tienes todos» en los dos pozos —con la colección todavía en
-   * blanco— hasta que respondía la consulta. Es un parpadeo de medio segundo que
-   * dice exactamente lo contrario de la verdad.
-   */
-  protected apagado(pozo: Pozo): boolean {
-    return this.cargando() || this.girando() !== '' || this.tiradas() < 1
-        || this.faltan(pozo) === 0;
-  }
-
   protected rotulo(p: { id: Pozo; boton: string }): string {
     if (this.girando() === p.id) return 'Abriendo…';
     if (!this.cargando() && this.tiradas() < 1) return 'Sin tiradas';
@@ -404,7 +404,9 @@ export class GachaComponent {
 
   protected leyendaPozo(pozo: Pozo): string {
     if (this.cargando()) return '';
-    return this.faltan(pozo) === 0 ? 'Ya los tienes todos' : `Te faltan ${this.faltan(pozo)}`;
+    return this.faltan(pozo) === 0
+      ? 'Ya los tienes todos: acá sale una bolsa de puntos'
+      : `Te faltan ${this.faltan(pozo)}`;
   }
 
   private visibles = computed(() => {
@@ -539,7 +541,7 @@ export class GachaComponent {
 
   async tirar(pozo: Pozo): Promise<void> {
     const ramo = this.perfil.ramo();
-    if (!ramo || this.girando() || this.tiradas() < 1 || this.faltan(pozo) === 0) return;
+    if (!ramo || this.girando() || this.tiradas() < 1) return;
     this.girando.set(pozo);
     this.error.set('');
     this.ultima.set(null);
@@ -564,6 +566,8 @@ export class GachaComponent {
       this.ultima.set(r);
       this.fase.set('revelado');
       this.tiradas.set(r.restantes);
+      // Una bolsa mueve el saldo, que se ve en el encabezado.
+      if (r.tipo === 'puntos') await this.perfil.cargar(true);
       await this.cargar();
     } catch (e: any) {
       this.error.set(e?.message ?? 'No se pudo tirar.');

@@ -30,7 +30,9 @@ import { PerfilStore } from './perfil.store';
           <h2 style="margin-bottom:8px">Tu misión de hoy te está esperando</h2>
           <p class="suave" style="max-width:34rem;margin:0 auto 26px">
             Se arma en el momento y es distinta a la de tus compañeros. Si la
-            resuelves bien, suma <strong>{{ xpDelDia() }} de experiencia</strong>.
+            resuelves bien, suma
+            @if (estado()?.xp; as xp) { <strong>{{ xp }} de experiencia</strong>. }
+            @else { experiencia para tu pase. }
           </p>
           <button class="boton" (click)="generarla()" [disabled]="generando()">
             {{ generando() ? 'Armando tu misión…' : 'Generar mi misión' }}
@@ -215,10 +217,6 @@ export class MisionesComponent {
     if (h === 1) return 'en una hora';
     const m = Math.max(1, Math.round(s / 60));
     return `en ${m} minuto${m === 1 ? '' : 's'}`;
-  }
-
-  xpDelDia(): number {
-    return this.estado()?.xp ?? 25;
   }
 
   async generarla(): Promise<void> {

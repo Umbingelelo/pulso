@@ -39,6 +39,12 @@ Por eso vive en `2026-02/Pulso`, al mismo nivel que las asignaturas y no dentro 
   promedios del diagnóstico, la bandeja de canjes por resolver, y otorgar o descontar puntos —en
   «Resumen» y también en «Alumnos», que es donde se busca: es la pantalla que lleva el nombre y que
   muestra la columna de puntos
+- **Pase de batalla por parcial**: un pase por evaluación, con su escalera de 30 niveles, y un ranking
+  por sección que cuenta solo el XP del parcial, así que se reinicia con cada uno. Ver
+  [Pase y ranking](#pase-y-ranking)
+- **Gacha con bolsas de puntos**: una de cada cuatro tiradas entrega puntos en vez de un cosmético
+- **Avisos por correo**: una vez al día, lo que espera al docente —canjes, décimas por aplicar,
+  reuniones que quedaron encendidas—. Ver [Avisos por correo](#avisos-por-correo)
 
 En la hoja de ruta: avance por laboratorio y planes de estudio personales.
 
@@ -664,6 +670,52 @@ que una caja con un Enter contaba como respondida y dejaba entregar en blanco; y
 JavaScript sí lo considera vacío, así que la cuenta del docente y la del alumno no coincidían. Las dos
 salen ahora de `tiene_texto()`.
 
+## Pase y ranking
+
+Un pase por evaluación parcial y por asignatura, de 30 niveles. La experiencia sale **solo de las
+misiones** y se cuenta **dentro de la ventana del pase**: si no, el pase de la EP2 empezaría completo
+con el XP de la EP1.
+
+| | DSY1107 | ITY1102 |
+|---|---|---|
+| Primer parcial | 10/08 → 28/09 | 10/08 → 28/09 |
+| Segundo parcial | 28/09 → 26/10 | 28/09 → 26/10 |
+| Tercer parcial | 26/10 → 30/11 | 26/10 → 07/12 |
+
+Los bordes van a las 00:00 de Santiago. En ITY1102 la planificación ponía el Segundo parcial el 14 de
+septiembre, pero la EP1 se rindió después: la `0039` corrió el borde al 28 en los dos ramos, y las dos
+semanas que ya habían contado para la EP2 volvieron a contar donde se ganaron, en el Primer parcial.
+
+### 75 XP por misión
+
+La escalera pide **1.910 XP** para el nivel 30 (40 por nivel del 1 al 10, 65 del 11 al 20, 90 del 21 al
+30). Con 25 por misión, en los 28 días del Segundo parcial el techo era el nivel 15 **acertando todas**:
+nadie podía terminar un pase, y en la EP1 el que más llegó fue al 20. Con 75 se llega al 30 en 26
+misiones acertadas, así que hay que ir todos los días pero se pueden fallar dos. El número vive en
+`mision_plantillas.xp` y `estado_mision` lo devuelve, así que la pantalla no lo escribe.
+
+### La tirada de un nivel es de un pase
+
+Hasta la `0039`, `sincronizar_pase` decidía si ya había pagado la tirada de un nivel buscando el
+motivo `'Pase nivel 5'` en el libro, **sin mirar de qué pase**. Quien llegó al nivel 5 en la EP1 no iba
+a cobrar nunca la del nivel 5 de la EP2: el pase decía «+1 tirada» y el contador no se movía. Ahora cada
+tirada del pase lleva `pase_id` y `nivel`, y un índice único sobre `(matrícula, pase, nivel)` es el que
+impide cobrar dos veces.
+
+Y la sincronización recorre **todos los pases del ramo que ya empezaron**, no solo el vigente. Antes,
+quien subía de nivel el último día de un parcial y no abría el pase antes del cierre perdía esos
+premios: al día siguiente el vigente era otro. Al abrir la EP2 el celebrado dice de qué pase venía.
+
+### El ranking es del parcial
+
+`tabla_posiciones` cuenta el XP **dentro de la ventana del pase**, la misma cuenta que decide el
+nivel, así que se reinicia sola con cada parcial. Antes sumaba todo el semestre, y la EP2 arrancaba
+con los mismos arriba por lo que hicieron en agosto. Los que van en cero no compiten —el primer día
+serían cuarenta empatados en el primer lugar—; la fila propia sí viene, para mostrarla aparte.
+
+El pase que se mira sale de `pase_de_matricula()`: el vigente, y si no hay, el último que cerró. La
+usan `mi_pase` y el ranking; dos copias de esa pregunta terminan contestando distinto.
+
 ## Gacha y cosméticos
 
 El pase reparte **tiradas** y la tienda las vende; el gacha es donde se gastan. Cada tirada entrega un
@@ -690,31 +742,34 @@ combinar `tiradas` con `requiere_aprobacion`: la tirada se entrega al solicitar,
 transacción que cobra, así que un artículo que además esperara visto bueno la entregaría antes de que
 el docente aprobara nada. En vez de dejar ese camino a medias, la combinación no se puede escribir.
 
-### El sorteo es en dos pasos
+### El sorteo es en dos pasos, y a veces el premio es una bolsa
 
-Primero se sortea **la rareza** con los pesos de `gacha_rarezas`, y después se elige **uniforme entre
-los cosméticos de esa rareza** que al alumno le faltan.
+Primero se sortea **la rareza** con los pesos de `gacha_rarezas`, entre las seis. Después, con
+`prob_puntos` de esa rareza —hoy 25 % en todas— el premio es una **bolsa de puntos** de esa rareza. Si
+no, se elige **uniforme entre los cosméticos de esa rareza** que al alumno le faltan.
 
 Los pesos son los mismos en los dos pozos. Lo que hay en cada uno, contando solo lo **sacable** —lo
-que es recompensa del pase no entra, ver más abajo—:
+que es recompensa del pase no entra, ver más abajo—, y lo que paga la bolsa:
 
-| Rareza | Peso | Imágenes | Títulos |
-|---|---|---|---|
-| Común | 30 % | 62 | 9 |
-| Poco común | 28 % | 49 | 13 |
-| Rara | 25 % | 39 | 24 |
-| Épica | 12 % | 24 | 18 |
-| Legendaria | 4 % | 11 | 12 |
-| Mítica | 1 % | 4 | 4 |
+| Rareza | Peso | Imágenes | Títulos | Bolsa |
+|---|---|---|---|---|
+| Común | 30 % | 70 | 9 | 20 |
+| Poco común | 28 % | 48 | 17 | 40 |
+| Rara | 25 % | 35 | 20 | 75 |
+| Épica | 12 % | 18 | 18 | 150 |
+| Legendaria | 4 % | 9 | 8 | 300 |
+| Mítica | 1 % | 5 | 4 | 750 |
 
 La alternativa —un peso por ítem y un solo sorteo— parece más simple y está mal: con 220 imágenes
 comunes y 4 títulos míticos, el mítico saldría **una vez cada dos mil tiradas** y no lo vería nadie en
 todo el semestre. Con dos pasos es exactamente 1 de cada 100, y sigue siéndolo cuando se suban más
 imágenes.
 
-**Sin repetidos.** Se sortea solo entre lo que falta, y la rareza solo entre las que todavía tienen
-algo — si no, al que ya tiene los cuatro míticos le saldría «rareza mítica» un 1 % de las veces y no
-habría nada que entregarle. La tirada se gasta **después** de que hay algo que dar.
+**Sin repetidos.** Se sortea solo entre lo que falta. Si la rareza que salió ya no tiene nada para ese
+alumno, se vuelve a sortear entre las que sí —el peso de la agotada se reparte en proporción, que es
+exactamente el reparto de antes de las bolsas—. Y si al alumno **ya no le falta nada en ese pozo**, la
+tirada es una bolsa: antes era un error y el botón quedaba apagado con tiradas en la mano. La tirada se
+gasta **después** de que hay algo que dar.
 
 ### Dos pozos, y por qué las imágenes dejaron de ser todas comunes
 
@@ -821,20 +876,35 @@ nivel **es** hacerlo exclusivo, y quitarlo de ahí lo devuelve al pozo. Una colu
 en desacuerdo con la realidad —marcada exclusiva y sin nivel, o al revés— y ese desacuerdo no falla en
 ninguna parte: simplemente un premio del pase empieza a salir tirando y deja de ser un premio.
 
-El reparto lo hace `neon/repartir-pase.mjs`. Hoy son **30 frases y 30 imágenes** exclusivas —de 108 y
+El reparto lo hace `neon/repartir-pase.mjs`. Hoy son **32 frases y 35 imágenes** exclusivas —de 108 y
 220— más los 3 marcos, que quedan solo en el pase.
 
 ```bash
 set -a; . ./.env.local; set +a
-node neon/repartir-pase.mjs              # informa y no toca nada
-node neon/repartir-pase.mjs --escribir
+node neon/repartir-pase.mjs                                   # informa y no toca nada
+node neon/repartir-pase.mjs --escribir                        # sortea los que no empiezan
+node neon/repartir-pase.mjs --resortear DSY1107:2 --escribir  # y además uno que ya empezó
 ```
 
-**Al azar, pero siempre el mismo azar.** La elección se ve aleatoria y no cambia entre corridas: el
-sorteo va con una semilla derivada del id del pase y del nivel. Importa porque esto se corre cada vez
-que se suben cosméticos nuevos, y con azar de verdad cada corrida reordenaría la escalera: un alumno
-vería cambiar el premio del nivel 19, y peor, la exclusividad se movería de un cosmético a otro y
-devolvería al gacha algo que alguien ya ganó como premio del pase.
+**Un pase que ya empezó queda congelado.** Solo se sortean los que todavía no parten; los otros se
+leen de la base y cuentan como usados. Antes cada corrida re-sorteaba todo, y como el pozo cambia —se
+suben cosméticos, el gacha entrega otros— la misma semilla daba otra escalera: un alumno vería cambiar
+el premio del nivel 19, y la exclusividad se movería devolviendo al gacha algo que alguien ya ganó en
+el pase. `--resortear` es la excepción explícita: así se le dieron premios nuevos a la EP2 el 28 de
+septiembre.
+
+**Solo lo que nadie tiene.** El sorteo elige entre cosméticos que ningún alumno tiene todavía: un
+premio que ya sacó tirando es un nivel vacío. Los marcos son la excepción —son tres— pero no se
+repiten dentro de un mismo pase.
+
+**Al azar, pero siempre el mismo azar.** La semilla sale del id del pase y del nivel: dos corridas
+sobre el mismo pozo dan la misma escalera.
+
+**Las caras también suben de rareza.** Desde la EP2 la escalera tiene quince cosméticos —caras de poco
+común a legendaria, frases de rara a legendaria— porque con 75 XP por misión el pase se puede
+terminar. Al escribir, toda imagen que no queda en un pase congelado se realinea a
+`rareza_de_imagen(codigo)`: las que salen de un pase vuelven al pozo con su rareza de código, no con
+la que tenían puesta a mano. René Puente conserva la suya.
 
 **El pase llega hasta legendaria, no hasta mítica.** Los cuatro títulos míticos se quedan solo en el
 gacha. El pase es el camino garantizado —se llega al 30 trabajando— y si además diera lo más raro del
@@ -845,20 +915,24 @@ En la colección los del pase se ven igual, con borde punteado y la etiqueta del
 hay un filtro **«Puedo sacarlo»** que deja solo lo que de verdad puede salir de una tirada: sin eso, un
 alumno puede quedarse tirando semanas esperando algo que el gacha no entrega.
 
-### Ni el pase ni el gacha pagan puntos
+### El pase no paga puntos; el gacha sí, en bolsas
 
 Los puntos son de las actividades y se gastan en la tienda. El pase reparte XP, niveles, cosméticos y
-tiradas; el gacha reparte cosméticos. Son dos economías, y **el único puente entre ellas va en un solo
-sentido**: con puntos se compra una tirada en la tienda. Al revés no: ni el pase ni el gacha pagan
-puntos nunca.
+tiradas, y **no paga puntos**. Había una mentira concreta: `mi_pase` devolvía `puntos_por_sobrante`
+—«lo que sigas ganando se convierte en puntos: llevas N»— y nadie los pagaba nunca. Se fue eso y la
+columna `xp_por_punto`. El sobrante se sigue informando, porque es cierto y se ve en la barra.
 
-Había una mentira concreta: `mi_pase` devolvía `puntos_por_sobrante` —«lo que sigas ganando se
-convierte en puntos: llevas N»— y **nadie los pagaba nunca**. No hay un solo `insert` sobre
-`movimientos_puntos` en toda la lógica del pase. El alumno llegaba al nivel 30, la pantalla le prometía
-puntos, y su saldo no se movía. Se fue eso y también la columna `xp_por_punto`, que era la tasa de una
-conversión que no existe: dejarla puesta es dejar la trampa para que alguien vuelva a creerle.
+El gacha sí paga, desde la `0039`, y de verdad: la bolsa escribe su movimiento en `movimientos_puntos`
+en la misma transacción que gasta la tirada —«Gacha: bolsa rara de 75 puntos»—. Lo que impide que eso
+se vuelva una máquina de farmear la tienda es la cuenta:
 
-El sobrante se sigue informando, porque es cierto y se ve en la barra. Lo que se quitó es la promesa.
+```
+lo esperado de una tirada = Σ peso × prob_puntos × bolsa / Σ peso ≈ 18 puntos
+```
+
+Una tirada cuesta 150 en la tienda: comprar tiradas para sacar puntos pierde unos 132 cada vez. Épica
+devuelve lo que costó; legendaria y mítica son la suerte. La migración revienta si alguien sube las
+bolsas hasta que una tirada cueste menos del doble de lo que devuelve.
 
 ### Subirlos
 
@@ -1048,7 +1122,52 @@ que una acción nueva queda protegida por omisión.
 
 **Nada la cierra sola.** Si te olvidas de apretar «Terminar reunión», esa sección se queda con el 30%
 puesto indefinidamente. El panel muestra cuántos minutos lleva encendida y lo dice en la tarjeta, pero
-es un aviso, no un límite.
+es un aviso, no un límite. Pasadas dos horas, además, sale en el [correo del día](#avisos-por-correo).
+
+## Avisos por correo
+
+Una vez al día, a las 08:00 de Santiago, un cron de Vercel llama a `GET /api/docente?avisos=1`, que lee
+`avisos_docentes()` y le manda a cada docente un correo con lo que lo está esperando:
+
+- **Canjes por resolver**: los que piden visto bueno y siguen en `solicitado`
+- **Puntos para evaluaciones por aplicar**
+- **Modo reunión encendido** hace más de dos horas
+
+Con cada ítem va la sección, el alumno y cuánto lleva esperando. **Sin nada pendiente no hay correo**:
+uno diario que dice «todo bien» se aprende a borrar sin abrir, y el día que importa también se borra.
+`avisos_enviados` guarda una fila por docente y día, así que si el cron corre dos veces no se manda
+dos veces.
+
+### Por qué con el rol del servidor
+
+`avisos_docentes()` devuelve nombres y correos de todos los cursos, así que su `execute` es **solo de
+`pulso_misiones`** —el rol de `/api/mision`, que la Data API no puede adoptar porque el token que firma
+el servidor dice siempre `pulso_app`—. Primero se probó la guarda de `laboratorio_pauta`, que pregunta
+por `uid_del_token()`, y **falla abierta**: `uid_del_token()` devuelve nulo cuando `auth.uid()`
+revienta, y medido contra producción la primera llamada con un token de alumno —conexión recién
+abierta tras recargar el esquema— devolvió la lista entera. Un permiso por rol falla cerrado.
+
+### Configurarlo
+
+El correo sale por [Resend](https://resend.com), con `fetch` y sin dependencia. En Vercel, en las
+variables del proyecto:
+
+| Variable | Qué es |
+|---|---|
+| `CRON_SECRET` | Cualquier cadena larga. Vercel la manda como `Authorization: Bearer …` al llamar el cron; sin ella el endpoint no corre para nadie |
+| `RESEND_API_KEY` | La llave de Resend |
+| `AVISOS_PARA` | Opcional. Manda todo a esta dirección en vez del correo del docente en la base |
+| `AVISOS_REMITENTE` | Opcional. Por omisión `Pulso <onboarding@resend.dev>` |
+
+Sin un dominio verificado en Resend, `onboarding@resend.dev` **solo entrega al correo de la cuenta de
+Resend**. Si esa cuenta no es la de `@profesor.duoc.cl`, pon esa dirección en `AVISOS_PARA`.
+
+Para probarlo sin esperar al cron:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" 'https://pulso-rust.vercel.app/api/docente?avisos=1&seco=1'    # arma y no manda
+curl -H "Authorization: Bearer $CRON_SECRET" 'https://pulso-rust.vercel.app/api/docente?avisos=1&forzar=1'  # manda aunque ya haya salido hoy
+```
 
 ## Agregar una asignatura o un semestre
 
@@ -1178,6 +1297,6 @@ Y fuera de Angular, servidas por funciones:
 | `/api/clase?id=…&descargar=1` | El mismo deck como adjunto: sin rastreo, y no cuenta como abrirlo |
 | `/api/clase-avance` | Recibe el avance dentro del deck y paga los puntos |
 | `/api/laboratorio` | Leer, guardar y entregar un laboratorio |
-| `/api/docente` | Las operaciones del panel del docente |
+| `/api/docente` | Las operaciones del panel del docente, y con `?avisos=1` el cron del correo diario |
 | `/.well-known/jwks.json` | La llave pública con la que Neon valida los tokens |
 | `/db/*` | Reescritura a la Data API de Neon |

@@ -20,18 +20,23 @@ const sql = neon(process.env.DATABASE_URL_OWNER);
 
 // ============================== Los pases ==============================
 // Semana 1 = 10 de agosto. Las fechas de corte son el fin de la semana de cada
-// evaluación parcial, según la planificación de cada asignatura.
+// evaluación parcial. La EP2 empieza el 28 de septiembre en las dos (0039): en
+// ITY1102 la planificación la ponía el 14, pero la EP1 se rindió después. Los
+// bordes van a medianoche de Santiago (UTC−3 de septiembre a abril), que es como
+// los dejó la migración; sin la zona, Postgres los leería en UTC y cerrarían a las
+// 21:00 del día anterior.
 
+const cl = (dia) => `${dia}T00:00:00-03:00`;
 const PASES = {
   DSY1107: [
-    ['Primer parcial',  '2026-08-10', '2026-09-28'],  // EP1 semanas 6-7
-    ['Segundo parcial', '2026-09-28', '2026-10-26'],  // EP2 semana 11
-    ['Tercer parcial',  '2026-10-26', '2026-11-30'],  // EP3 semana 16
+    ['Primer parcial',  '2026-08-10', cl('2026-09-28')],        // EP1 semanas 6-7
+    ['Segundo parcial', cl('2026-09-28'), cl('2026-10-26')],    // EP2 semana 11
+    ['Tercer parcial',  cl('2026-10-26'), cl('2026-11-30')],    // EP3 semana 16
   ],
   ITY1102: [
-    ['Primer parcial',  '2026-08-10', '2026-09-14'],  // EP1 semana 5
-    ['Segundo parcial', '2026-09-14', '2026-10-26'],  // EP2 semana 11
-    ['Tercer parcial',  '2026-10-26', '2026-12-07'],  // EP3 semana 17
+    ['Primer parcial',  '2026-08-10', cl('2026-09-28')],        // EP1
+    ['Segundo parcial', cl('2026-09-28'), cl('2026-10-26')],    // EP2 semana 11
+    ['Tercer parcial',  cl('2026-10-26'), cl('2026-12-07')],    // EP3 semana 17
   ],
 };
 

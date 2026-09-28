@@ -32,6 +32,9 @@ const [mat] = await d`
     join public.asignaturas a on a.id = s.asignatura_id
    where lower(u.correo) = ${CORREO} and a.sigla = ${SIGLA}`;
 
+// Lo que paga una misión es dato de la plantilla (75 desde la 0039), no de la prueba.
+const [{ xp: XP }] = await d`select xp from public.mision_plantillas where codigo = 'quiz'`;
+
 /** Como la aplicación: identidad puesta a mano y el rol de la app adoptado. */
 const como = async (q) => (await d.transaction([
   d`select set_config('pulso.usuario_id', ${alumno.id}, true)`,
@@ -79,7 +82,7 @@ revisar('quedó creada', !!mision, true);
 revisar('el enunciado no trae la correcta', 'correcta' in (mision.enunciado ?? {}), false);
 revisar('el enunciado no trae la explicación', 'explicacion' in (mision.enunciado ?? {}), false);
 revisar('trae cuatro alternativas', mision.enunciado.opciones.length, 4);
-revisar('vale 25 de experiencia', mision.xp, 25);
+revisar(`vale ${XP} de experiencia, lo que dice la plantilla`, mision.xp, XP);
 console.log(`   ${mision.enunciado.pregunta}`);
 
 const [e1] = await como((s) => s`select public.estado_mision(${mat.id}::uuid) as e`);
@@ -118,10 +121,10 @@ const [s2] = await d`select solucion from public.misiones where id = ${m2.id}`;
 const [r2] = await como((s) =>
   s`select public.mision_responder(${m2.id}::uuid, ${JSON.stringify({ elegida: s2.solucion.correcta })}::jsonb) as r`);
 revisar('acertada', r2.r.acertada, true);
-revisar('experiencia ganada', r2.r.xp_ganada, 25);
+revisar('experiencia ganada', r2.r.xp_ganada, XP);
 const [xp] = await como((s) =>
   s`select coalesce(sum(xp),0)::int as x from public.movimientos_experiencia where matricula_id = ${mat.id}::uuid`);
-revisar('experiencia acumulada', xp.x, 25);
+revisar('experiencia acumulada', xp.x, XP);
 
 console.log('\n7. La misión de otro alumno no se toca');
 const [otro] = await d`

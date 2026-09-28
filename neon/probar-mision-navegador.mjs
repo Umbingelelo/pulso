@@ -29,6 +29,9 @@ const [mat] = await d`select mt.id from public.matriculas mt
   where lower(u.correo)='alumno.prueba@duocuc.cl' and a.sigla='DSY1107'`;
 await d`delete from public.misiones where matricula_id=${mat.id}`;
 await d`delete from public.movimientos_experiencia where matricula_id=${mat.id}`;
+// Lo que paga una misión es dato de la plantilla (75 desde la 0039), no de la prueba.
+const [{ xp: XP }] = await d`select xp from public.mision_plantillas where codigo = 'quiz'`;
+const ganada = new RegExp(`\\+${XP} de experiencia`);
 
 const perfil = await mkdtemp(join(tmpdir(), 'pulso-'));
 const nav = await puppeteer.launch({ executablePath: chrome, headless: true,
@@ -78,7 +81,7 @@ try {
     await new Promise(r=>setTimeout(r,500)); }
   rev('se pinta la correcta', await p.evaluate(()=>!!document.querySelector('.opcion-mision.correcta')), true);
   const fin = await p.evaluate(()=>document.body.innerText);
-  rev('avisa la experiencia ganada', /\+25 de experiencia/.test(fin), true);
+  rev('avisa la experiencia ganada', ganada.test(fin), true);
   rev('muestra la explicación', /aviso/.test(await p.evaluate(()=>document.querySelector('.aviso')?.className ?? '')), true);
   rev('sin errores de JavaScript', errs, []);
 
@@ -108,7 +111,7 @@ try {
   }, i);
   rev('la correcta sigue en verde', tras.verde, 1);
   rev('la que eligió no se pinta de roja', tras.elegidaEnRojo, false);
-  rev('sigue avisando la experiencia ganada', /\+25 de experiencia/.test(tras.texto), true);
+  rev('sigue avisando la experiencia ganada', ganada.test(tras.texto), true);
   rev('sigue mostrando la explicación', tras.explicacion, true);
   rev('sin errores de JavaScript', errs, []);
 
@@ -135,11 +138,11 @@ try {
   rev('marca cuál era la correcta', recargada.verde, 1);
   rev('no marca ninguna como equivocada', recargada.roja, 0);
   rev('vuelve a mostrar la explicación', recargada.explicacion, true);
-  rev('sigue diciendo la experiencia ganada', /\+25 de experiencia/.test(recargada.texto), true);
+  rev('sigue diciendo la experiencia ganada', ganada.test(recargada.texto), true);
   rev('sin errores de JavaScript', errs, []);
 
   const [xp] = await d`select coalesce(sum(xp),0)::int x from public.movimientos_experiencia where matricula_id=${mat.id}`;
-  rev('experiencia en la base', xp.x, 25);
+  rev('experiencia en la base', xp.x, XP);
 } finally { await nav.close(); await rm(perfil,{recursive:true,force:true}); }
 
 await d`delete from public.misiones where matricula_id=${mat.id}`;

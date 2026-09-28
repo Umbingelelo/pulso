@@ -208,6 +208,8 @@ export interface EstadoMision {
   dia: string;
   ya_tiene: boolean;
   puede_generar: boolean;
+  /** Lo que paga la misión del día si se acierta. Desde la 0039. */
+  xp: number | null;
   proxima_en: string;
   faltan_segundos: number;
 }
@@ -536,14 +538,21 @@ export interface Cosmetico {
  */
 export type Pozo = 'imagen' | 'titulo';
 
+/**
+ * Lo que salió de una tirada: un cosmético, o desde la 0039 una **bolsa de puntos**
+ * (`tipo: 'puntos'`, sin `id` ni `codigo`). La bolsa sigue la rareza que se sorteó,
+ * así que el revelado se anima igual.
+ */
 export interface TiradaGacha {
-  id: string;
-  codigo: string;
-  tipo: Cosmetico['tipo'];
+  id: string | null;
+  codigo: string | null;
+  tipo: Cosmetico['tipo'] | 'puntos';
   nombre: string;
   descripcion: string | null;
   valor: string;
   rareza: Rareza;
+  /** Cuántos puntos pagó, si fue una bolsa. */
+  puntos: number | null;
   /** Cuántas tiradas quedan después de esta. */
   restantes: number;
 }

@@ -999,7 +999,7 @@ evaluaciones mientras el docente no responde— y el alumno lo puede cancelar mi
 ### El precio sube con cada compra
 
 ```
-precio = base × (1 + 0,5 × canjes de décimas previos)
+precio = base × (1 + 0,5 × compras previas de ese mismo artículo)
 ```
 
 | | Base | 2.ª compra | 3.ª compra |
@@ -1011,11 +1011,13 @@ precio = base × (1 + 0,5 × canjes de décimas previos)
 Tres decisiones, las tres a propósito:
 
 - **Sobre la base, no sobre el último pagado**: el aumento es lineal, no compuesto.
-- **La cuenta es compartida** entre los tres artículos. Por separado, bastaría con comprar 0,2 cinco veces
-  para esquivarla.
-- **Lo comprado antes de la `0038` cuenta**. Quien ya tenía un punto paga el siguiente a 1,5 veces la base.
-  Lo que ya tenía se mantiene y quedó disponible en su saldo; lo que estaba esperando visto bueno se
-  entregó al precio que había pagado.
+- **La cuenta es por artículo** (`0040`). Comprar un 0,2 sube solo el siguiente 0,2; el 0,5 y el punto
+  siguen a su precio. Hasta la `0039` era compartida entre los tres, y eso castigaba a quien empezaba
+  por lo barato. Esquivarla comprando 0,2 muchas veces no sirve: cada 0,2 sube el siguiente y el tope
+  es 3.
+- **Al cambiar la regla se anuló lo comprado**. La `0040` devolvió entero lo que cada compra vigente
+  había pagado, las canceló —y con ellas sus décimas— y canceló los usos que seguían pendientes. Quien
+  las quiera las vuelve a comprar con el precio nuevo.
 
 El tope de 3 por artículo sigue. El descuento de reunión se aplica **después**, sobre el precio ya
 escalado. Cancelados y rechazados no cuentan, porque se devolvieron.
@@ -1038,7 +1040,7 @@ set -a; . ./.env.local; set +a
 node neon/probar-decimas.mjs [--sigla ITY1102]
 ```
 
-Con la cuenta de prueba: la escalada compartida, que se cobre lo que muestra la vitrina, el tope de 3,
+Con la cuenta de prueba: la escalada por artículo, que se cobre lo que muestra la vitrina, el tope de 3,
 usar, no pasarse del saldo, cancelar, rechazar y aplicar, y que nadie inserte en `usos_decimas` a mano.
 Borra lo que creó al terminar.
 

@@ -104,11 +104,12 @@ const CATEGORIAS: { id: Categoria | ''; nombre: string }[] = [
               }
 
               <!-- La escalada a la vista: sin esto el alumno ve un precio distinto al de su
-                   compañero y no sabe por qué. Se cuenta sobre la base, no sobre el último. -->
+                   compañero y no sabe por qué. Se cuenta sobre la base, no sobre el último,
+                   y solo con las compras de este mismo artículo. -->
               @if (a.decimas && a.precio_base) {
                 <p class="letra-chica">
-                  Base {{ a.precio_base }}. Cada canje de décimas —de cualquiera de los tres—
-                  sube el siguiente en la mitad de la base.
+                  Base {{ a.precio_base }}. Cada compra de este artículo sube la siguiente
+                  en la mitad de la base; los otros no le cambian el precio.
                 </p>
               }
 

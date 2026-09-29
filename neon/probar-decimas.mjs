@@ -1,8 +1,8 @@
 /**
  * Prueba los puntos para evaluaciones contra la base de verdad.
  *
- * Con la cuenta de prueba: compra décimas y comprueba la escalada —compartida
- * entre los tres artículos, +50 % de la base por canje—, el tope de 3, que
+ * Con la cuenta de prueba: compra décimas y comprueba la escalada —por artículo,
+ * +50 % de la base por cada compra previa del mismo—, el tope de 3, que
  * comprar entregue al tiro, que usar descuente del disponible, que no se pueda
  * usar más de lo que hay, que cancelar y rechazar devuelvan al saldo, y que
  * aplicar no. Y que nadie pueda escribir en `usos_decimas` a mano.
@@ -96,17 +96,19 @@ const saldo = async () => (await como(alumno.id, (s) =>
 try {
   console.log(`${SIGLA} · base ${arts['decimas-02'].precio}/${arts['decimas-05'].precio}/${arts['punto-completo'].precio}\n`);
 
-  console.log('1. La escalada es compartida y sobre la base');
+  console.log('1. La escalada es por artículo y sobre la base');
   revisar('0,2 sin canjes previos', await precioEn('decimas-02'), 300);
   await comprar('decimas-02');
-  revisar('1 punto tras un canje de 0,2', await precioEn('punto-completo'), 2025);
-  revisar('0,5 tras un canje', await precioEn('decimas-05'), 1013);
+  revisar('0,2 tras un canje de 0,2', await precioEn('decimas-02'), 450);
+  revisar('1 punto no sube por un 0,2', await precioEn('punto-completo'), 1350);
+  revisar('0,5 no sube por un 0,2', await precioEn('decimas-05'), 675);
   await comprar('punto-completo');
-  revisar('0,2 tras dos canjes', await precioEn('decimas-02'), 600);
+  revisar('1 punto tras un canje de 1 punto', await precioEn('punto-completo'), 2025);
+  revisar('0,2 no sube por un 1 punto', await precioEn('decimas-02'), 450);
 
   const [cobro] = await db`select puntos from public.movimientos_puntos
     where matricula_id = ${mt.id} and motivo like 'Canje: 1 punto%' order by creado_en desc limit 1`;
-  revisar('lo cobrado es lo que mostró la vitrina', cobro.puntos, -2025);
+  revisar('lo cobrado es lo que mostró la vitrina', cobro.puntos, -1350);
 
   console.log('\n2. Comprar entrega al tiro');
   const [estados] = await db`select array_agg(distinct c.estado) e from public.canjes c

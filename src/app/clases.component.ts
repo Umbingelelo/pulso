@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { Clase, DatosService, Ramo } from './datos.service';
+import { agruparPorExperiencia, experienciaEnCurso } from './experiencias';
 import { PerfilStore } from './perfil.store';
 
 /**
@@ -51,81 +52,91 @@ import { PerfilStore } from './perfil.store';
         </p>
       </div>
 
-      <div class="rejilla dos">
-        @for (c of clases(); track c.id) {
-          <div class="tarjeta">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
-              <div>
-                <p class="etiqueta">Clase {{ c.codigo }}</p>
-                <h2 style="margin-top:4px">{{ c.titulo }}</h2>
-              </div>
-              @if (c.terminada_en) {
-                <span class="insignia verde">Terminada</span>
-              } @else if (c.abierta) {
-                <span class="insignia amarilla">En curso</span>
-              } @else {
-                <span class="insignia celeste">Nueva</span>
-              }
-            </div>
-
-            @if (c.ventana_hasta && !c.terminada_en) {
-              @if (c.en_ventana) {
-                <p class="chico" style="margin-top:10px;color:var(--ok,#3fb950)">
-                  <strong>Puntos completos</strong> hasta el
-                  {{ c.ventana_hasta | date:'dd/MM' }} a las
-                  {{ c.ventana_hasta | date:'HH:mm' }}.
-                </p>
-              } @else {
-                <p class="chico suave" style="margin-top:10px">
-                  El plazo cerró: ahora paga
-                  <strong>{{ porcentaje(c) }}%</strong> de los puntos. Igual conviene verla.
-                </p>
-              }
-            }
-
-            @if (c.descripcion) {
-              <p class="chico suave" style="margin-top:10px">{{ c.descripcion }}</p>
-            }
-
-            @if (c.abierta) {
-              <div style="margin-top:16px">
-                <div style="height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden">
-                  <div [style.width.%]="avance(c)"
-                       style="height:100%;background:var(--acento, #2f81f7);transition:width .3s"></div>
-                </div>
-                <p class="chico suave" style="margin-top:8px">
-                  Vas en la diapositiva {{ (c.slide_max ?? 0) + 1 }} de {{ c.slides }}
-                  @if (c.actividades > 0) {
-                    · {{ c.resueltas }} de {{ c.actividades }} actividades resueltas
+      @for (g of grupos(); track g.numero) {
+        <!-- Plegadas salvo la experiencia en curso: lo de esta semana queda arriba
+             de la vista sin tener que pasar por encima de todo lo de la EP1. -->
+        <details class="experiencia" [open]="g.numero === null || g.numero === enCurso()">
+          <summary>
+            <span class="experiencia-titulo">{{ g.titulo }}</span>
+            <span class="chico suave">{{ g.terminadas }} de {{ g.items.length }} terminadas</span>
+          </summary>
+          <div class="rejilla dos">
+            @for (c of g.items; track c.id) {
+              <div class="tarjeta">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+                  <div>
+                    <p class="etiqueta">Clase {{ c.codigo }}</p>
+                    <h2 style="margin-top:4px">{{ c.titulo }}</h2>
+                  </div>
+                  @if (c.terminada_en) {
+                    <span class="insignia verde">Terminada</span>
+                  } @else if (c.abierta) {
+                    <span class="insignia amarilla">En curso</span>
+                  } @else {
+                    <span class="insignia celeste">Nueva</span>
                   }
-                </p>
-              </div>
-            }
+                </div>
 
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
-              <span class="insignia celeste">{{ porGanar(c) }} puntos por ganar</span>
-              <div style="display:flex;align-items:center;gap:10px">
-                <a class="boton chico contorno" [href]="'/api/clase?id=' + c.id + '&descargar=1'"
-                   target="_blank" rel="noopener"
-                   title="Te llevas el archivo para estudiarlo sin conexión. No suma puntos.">
-                  Descargar
-                </a>
-                <a class="boton chico" [class.accion]="!c.abierta" [class.contorno]="c.abierta"
-                   [href]="'/api/clase?id=' + c.id" target="_blank" rel="noopener"
-                   (click)="alVolver()">
-                  {{ c.abierta ? 'Seguir' : 'Abrir la clase' }}
-                </a>
-              </div>
-            </div>
+                @if (c.ventana_hasta && !c.terminada_en) {
+                  @if (c.en_ventana) {
+                    <p class="chico" style="margin-top:10px;color:var(--ok,#3fb950)">
+                      <strong>Puntos completos</strong> hasta el
+                      {{ c.ventana_hasta | date:'dd/MM' }} a las
+                      {{ c.ventana_hasta | date:'HH:mm' }}.
+                    </p>
+                  } @else {
+                    <p class="chico suave" style="margin-top:10px">
+                      El plazo cerró: ahora paga
+                      <strong>{{ porcentaje(c) }}%</strong> de los puntos. Igual conviene verla.
+                    </p>
+                  }
+                }
 
-            @if (c.dictada_el) {
-              <p class="chico suave" style="margin-top:12px">
-                Dictada el {{ c.dictada_el | date:'dd/MM/yyyy' }}
-              </p>
+                @if (c.descripcion) {
+                  <p class="chico suave" style="margin-top:10px">{{ c.descripcion }}</p>
+                }
+
+                @if (c.abierta) {
+                  <div style="margin-top:16px">
+                    <div style="height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden">
+                      <div [style.width.%]="avance(c)"
+                           style="height:100%;background:var(--acento, #2f81f7);transition:width .3s"></div>
+                    </div>
+                    <p class="chico suave" style="margin-top:8px">
+                      Vas en la diapositiva {{ (c.slide_max ?? 0) + 1 }} de {{ c.slides }}
+                      @if (c.actividades > 0) {
+                        · {{ c.resueltas }} de {{ c.actividades }} actividades resueltas
+                      }
+                    </p>
+                  </div>
+                }
+
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
+                  <span class="insignia celeste">{{ porGanar(c) }} puntos por ganar</span>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <a class="boton chico contorno" [href]="'/api/clase?id=' + c.id + '&descargar=1'"
+                       target="_blank" rel="noopener"
+                       title="Te llevas el archivo para estudiarlo sin conexión. No suma puntos.">
+                      Descargar
+                    </a>
+                    <a class="boton chico" [class.accion]="!c.abierta" [class.contorno]="c.abierta"
+                       [href]="'/api/clase?id=' + c.id" target="_blank" rel="noopener"
+                       (click)="alVolver()">
+                      {{ c.abierta ? 'Seguir' : 'Abrir la clase' }}
+                    </a>
+                  </div>
+                </div>
+
+                @if (c.dictada_el) {
+                  <p class="chico suave" style="margin-top:12px">
+                    Dictada el {{ c.dictada_el | date:'dd/MM/yyyy' }}
+                  </p>
+                }
+              </div>
             }
           </div>
-        }
-      </div>
+        </details>
+      }
     }
   `,
 })
@@ -134,7 +145,13 @@ export class ClasesComponent {
   protected perfil = inject(PerfilStore);
 
   clases = signal<Clase[]>([]);
+  private experiencias = signal<string[]>([]);
   cargando = signal(true);
+
+  grupos = computed(() =>
+    agruparPorExperiencia(this.clases(), this.experiencias())
+      .map(g => ({ ...g, terminadas: g.items.filter(c => !!c.terminada_en).length })));
+  enCurso = computed(() => experienciaEnCurso(this.grupos()));
 
   /**
    * Reaccionar al ramo, y no cargar una sola vez al construirse.
@@ -167,7 +184,12 @@ export class ClasesComponent {
   private async cargar(ramo: Ramo): Promise<void> {
     this.cargando.set(true);
     try {
-      this.clases.set(await this.datos.clases(ramo));
+      const [clases, experiencias] = await Promise.all([
+        this.datos.clases(ramo),
+        this.datos.experiencias(ramo),
+      ]);
+      this.clases.set(clases);
+      this.experiencias.set(experiencias);
     } finally {
       this.cargando.set(false);
     }

@@ -50,12 +50,16 @@ const AVISOS = ['alerta', 'pista', 'ojo'];
 const FORMATOS = ['corta', 'codigo'];
 /** El encabezado es un juego cerrado: una llave de más suele ser una tildada. */
 const LLAVES = ['codigo', 'titulo', 'descripcion', 'minutos', 'puntos', 'orden',
-                'opcional', 'requiere', 'excluye', 'desde', 'hasta'];
+                'opcional', 'requiere', 'excluye', 'desde', 'hasta', 'experiencia'];
 /** `2026-08-24` o `2026-08-24 23:59`, con «T» o espacio en medio. */
 const FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/;
 
-/** Cualquier línea que empiece con `:::`, con o sin indentación. */
-const MARCA = /^(\s*):::(.*)$/;
+/**
+ * Cualquier línea que empiece con `:::`, con o sin indentación. Se aceptan tres o
+ * más dos puntos (`::::ojo`, la convención de directivas de Markdown): los bloques
+ * no se anidan, así que el número no significa nada y rechazarlo solo frenaba la subida.
+ */
+const MARCA = /^(\s*):{3,}(.*)$/;
 /** Un marcador bien escrito: `:::pista` o `:::caja{1.2 corta}`, y nada más en la línea. */
 const BIEN = /^([a-z]+)(?:\{([^{}]*)\})?$/;
 /** Apertura y cierre de cerca de código: ``` o ~~~, hasta con tres espacios delante. */
@@ -187,6 +191,9 @@ function leerEncabezado(texto, problemas) {
     if (meta[k] !== undefined && !/^\d+$/.test(meta[k])) {
       problemas.push(`«${k}: ${meta[k]}» no es un número entero`);
     }
+  }
+  if (meta.experiencia !== undefined && !/^[1-9]$/.test(meta.experiencia)) {
+    problemas.push(`«experiencia: ${meta.experiencia}» va como número de 1 a 9 (EA1 → 1)`);
   }
   if (meta.opcional !== undefined && !['true', 'false'].includes(meta.opcional)) {
     problemas.push(`«opcional: ${meta.opcional}» tiene que ser true o false`);

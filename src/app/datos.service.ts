@@ -93,6 +93,8 @@ export interface Actividad {
    */
   puntua_desde: string | null;
   puntua_hasta: string | null;
+  /** La experiencia de aprendizaje (EA1 → 1). Nula = fuera de ellas, como el diagnóstico. */
+  experiencia: number | null;
 }
 
 /** ¿Está `iso` todavía por venir? Nulo cuenta como sin límite, así que sí. */
@@ -144,6 +146,7 @@ export interface Clase {
   ventana_hasta: string | null;
   factor_atrasado: number;
   en_ventana: boolean;
+  experiencia: number | null;
 }
 
 /** La misma clase vista por quien la dicta: trae también las no publicadas. */
@@ -1035,13 +1038,27 @@ export class DatosService {
       // hasta correr `node neon/refrescar-api.mjs`. Sin eso la consulta responde
       // 200, el campo llega `undefined`, y la pantalla se ve igual que antes de
       // migrar sin dar error en ninguna parte.
-      .select('id, codigo, titulo, descripcion, tipo, puntos, orden, puntua_desde, puntua_hasta')
+      .select('id, codigo, titulo, descripcion, tipo, puntos, orden, puntua_desde, puntua_hasta, experiencia')
       .eq('asignatura_id', ramo.asignatura_id)
       .eq('periodo_id', ramo.periodo_id)
       .eq('activa', true)
       .order('orden');
     if (error) throw error;
     return (data ?? []) as Actividad[];
+  }
+
+  /**
+   * Los nombres de las experiencias del ramo, para titular los grupos. La
+   * posición es el número: `[0]` es la EA1.
+   */
+  async experiencias(ramo: Ramo): Promise<string[]> {
+    const { data, error } = await this.db
+      .from('asignaturas')
+      .select('experiencias')
+      .eq('id', ramo.asignatura_id)
+      .maybeSingle();
+    if (error) throw error;
+    return (data?.experiencias ?? []) as string[];
   }
 
   async resultados(matriculaId: string): Promise<Resultado[]> {
@@ -1068,7 +1085,7 @@ export class DatosService {
       .from('mis_clases')
       // En una sola línea a propósito: `postgrest-js` infiere el tipo del
       // resultado leyendo este literal, y una cadena concatenada lo deja ciego.
-      .select('id, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, matricula_id, abierta, abierta_en, slide_max, terminada_en, resueltas, ventana_hasta, factor_atrasado, en_ventana')
+      .select('id, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, matricula_id, abierta, abierta_en, slide_max, terminada_en, resueltas, ventana_hasta, factor_atrasado, en_ventana, experiencia')
       .eq('matricula_id', ramo.matricula_id)
       .order('orden')
       .order('codigo');

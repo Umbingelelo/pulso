@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Actividad, DatosService, EstadoLaboratorio, Ramo, Resultado, plazoVigente } from './datos.service';
+import { agruparPorExperiencia, experienciaEnCurso } from './experiencias';
 import { PerfilStore } from './perfil.store';
 
 /**
@@ -32,89 +33,99 @@ import { PerfilStore } from './perfil.store';
         <div class="aviso dato">Todavía no hay actividades publicadas.</div>
       </div>
     } @else {
-      <div class="rejilla dos">
-        @for (a of actividades(); track a.id) {
-          <div class="tarjeta">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
-              <div>
-                <p class="etiqueta">{{ esOpcional(a) ? 'Desafío' : etiquetaTipo(a.tipo) }}</p>
-                <h2 style="margin-top:4px">{{ a.titulo }}</h2>
+      @for (g of grupos(); track g.numero) {
+        <!-- Plegadas salvo la experiencia en curso, igual que en Clases: el
+             laboratorio de esta semana no puede quedar debajo de los de la EP1. -->
+        <details class="experiencia" [open]="g.numero === null || g.numero === enCurso()">
+          <summary>
+            <span class="experiencia-titulo">{{ g.titulo }}</span>
+            <span class="chico suave">{{ g.completadas }} de {{ g.items.length }} completadas</span>
+          </summary>
+          <div class="rejilla dos">
+            @for (a of g.items; track a.id) {
+              <div class="tarjeta">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+                  <div>
+                    <p class="etiqueta">{{ esOpcional(a) ? 'Desafío' : etiquetaTipo(a.tipo) }}</p>
+                    <h2 style="margin-top:4px">{{ a.titulo }}</h2>
+                  </div>
+                  @if (hecha(a.id)) {
+                    <span class="insignia verde">Completada</span>
+                  } @else if (falta(a); as req) {
+                    <span class="insignia">Se abre con {{ req }}</span>
+                  } @else if (cerradoPor(a); as otro) {
+                    <!-- Antes que «Fuera de plazo» y que «Opcional»: que ya no se pueda
+                         hacer es lo primero que el alumno necesita saber, y el resto
+                         deja de importarle. -->
+                    <span class="insignia">Hiciste {{ otro }}</span>
+                  } @else if (!enPlazo(a)) {
+                    <!-- Antes que «Opcional» a propósito: que ya no pague es lo que
+                         cambia la decisión del alumno, y es lo que tiene que leer
+                         primero. -->
+                    <span class="insignia">Fuera de plazo</span>
+                  } @else if (esOpcional(a)) {
+                    <span class="insignia celeste">Opcional</span>
+                  } @else {
+                    <span class="insignia amarilla">Pendiente</span>
+                  }
+                </div>
+
+                @if (a.descripcion) {
+                  <p class="chico suave" style="margin-top:10px">{{ a.descripcion }}</p>
+                }
+                @if (cerradoPor(a); as otro) {
+                  <p class="chico suave" style="margin-top:8px">
+                    Este y <strong>{{ otro }}</strong> son alternativas: se hace uno o el
+                    otro, no los dos. Ya entregaste {{ otro }} y sus puntos están contados.
+                  </p>
+                } @else if (!hecha(a.id) && alternativaDe(a); as otro) {
+                  <!-- Decirlo **antes** de que elija, no después de que cobre: es la
+                       diferencia entre una regla y una sorpresa. Y solo antes: sobre una
+                       tarjeta ya «Completada», «elige el que puedas hacer» le pide una
+                       decisión que ya tomó. -->
+                  <p class="chico suave" style="margin-top:8px">
+                    Alternativa de <strong>{{ otro }}</strong>: al entregar uno, el otro se
+                    cierra. Elige el que puedas hacer.
+                  </p>
+                } @else if (esOpcional(a) && !hecha(a.id)) {
+                  <p class="chico suave" style="margin-top:8px">
+                    No entra en ninguna nota. Es para quien terminó y quiere más.
+                  </p>
+                }
+                @if (!hecha(a.id) && leyendaPlazo(a); as aviso) {
+                  <p class="chico" style="margin-top:8px" [class.suave]="enPlazo(a)">{{ aviso }}</p>
+                }
+
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
+                  <!-- Sin plazo o dentro de él vale lo que dice; fuera vale cero, y
+                       anunciar los 100 puntos que ya no se pagan sería mentirle. -->
+                  <span class="insignia" [class.celeste]="enPlazo(a)">
+                    {{ hecha(a.id) || enPlazo(a) ? a.puntos : 0 }} puntos
+                  </span>
+                  @if (hecha(a.id); as r) {
+                    <a class="boton contorno chico" [routerLink]="ruta(a)">Ver mi resultado</a>
+                  } @else if (falta(a); as req) {
+                    <!-- Sin enlace: ofrecer «Empezar» sobre algo cerrado es prometer
+                         una puerta que no abre. El candado real está en la base; esto
+                         solo evita el viaje en falso. -->
+                    <span class="chico suave">Termina {{ req }} para desbloquearlo</span>
+                  } @else if (cerradoPor(a); as otro) {
+                    <span class="chico suave">Elegiste {{ otro }}</span>
+                  } @else {
+                    <a class="boton accion chico" [routerLink]="ruta(a)">Empezar</a>
+                  }
+                </div>
+
+                @if (hecha(a.id); as r) {
+                  <p class="chico suave" style="margin-top:12px">
+                    Entregada el {{ r.completada_en | date:'dd/MM/yyyy' }}
+                  </p>
+                }
               </div>
-              @if (hecha(a.id)) {
-                <span class="insignia verde">Completada</span>
-              } @else if (falta(a); as req) {
-                <span class="insignia">Se abre con {{ req }}</span>
-              } @else if (cerradoPor(a); as otro) {
-                <!-- Antes que «Fuera de plazo» y que «Opcional»: que ya no se pueda
-                     hacer es lo primero que el alumno necesita saber, y el resto
-                     deja de importarle. -->
-                <span class="insignia">Hiciste {{ otro }}</span>
-              } @else if (!enPlazo(a)) {
-                <!-- Antes que «Opcional» a propósito: que ya no pague es lo que
-                     cambia la decisión del alumno, y es lo que tiene que leer
-                     primero. -->
-                <span class="insignia">Fuera de plazo</span>
-              } @else if (esOpcional(a)) {
-                <span class="insignia celeste">Opcional</span>
-              } @else {
-                <span class="insignia amarilla">Pendiente</span>
-              }
-            </div>
-
-            @if (a.descripcion) {
-              <p class="chico suave" style="margin-top:10px">{{ a.descripcion }}</p>
-            }
-            @if (cerradoPor(a); as otro) {
-              <p class="chico suave" style="margin-top:8px">
-                Este y <strong>{{ otro }}</strong> son alternativas: se hace uno o el
-                otro, no los dos. Ya entregaste {{ otro }} y sus puntos están contados.
-              </p>
-            } @else if (!hecha(a.id) && alternativaDe(a); as otro) {
-              <!-- Decirlo **antes** de que elija, no después de que cobre: es la
-                   diferencia entre una regla y una sorpresa. Y solo antes: sobre una
-                   tarjeta ya «Completada», «elige el que puedas hacer» le pide una
-                   decisión que ya tomó. -->
-              <p class="chico suave" style="margin-top:8px">
-                Alternativa de <strong>{{ otro }}</strong>: al entregar uno, el otro se
-                cierra. Elige el que puedas hacer.
-              </p>
-            } @else if (esOpcional(a) && !hecha(a.id)) {
-              <p class="chico suave" style="margin-top:8px">
-                No entra en ninguna nota. Es para quien terminó y quiere más.
-              </p>
-            }
-            @if (!hecha(a.id) && leyendaPlazo(a); as aviso) {
-              <p class="chico" style="margin-top:8px" [class.suave]="enPlazo(a)">{{ aviso }}</p>
-            }
-
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap">
-              <!-- Sin plazo o dentro de él vale lo que dice; fuera vale cero, y
-                   anunciar los 100 puntos que ya no se pagan sería mentirle. -->
-              <span class="insignia" [class.celeste]="enPlazo(a)">
-                {{ hecha(a.id) || enPlazo(a) ? a.puntos : 0 }} puntos
-              </span>
-              @if (hecha(a.id); as r) {
-                <a class="boton contorno chico" [routerLink]="ruta(a)">Ver mi resultado</a>
-              } @else if (falta(a); as req) {
-                <!-- Sin enlace: ofrecer «Empezar» sobre algo cerrado es prometer
-                     una puerta que no abre. El candado real está en la base; esto
-                     solo evita el viaje en falso. -->
-                <span class="chico suave">Termina {{ req }} para desbloquearlo</span>
-              } @else if (cerradoPor(a); as otro) {
-                <span class="chico suave">Elegiste {{ otro }}</span>
-              } @else {
-                <a class="boton accion chico" [routerLink]="ruta(a)">Empezar</a>
-              }
-            </div>
-
-            @if (hecha(a.id); as r) {
-              <p class="chico suave" style="margin-top:12px">
-                Entregada el {{ r.completada_en | date:'dd/MM/yyyy' }}
-              </p>
             }
           </div>
-        }
-      </div>
+        </details>
+      }
     }
   `,
 })
@@ -126,7 +137,13 @@ export class ActividadesComponent {
   private resultados = signal<Resultado[]>([]);
   /** El candado de cada laboratorio, por código. Las demás actividades no tienen. */
   private candados = signal<Map<string, EstadoLaboratorio>>(new Map());
+  private experiencias = signal<string[]>([]);
   cargando = signal(true);
+
+  grupos = computed(() =>
+    agruparPorExperiencia(this.actividades(), this.experiencias())
+      .map(g => ({ ...g, completadas: g.items.filter(a => this.porActividad().has(a.id)).length })));
+  enCurso = computed(() => experienciaEnCurso(this.grupos()));
 
   private porActividad = computed(() => {
     const mapa = new Map<string, Resultado>();
@@ -166,14 +183,16 @@ export class ActividadesComponent {
     this.cargando.set(true);
     try {
 
-      const [acts, res, labs] = await Promise.all([
+      const [acts, res, labs, experiencias] = await Promise.all([
         this.datos.actividades(ramo),
         this.datos.resultados(ramo.matricula_id),
         this.datos.estadoLaboratorios(ramo.matricula_id),
+        this.datos.experiencias(ramo),
       ]);
       this.actividades.set(acts);
       this.candados.set(new Map(labs.map(l => [l.codigo, l])));
       this.resultados.set(res);
+      this.experiencias.set(experiencias);
     } finally {
       this.cargando.set(false);
     }

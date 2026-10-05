@@ -26,10 +26,13 @@
  *
  * Opcionales: --orden N  --descripcion "…"  --abrir N  --actividad N
  *             --terminar N  --publicar-en "2026-08-17T08:30:00-04:00"
+ *             --experiencia N (EA1, EA2…: el grupo en que aparece. Si no se da,
+ *                              al volver a subir se conserva la que ya tenía)
  *             --seco (no sube ni escribe: solo informa lo que haría)
  */
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
+import { createHash } from 'node:crypto';
 import { put } from '@vercel/blob';
 import { neon } from '@neondatabase/serverless';
 
@@ -108,6 +111,12 @@ if (faltan.length) {
   process.exit(1);
 }
 
+const experiencia = args.experiencia === undefined ? null : Number(args.experiencia);
+if (experiencia !== null && !/^[1-9]$/.test(String(args.experiencia))) {
+  console.error(`--experiencia ${args.experiencia}: va un número de 1 a 9 (EA1 → 1).`);
+  process.exit(1);
+}
+
 const html = await readFile(args.archivo, 'utf8');
 const slides = posicionesDeSlides(html);
 const { pauta, choques } = leerPauta(html, slides);
@@ -138,7 +147,14 @@ const nombre = args.titulo || titulo(html) || args.codigo;
 // El piso ya no niega el término: solo lo posterga. Ver 0008.
 const SEGUNDOS_POR_SLIDE = 8;
 const segundosMinimos = Number(args['segundos-minimos'] ?? slides.length * SEGUNDOS_POR_SLIDE);
-const ruta = `clases/${args.sigla}/${args.periodo}/${args.codigo}.html`;
+// La ruta lleva el hash del contenido. El CDN de Blob guarda cada ruta un año
+// (`cacheControlMaxAge` de abajo) y sobrescribirla no lo invalida a tiempo: el
+// D7 de DSY1107 se resubió con 29 diapositivas y `/api/clase` siguió sirviendo
+// la versión vieja. Con el hash, un deck corregido cae en una ruta nueva,
+// `clases.archivo` pasa a apuntarle, y el caché nunca puede servir uno viejo.
+// Resubir el mismo archivo da la misma ruta.
+const hash = createHash('sha256').update(html).digest('hex').slice(0, 12);
+const ruta = `clases/${args.sigla}/${args.periodo}/${args.codigo}-${hash}.html`;
 
 /**
  * «2026-09-17 08:30» en hora de Santiago → el instante real, en UTC.
@@ -183,6 +199,7 @@ console.log(`Actividades  ${actividades} quiz con pauta → llaves ${Object.keys
 console.log(`Mínimo       ${segundosMinimos} s para darla por terminada`);
 console.log(`Ruta blob    ${ruta}`);
 console.log(`Publicada    ${publicadaDesde ?? 'no (queda cargada y oculta)'}`);
+console.log(`Experiencia  ${experiencia ?? 'no viene · al resubir se conserva la que tenía'}`);
 
 if (args.seco) {
   console.log('\n--seco: no subí nada ni escribí en la base.');
@@ -197,7 +214,7 @@ const blob = await put(ruta, html, {
   contentType: 'text/html; charset=utf-8',
   addRandomSuffix: false,
   allowOverwrite: true,
-  cacheControlMaxAge: 31536000, // el contenido de una ruta dada no cambia; si cambia, se sobrescribe
+  cacheControlMaxAge: 31536000, // seguro solo porque la ruta cambia con el contenido; ver `ruta`
 });
 console.log(`\nSubido: ${blob.pathname}`);
 
@@ -208,14 +225,14 @@ const filas = await sql`
     asignatura_id, periodo_id, codigo, titulo, descripcion, orden, dictada_el,
     archivo, pauta, slides, actividades,
     puntos_abrir, puntos_actividad, puntos_terminar,
-    segundos_minimos, publicada_desde)
+    segundos_minimos, publicada_desde, experiencia)
   select a.id, p.id, ${args.codigo}, ${nombre}, ${args.descripcion ?? null},
          ${Number(args.orden ?? 0)}, ${args.dictada ?? null}::date,
          ${blob.pathname}, ${JSON.stringify(pauta)}::jsonb,
          ${slides.length}, ${actividades},
          ${Number(args.abrir ?? 5)}, ${Number(args.actividad ?? 10)},
          ${Number(args.terminar ?? 20)},
-         ${segundosMinimos}, ${publicadaDesde}::timestamptz
+         ${segundosMinimos}, ${publicadaDesde}::timestamptz, ${experiencia}::smallint
     from public.asignaturas a, public.periodos p
    where a.sigla = ${args.sigla} and p.codigo = ${args.periodo}
   on conflict (asignatura_id, periodo_id, codigo) do update
@@ -232,8 +249,9 @@ const filas = await sql`
         puntos_terminar = excluded.puntos_terminar,
         segundos_minimos = excluded.segundos_minimos,
         publicada_desde = excluded.publicada_desde,
+        experiencia = coalesce(excluded.experiencia, public.clases.experiencia),
         actualizada_en = now()
-  returning id, codigo, titulo, slides, actividades, publicada_desde`;
+  returning id, codigo, titulo, slides, actividades, publicada_desde, experiencia`;
 
 if (!filas.length) {
   console.error(`\nNo existe la asignatura ${args.sigla} en el periodo ${args.periodo}.`);

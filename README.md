@@ -184,6 +184,18 @@ Sin `--publicar` queda cargada y **oculta**: así el deck de la próxima semana 
 nadie lo vea antes de tiempo. `--publicar-en "2026-08-17T08:30:00-04:00"` la programa. `--seco` informa
 lo que haría sin subir ni escribir.
 
+**Ojo con los puntos por omisión: son 5/10/20**, los de un arranque corto como el L3A. Una clase de
+materia o un pre-laboratorio con contenido va con `--abrir 25 --terminar 55`. El L7A de Cloud Native se
+subió sin ellos, 28 alumnos la abrieron pagando 5, y hubo que abonar la diferencia a mano.
+
+`--experiencia N` la pone en el grupo de la EA*N* en la pantalla de Clases. Ver *Experiencias*, abajo.
+
+La ruta en Blob lleva el hash del contenido —`clases/DSY1107/2026-2/D7-9a0e638656c9.html`— y
+`clases.archivo` apunta a la última. El CDN guarda cada ruta un año y sobrescribirla no lo invalida a
+tiempo: el D7 de Cloud Native se resubió con 29 diapositivas y `/api/clase` siguió entregando la versión
+vieja. Con el hash, corregir un deck es volver a correr el script; la ruta vieja queda huérfana y nadie
+la lee.
+
 El script lee el deck para sacar dos cosas que el navegador no debe decidir: **cuántas diapositivas**
 tiene y la **pauta de sus quiz**. La llave de la pauta es el índice de la diapositiva que contiene el
 quiz, porque así lo guarda el deck (`slides.indexOf(el.closest('.slide'))`). Si eso cambia en la
@@ -470,6 +482,24 @@ mal usado se estaba comiendo el 95% del enunciado sin quejarse.
 El enunciado se convierte a HTML y se parte en bloques **al subirlo**, no en el navegador: así el
 alumno no baja un intérprete de Markdown y, sobre todo, no hay que adivinar dónde va cada caja dentro
 del texto ya convertido.
+
+`experiencia: 2` en el encabezado lo pone en el grupo de la EA2 en la pantalla de Actividades.
+
+### Experiencias
+
+Clases y Actividades se muestran **agrupadas por experiencia de aprendizaje** —EA1, EA2, EA3, las del
+programa—, cada una plegable, con la experiencia en curso abierta y las anteriores cerradas. Con dieciséis
+semanas de material la lista plana obligaba a pasar por encima de toda la EP1 para llegar al laboratorio
+de la semana.
+
+Es una columna, `experiencia`, en `clases` y en `actividades`, y los nombres viven en `experiencias`
+(0041). **No se deduce de las fechas del pase**: en ITY1102 la EA2 empieza el 15 de septiembre y el pase
+2 el 28, y sus laboratorios no tienen plazo del que colgarse. Se escribe al subir; si no viene, volver a
+subir conserva la que había, igual que el plazo. Nula = fuera de toda experiencia —el diagnóstico de
+entrada—, y va primero bajo «Para empezar».
+
+Un deck o un laboratorio nuevo que se suba **sin** experiencia cae en «Para empezar», arriba de todo.
+No se pierde, pero se ve fuera de lugar: hay que pasarla siempre.
 
 ### El plazo: paga en su semana y no después
 

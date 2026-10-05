@@ -36,6 +36,12 @@
  * Si el .md no las trae, **no se pisa** lo que haya en el panel del docente. Para
  * quitar un plazo se vacían los dos campos allá.
  *
+ * ── La experiencia ──
+ *
+ * `experiencia: 2` en el encabezado pone el laboratorio en el grupo de la EA2 en
+ * la pantalla de actividades. Igual que el plazo: si no viene, se conserva la
+ * que ya tenía.
+ *
  * ── Lo que se verifica antes de subir ──
  *
  * Todo lo que el compilador junte en `problemas`, y además —ya en la base— las
@@ -94,6 +100,7 @@ if (meta.opcional === 'true' || meta.requiere || meta.excluye) {
 console.log(`Plazo      ${meta.desde || meta.hasta
   ? `${meta.desde ?? 'siempre'} → ${meta.hasta ?? 'siempre'} (hora local)`
   : 'no viene en el .md · se conserva el del panel'}`);
+console.log(`Experiencia ${meta.experiencia ?? 'no viene en el .md · se conserva la que tenía'}`);
 
 if (!args.escribir) {
   console.log('\nSin --escribir: no toqué la base.');
@@ -118,11 +125,13 @@ const hasta = aUtc(meta.hasta);
 
 const [act] = await sql`
   insert into public.actividades (asignatura_id, periodo_id, codigo, titulo, descripcion,
-                                  tipo, puntos, orden, activa, puntua_desde, puntua_hasta)
+                                  tipo, puntos, orden, activa, puntua_desde, puntua_hasta,
+                                  experiencia)
   values (${ambito.asignatura_id}, ${ambito.periodo_id}, ${meta.codigo}, ${meta.titulo},
           ${meta.descripcion ?? null}, 'laboratorio',
           ${Number(meta.puntos)}, ${Number(meta.orden ?? 0)}, true,
-          ${desde}::timestamptz, ${hasta}::timestamptz)
+          ${desde}::timestamptz, ${hasta}::timestamptz,
+          ${meta.experiencia ? Number(meta.experiencia) : null}::smallint)
   on conflict (asignatura_id, periodo_id, codigo) do update
     set titulo = excluded.titulo, descripcion = excluded.descripcion,
         puntos = excluded.puntos, orden = excluded.orden, activa = true,
@@ -135,7 +144,8 @@ const [act] = await sql`
         -- (Sin comillas invertidas en este comentario: va dentro de un template
         --  literal de JavaScript y una comilla invertida lo cerraría en la mitad.)
         puntua_desde = coalesce(excluded.puntua_desde, public.actividades.puntua_desde),
-        puntua_hasta = coalesce(excluded.puntua_hasta, public.actividades.puntua_hasta)
+        puntua_hasta = coalesce(excluded.puntua_hasta, public.actividades.puntua_hasta),
+        experiencia  = coalesce(excluded.experiencia,  public.actividades.experiencia)
   returning id, puntua_desde, puntua_hasta`;
 
 await sql`

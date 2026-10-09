@@ -23,10 +23,12 @@ for (const [codigo, m] of Object.entries(MECANICAS)) {
     asignatura: '{asignatura}', fuente: '{clase}',
   });
 
+  // `xp`, `activa` y `orden` no están en el `do update`: son del docente. La 0043
+  // ya dejó las cuatro plantillas nuevas en 75 XP, y volver a sembrar no las pisa.
   const [fila] = await sql`
     insert into public.mision_plantillas (codigo, nombre, mecanica, banda, instruccion, esquema, xp, activa, orden)
     values (${codigo}, ${m.nombre}, ${m.mecanica}, ${m.banda},
-            ${ejemplo}, ${JSON.stringify(m.esquema)}::jsonb, ${m.xp}, true, 1)
+            ${ejemplo}, ${JSON.stringify(m.esquema ?? {})}::jsonb, ${m.xp}, true, 1)
     on conflict (codigo) do update
       set nombre = excluded.nombre, mecanica = excluded.mecanica, banda = excluded.banda,
           instruccion = excluded.instruccion, esquema = excluded.esquema

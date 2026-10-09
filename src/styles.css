@@ -34,6 +34,129 @@
   --r:16px;
   --r-chico:10px;
   --lateral:248px;
+
+  /* ── Tokens semánticos ──
+     Lo que antes eran colores sueltos en los componentes. Cada uno existe porque
+     el mismo valor no sirve en los dos temas: el azul de marca es texto sobre
+     claro pero relleno con letra blanca, y en oscuro esas dos cosas se separan. */
+  --marca:#0D2679;            /* azul como RELLENO (botón, letra marcada, cabecera del pase) */
+  --marca-hover:#081A55;
+  --sobre-marca:#FFFFFF;      /* texto sobre --marca */
+  --celeste-profundo:#0680B0; /* final del degradado del pase: no cambia con el tema */
+  --sobre-celeste:#0D2679;    /* texto sobre el botón de acción */
+  --accion-hover:#0AA6E3;
+  --sobre-estado:#FFFFFF;     /* texto sobre verde/rojo sólidos (✓ y ✗ de las alternativas) */
+  --lateral-fondo:#0D2679;    /* la barra lateral es oscura en los dos temas */
+  --lateral-borde:transparent;
+  --campo:#FFFFFF;            /* fondo de inputs: dentro de una tarjeta, un paso más hundido */
+  --placeholder:#9CA3AF;
+  --velo:rgba(255,255,255,.94); /* barra de entrega pegajosa: semitransparente sobre la tarjeta */
+  --logo-placa:transparent;   /* el logo es azul marino: en oscuro necesita una placa clara */
+
+  /* Texto de estado: el color de estado a secas no alcanza contraste sobre su
+     propio fondo suave en claro, así que el texto lleva una variante más fuerte. */
+  --verde-texto:#15803D;
+  --amarillo-texto:#B45309;
+  --rojo-texto:#B91C1C;
+  --celeste-texto:#075985;
+  --alerta-texto:#8A4B08;
+  --parcial-borde:#D89A2A;
+  --parcial-icono:#B8791A;
+  --incompleto-icono:#0369A1;
+
+  /* Bloques de código del enunciado */
+  --codigo-fondo:#081A55;
+  --codigo-texto:#E8EEFF;
+
+  /* Podio del ranking */
+  --oro:#B7791F;
+  --plata:#6B7280;
+  --bronce:#9C5221;
+
+  /* Rarezas del gacha y sus insignias */
+  --rareza-comun:#64748B;
+  --rareza-poco-comun:#0E9F6E;
+  --rareza-rara:#2563EB;
+  --rareza-epica:#7C3AED;
+  --rareza-legendaria:#D97706;
+  --rareza-mitica:#DB2777;
+  --morada-suave:#EDE9FE;   --morada-texto:#5B21B6;
+  --dorada-suave:#FEF3C7;   --dorada-texto:#92400E;
+  --magenta-suave:#FCE7F3;  --magenta-texto:#9D174D;
+
+  color-scheme:light;
+}
+
+/* ============================================================
+   Modo oscuro
+   ------------------------------------------------------------
+   Se activa con data-tema="oscuro" en <html> (lo pone el script de index.html
+   antes de que arranque Angular y después lo mantiene TemaService). Sigue
+   siendo azul marino y no negro puro: el negro plano apaga la marca y hace que
+   las tarjetas «floten» sin borde. Escalera de superficies, de más hundido a
+   más elevado: --fondo < --campo < --blanco (tarjetas).
+   Contrastes (WCAG, calculados): --texto 15.6:1 sobre --fondo y 14:1 sobre
+   --blanco; --texto-suave 8:1 y 7.2:1; --azul (texto) 7.8:1 sobre --blanco.
+   --azul pasa a ser el azul CLARO que se lee como texto; el azul oscuro de
+   marca queda en --marca para los rellenos.
+   ============================================================ */
+:root[data-tema="oscuro"]{
+  color-scheme:dark;
+
+  --azul:#8DB1FF;
+  --celeste-oscuro:#4CC3F5;
+
+  --fondo:#0B1224;
+  --blanco:#141D36;
+  --campo:#0E1630;
+  --borde:#27345A;
+  --celeste-suave:#12304A;
+
+  --texto:#E6EBF7;
+  --texto-suave:#9DAAC6;
+
+  --verde:#3DD68C;      --verde-suave:#10382B;
+  --amarillo:#FBBF24;   --amarillo-suave:#3A2D0F;
+  --rojo:#F87171;       --rojo-suave:#3F1B24;
+
+  --sombra:0 1px 2px rgba(0,0,0,.40), 0 8px 24px rgba(0,0,0,.35);
+  --sombra-alta:0 2px 4px rgba(0,0,0,.45), 0 16px 40px rgba(0,0,0,.45);
+
+  --marca:#2947C2;
+  --marca-hover:#3556DA;
+  --sobre-estado:#06122B;
+  --lateral-fondo:#0A1640;
+  --lateral-borde:#1B2A57;
+  --placeholder:#7482A3;
+  --accion-hover:#3AC9FF;
+  --velo:rgba(20,29,54,.94);
+  --logo-placa:#EEF3FF;
+
+  --verde-texto:#3DD68C;
+  --amarillo-texto:#FBBF24;
+  --rojo-texto:#FCA5A5;
+  --celeste-texto:#8AD7FA;
+  --alerta-texto:#F8D58A;
+  --parcial-borde:#FBBF24;
+  --parcial-icono:#FBBF24;
+  --incompleto-icono:#4CC3F5;
+
+  --codigo-fondo:#070D1E;
+  --codigo-texto:#DCE4F8;
+
+  --oro:#F5C451;
+  --plata:#AEB9CF;
+  --bronce:#E0925A;
+
+  --rareza-comun:#94A3B8;
+  --rareza-poco-comun:#34D399;
+  --rareza-rara:#60A5FA;
+  --rareza-epica:#A78BFA;
+  --rareza-legendaria:#FBBF24;
+  --rareza-mitica:#F472B6;
+  --morada-suave:#2A1F4F;   --morada-texto:#C4B5FD;
+  --dorada-suave:#3A2D0F;   --dorada-texto:#FCD34D;
+  --magenta-suave:#43182F;  --magenta-texto:#F9A8D4;
 }
 
 *{ box-sizing:border-box; margin:0; padding:0; }
@@ -61,7 +184,8 @@ a:hover{ text-decoration:underline; }
 .aplicacion{ display:grid; grid-template-columns:var(--lateral) 1fr; min-height:100vh; }
 
 .lateral{
-  background:var(--azul);
+  background:var(--lateral-fondo);
+  border-right:1px solid var(--lateral-borde);
   padding:26px 18px;
   display:flex; flex-direction:column; gap:30px;
   position:sticky; top:0; height:100vh;
@@ -117,7 +241,7 @@ a:hover{ text-decoration:underline; }
   appearance:none; cursor:pointer;
 }
 .selector-ramo select:focus{ outline:2px solid rgba(255,255,255,.45); outline-offset:1px; }
-.selector-ramo option{ color:var(--texto); background:#fff; font-weight:500; }
+.selector-ramo option{ color:var(--texto); background:var(--blanco); font-weight:500; }
 
 /* ============================================================
    Tienda — la vitrina de canjes
@@ -233,9 +357,14 @@ a:hover{ text-decoration:underline; }
   font-size:12.5px; font-weight:600; padding:4px 11px; border-radius:999px;
 }
 .insignia.verde   { background:var(--verde-suave);    color:var(--verde); }
-.insignia.amarilla{ background:var(--amarillo-suave); color:#B45309; }
+.insignia.amarilla{ background:var(--amarillo-suave); color:var(--amarillo-texto); }
 .insignia.roja    { background:var(--rojo-suave);     color:var(--rojo); }
 .insignia.celeste { background:var(--celeste-suave);  color:var(--celeste-oscuro); }
+/* Variantes de rareza del gacha (épica, legendaria, mítica). Son globales y no
+   del componente porque dependen de tokens de tema, como las de arriba. */
+.insignia.morada { background:var(--morada-suave);  color:var(--morada-texto); }
+.insignia.dorada { background:var(--dorada-suave);  color:var(--dorada-texto); }
+.insignia.magenta{ background:var(--magenta-suave); color:var(--magenta-texto); }
 
 /* ============================================================
    Formularios
@@ -247,7 +376,7 @@ label > .etiqueta{ margin-bottom:0; }
 
 input, select{
   padding:12px 14px; font-size:15px; font-family:inherit;
-  color:var(--texto); background:var(--blanco);
+  color:var(--texto); background:var(--campo);
   border:1.5px solid var(--borde); border-radius:var(--r-chico);
   transition:border-color .12s, box-shadow .12s;
 }
@@ -255,28 +384,31 @@ input:focus, select:focus{
   outline:none; border-color:var(--celeste);
   box-shadow:0 0 0 3px rgba(14,186,253,.16);
 }
-input::placeholder{ color:#9CA3AF; }
+input::placeholder{ color:var(--placeholder); }
+/* Las áreas de texto no tenían estilo propio: en oscuro heredarían el blanco del
+   sistema, así que se les da el mismo fondo y color que a los inputs. */
+textarea{ color:var(--texto); background:var(--campo); }
 select:disabled{ background:var(--fondo); color:var(--texto-suave); }
 
 .boton{
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
-  background:var(--azul); color:#fff; border:none; border-radius:var(--r-chico);
+  background:var(--marca); color:var(--sobre-marca); border:none; border-radius:var(--r-chico);
   padding:13px 24px; font-size:15px; font-weight:600; font-family:inherit;
   cursor:pointer; text-decoration:none; transition:background .12s;
 }
-.boton:hover:not(:disabled){ background:var(--azul-900); text-decoration:none; }
+.boton:hover:not(:disabled){ background:var(--marca-hover); text-decoration:none; }
 .boton:disabled{ opacity:.45; cursor:not-allowed; }
 /* Acciones y avances usan el celeste, con texto azul para que se lea bien */
-.boton.accion{ background:var(--celeste); color:var(--azul); }
-.boton.accion:hover:not(:disabled){ background:#0AA6E3; }
+.boton.accion{ background:var(--celeste); color:var(--sobre-celeste); }
+.boton.accion:hover:not(:disabled){ background:var(--accion-hover); }
 .boton.contorno{ background:transparent; color:var(--azul); border:1.5px solid var(--borde); }
 .boton.contorno:hover:not(:disabled){ background:var(--fondo); border-color:var(--azul); }
 .boton.chico{ padding:9px 16px; font-size:13.5px; }
 
 .aviso{ border-radius:var(--r-chico); padding:13px 16px; font-size:14px; }
-.aviso.ok  { background:var(--verde-suave); color:#15803D; }
-.aviso.malo{ background:var(--rojo-suave);  color:#B91C1C; }
-.aviso.dato{ background:var(--celeste-suave); color:#075985; }
+.aviso.ok  { background:var(--verde-suave); color:var(--verde-texto); }
+.aviso.malo{ background:var(--rojo-suave);  color:var(--rojo-texto); }
+.aviso.dato{ background:var(--celeste-suave); color:var(--celeste-texto); }
 
 /* ============================================================
    Tablas
@@ -300,6 +432,12 @@ tr:last-child td{ border-bottom:none; }
 .acceso{ min-height:100vh; display:grid; place-items:center; padding:40px 20px; }
 .acceso .caja{ width:100%; max-width:420px; }
 .acceso .lockup{ display:block; height:44px; width:auto; margin:0 auto 26px; }
+/* Placa clara solo en oscuro: el «Pulso» del logo es azul marino y sobre el fondo
+   oscuro desaparece. Se compensa el margen para que la caja no se mueva. */
+:root[data-tema="oscuro"] .acceso .lockup{
+  box-sizing:content-box; padding:8px 18px; margin:-8px auto 18px;
+  border-radius:14px; background:var(--logo-placa);
+}
 
 /* ============================================================
    Preguntas de alternativa
@@ -359,14 +497,14 @@ tr:last-child td{ border-bottom:none; }
 }
 
 .op.marcada{ border-color:var(--azul); background:var(--celeste-suave); }
-.op.marcada .letra{ background:var(--azul); color:#fff; border-color:var(--azul); }
+.op.marcada .letra{ background:var(--marca); color:var(--sobre-marca); border-color:var(--marca); }
 
 /* Corregido: el color no va solo, la letra pasa a ✓ o ✗ */
 .op.correcta{ border-color:var(--verde); background:var(--verde-suave); }
-.op.correcta .letra{ background:var(--verde); border-color:var(--verde); color:#fff; font-size:0; }
+.op.correcta .letra{ background:var(--verde); border-color:var(--verde); color:var(--sobre-estado); font-size:0; }
 .op.correcta .letra::after{ content:'✓'; font-size:14px; }
 .op.fallada{ border-color:var(--rojo); background:var(--rojo-suave); }
-.op.fallada .letra{ background:var(--rojo); border-color:var(--rojo); color:#fff; font-size:0; }
+.op.fallada .letra{ background:var(--rojo); border-color:var(--rojo); color:var(--sobre-estado); font-size:0; }
 .op.fallada .letra::after{ content:'✗'; font-size:14px; }
 
 /* Ya corregido: deja de invitar al clic */
@@ -398,7 +536,7 @@ tr:last-child td{ border-bottom:none; }
 .barra-entrega{
   position:sticky; bottom:0; z-index:5;
   margin:0 -28px -26px; padding:18px 28px;
-  background:rgba(255,255,255,.94); backdrop-filter:blur(8px);
+  background:var(--velo); backdrop-filter:blur(8px);
   border-top:1px solid var(--borde);
   border-radius:0 0 var(--r) var(--r);
   display:flex; align-items:center; gap:18px; flex-wrap:wrap;
@@ -453,11 +591,11 @@ tr:last-child td{ border-bottom:none; }
   background:var(--fondo); color:var(--texto-suave);
 }
 .opcion-mision.elegida{ border-color:var(--azul); background:var(--celeste-suave); }
-.opcion-mision.elegida .letra{ background:var(--azul); color:#fff; }
+.opcion-mision.elegida .letra{ background:var(--marca); color:var(--sobre-marca); }
 .opcion-mision.correcta{ border-color:var(--verde); background:var(--verde-suave); }
-.opcion-mision.correcta .letra{ background:var(--verde); color:#fff; }
+.opcion-mision.correcta .letra{ background:var(--verde); color:var(--sobre-estado); }
 .opcion-mision.incorrecta{ border-color:var(--rojo); background:var(--rojo-suave); }
-.opcion-mision.incorrecta .letra{ background:var(--rojo); color:#fff; }
+.opcion-mision.incorrecta .letra{ background:var(--rojo); color:var(--sobre-estado); }
 
 /* ============================================================
    Movimiento
@@ -513,7 +651,7 @@ tr:last-child td{ border-bottom:none; }
 .pase-cabecera{
   display:flex; align-items:center; gap:20px; flex-wrap:wrap;
   padding:22px 24px; border-radius:var(--r);
-  background:linear-gradient(135deg, var(--azul) 0%, var(--azul-700) 55%, var(--celeste-oscuro) 100%);
+  background:linear-gradient(135deg, var(--marca) 0%, var(--azul-700) 55%, var(--celeste-profundo) 100%);
   color:#fff; box-shadow:var(--sombra-alta);
 }
 .pase-nivel{
@@ -599,9 +737,9 @@ tr:last-child td{ border-bottom:none; }
   flex:none; width:34px; text-align:right; font-weight:700;
   font-variant-numeric:tabular-nums; color:var(--texto-suave);
 }
-.puesto.podio-1 .lugar{ color:#B7791F; }
-.puesto.podio-2 .lugar{ color:#6B7280; }
-.puesto.podio-3 .lugar{ color:#9C5221; }
+.puesto.podio-1 .lugar{ color:var(--oro); }
+.puesto.podio-2 .lugar{ color:var(--plata); }
+.puesto.podio-3 .lugar{ color:var(--bronce); }
 /* `object-fit:cover` porque las caras de la colección son verticales —225×350—
    y sin esto se aplastaban a un cuadrado. Recorta en vez de deformar. */
 .puesto img{

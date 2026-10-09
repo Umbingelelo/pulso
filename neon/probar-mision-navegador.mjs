@@ -62,9 +62,25 @@ try {
   await p.evaluate(()=>[...document.querySelectorAll('button')]
     .find(b=>b.textContent.trim()==='Generar mi misión')?.click());
   let ops = 0;
-  for (let i=0;i<90;i++){ ops = await p.evaluate(()=>document.querySelectorAll('.opcion-mision').length);
+  for (let i=0;i<90;i++){
+    ops = await p.evaluate(()=>document.querySelectorAll('.opcion-mision, .par, .afirmacion, textarea.desarrollo').length);
     if (ops) break; await new Promise(r=>setTimeout(r,1000)); }
   console.log(`   tardó ${((Date.now()-t0)/1000).toFixed(1)}s`);
+  // Desde la 0043 la mecánica la sortea el servidor. Esta prueba es la del quiz; las
+  // otras cuatro las cubre `probar-misiones-variadas-navegador.mjs`, que siembra la
+  // misión en vez de pedirla y por eso no depende del sorteo.
+  const [{ codigo: mecanica }] = await d`select p.codigo from public.misiones m
+     join public.mision_plantillas p on p.id = m.plantilla_id where m.matricula_id=${mat.id}`;
+  if (mecanica !== 'quiz') {
+    console.log(`   hoy sorteó «${mecanica}»: el botón funcionó, y el resto de esta prueba es del quiz.`);
+    rev('el botón armó una misión', ops > 0, true);
+    rev('sin errores de JavaScript', errs, []);
+    await nav.close(); await rm(perfil,{recursive:true,force:true});
+    await d`delete from public.misiones where matricula_id=${mat.id}`;
+    await d`delete from public.movimientos_experiencia where matricula_id=${mat.id}`;
+    console.log(f===0 ? '\nTodo bien en el navegador (sin pasos del quiz).' : `\n${f} fallaron.`);
+    process.exit(f===0?0:1);
+  }
   rev('aparecieron las cuatro alternativas', ops, 4);
   rev('sin errores de JavaScript', errs, []);
   const preg = await p.evaluate(()=>document.querySelector('h2')?.textContent?.trim());

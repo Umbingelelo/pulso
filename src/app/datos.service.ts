@@ -196,15 +196,64 @@ export interface Mision {
   resuelta_en: string | null;
   acertada: boolean | null;
   intentos: number;
-  enunciado: {
-    mecanica: string;
-    termino: string | null;
-    fuente: string | null;
-    pregunta: string;
-    opciones: string[];
-  };
+  enunciado: EnunciadoMision;
   /** Nula hasta que la responde. Después, la pauta que ya tiene derecho a ver. */
-  solucion: { tipo: string; correcta: string; explicacion: string } | null;
+  solucion: SolucionMision | null;
+}
+
+/**
+ * Lo que ve el alumno de la misión. Cada mecánica llena lo suyo: `opciones` es del
+ * quiz y del diagrama, `afirmaciones` del verdadero/falso, `terminos` y
+ * `definiciones` del emparejar, `nodos`/`flechas`/`titulo` del diagrama y los
+ * topes de caracteres del desarrollo. Nunca trae la pauta.
+ */
+export interface EnunciadoMision {
+  mecanica: string;
+  termino?: string | null;
+  fuente?: string | null;
+  pregunta: string;
+  opciones?: string[];
+  afirmaciones?: string[];
+  terminos?: string[];
+  definiciones?: string[];
+  titulo?: string;
+  /** Los pasos del diagrama, con `null` donde va el hueco. */
+  nodos?: (string | null)[];
+  flechas?: string[];
+  min_caracteres?: number;
+  max_caracteres?: number;
+}
+
+/**
+ * La pauta de una misión ya respondida. `respuesta` es lo que el alumno contestó
+ * (se guarda desde la 0043; las misiones anteriores no la traen).
+ */
+export interface SolucionMision {
+  tipo?: string;
+  /** Quiz y diagrama: índice de la opción correcta, como texto. */
+  correcta?: string;
+  explicacion?: string;
+  /** Diagrama: la etiqueta que iba en el hueco. */
+  paso?: string;
+  /** Verdadero/falso: 'v' o 'f' por afirmación, y por qué. */
+  respuestas?: ('v' | 'f')[];
+  porques?: string[];
+  /** Emparejar: para la definición `j`, el índice de su término. */
+  pares?: string[];
+  /** Desarrollo: la definición del docente y las ideas clave. */
+  definicion?: string;
+  criterios?: string[];
+  veredicto?: 'logrado' | 'parcial' | 'incompleto';
+  xp_ganada?: number;
+  respuesta?: string | string[];
+}
+
+/** Lo que devuelve `/api/mision-responder`. */
+export interface ResultadoMision {
+  acertada: boolean;
+  xp_ganada: number;
+  veredicto?: 'logrado' | 'parcial' | 'incompleto';
+  solucion: SolucionMision;
 }
 
 export interface EstadoMision {
@@ -502,6 +551,22 @@ export interface Canje {
   sigla: string;
   periodo_id: string;
   periodo: string;
+  /** Solo en los de la ruleta, una vez tirada. Llega cuando la Data API recarga su caché. */
+  ruleta_nota?: number | null;
+  ruleta_en?: string | null;
+}
+
+/** Un tramo de la rueda: la nota y su peso por mil. Ver `ruleta_tramos`, 0042. */
+export interface TramoRuleta {
+  nota: number;
+  peso: number;
+}
+
+/** Lo que devuelve `tirar_ruleta`: la nota ya decidida, los tramos con que se sorteó y el canje cerrado. */
+export interface ResultadoRuleta {
+  nota: number;
+  tramos: TramoRuleta[];
+  canje: { id: number; estado: EstadoCanje; ruleta_nota: number; comentario_docente: string };
 }
 
 /** Todo lo de un alumno en un ramo, tal como lo devuelve `ficha_alumno()`. */
@@ -1254,7 +1319,11 @@ export class DatosService {
     return this.pedir('/api/mision', { matricula: matriculaId });
   }
 
-  async responderMision(misionId: string, respuesta: Record<string, string>): Promise<any> {
+  /**
+   * `desarrollo` manda `{ texto }` y tarda unos segundos: lo corrige un modelo. Las
+   * demás mandan sus claves (`elegida`, `a0…`, `d0…`) y las corrige Postgres.
+   */
+  async responderMision(misionId: string, respuesta: Record<string, string>): Promise<ResultadoMision> {
     return this.pedir('/api/mision-responder', { mision: misionId, respuesta });
   }
 
@@ -1371,6 +1440,25 @@ export class DatosService {
       p_comentario: comentario?.trim() || null,
     });
     if (error) throw error;
+  }
+
+  // ---------- Ruleta de nota ----------
+  //
+  // Por `/api/docente` y no por la Data API, igual que el panel: la tabla y la
+  // función son nuevas y PostgREST no las vería por un rato. Ver la 0042.
+
+  /** Los tramos de la rueda, en el orden en que se dibujan: los mismos del sorteo. */
+  async tramosRuleta(): Promise<TramoRuleta[]> {
+    return await this.panel('ruleta-tramos') as TramoRuleta[];
+  }
+
+  /**
+   * El sorteo ocurre **acá**, en la base, y deja el canje entregado. La rueda de
+   * la pantalla solo anima hacia lo que esto devuelve.
+   */
+  async tirarRuleta(canjeId: number): Promise<ResultadoRuleta> {
+    const [fila] = await this.panel('tirar-ruleta', { canje: canjeId });
+    return fila.r as ResultadoRuleta;
   }
 
   // ---------- Puntos para evaluaciones ----------

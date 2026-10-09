@@ -7,6 +7,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Pulso — seguimiento de avance, puntos y planes de estudio.">
   <meta name="theme-color" content="#0D2679">
+  <!-- El tema se decide ANTES de que cargue el CSS y Angular: si se esperara a
+       TemaService, el modo oscuro empezaría con un destello blanco en cada visita.
+       Misma lógica que tema.service.ts (clave 'pulso.tema'; sin elección manda el
+       sistema) y mismos colores de barra que COLOR_BARRA. -->
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('pulso.tema'); } catch (e) {}
+      if (t !== 'claro' && t !== 'oscuro') {
+        t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'oscuro' : 'claro';
+      }
+      document.documentElement.setAttribute('data-tema', t);
+      document.querySelector('meta[name="theme-color"]')
+        .setAttribute('content', t === 'oscuro' ? '#0B1224' : '#0D2679');
+    })();
+  </script>
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

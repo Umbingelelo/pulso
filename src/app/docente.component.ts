@@ -8,6 +8,7 @@ import {
   SeccionReunion, UsoDecimas, enPuntos, mensajeDeError,
 } from './datos.service';
 import { DocenteStore } from './docente.store';
+import { RuletaComponent } from './ruleta.component';
 
 /**
  * La vista del docente, acotada a lo que dicta.
@@ -25,7 +26,7 @@ import { DocenteStore } from './docente.store';
  */
 @Component({
   selector: 'app-docente',
-  imports: [DatePipe, FormsModule, RouterLink],
+  imports: [DatePipe, FormsModule, RouterLink, RuletaComponent],
   template: `
     <div class="encabezado">
       <h1>Curso</h1>
@@ -229,8 +230,13 @@ import { DocenteStore } from './docente.store';
                 <td class="der num">{{ c.precio_pagado }}</td>
                 <td class="der num suave chico">{{ c.creado_en | date:'dd/MM' }}</td>
                 <td class="der" style="white-space:nowrap">
-                  <button class="boton chico" (click)="resolver(c, 'entregado')"
-                          [disabled]="resolviendo() === c.id">Entregar</button>
+                  @if (c.articulo_codigo === 'ruleta-nota') {
+                    <button class="boton accion chico" (click)="ruletaCanje.set(c)"
+                            [disabled]="resolviendo() === c.id">Tirar la ruleta</button>
+                  } @else {
+                    <button class="boton chico" (click)="resolver(c, 'entregado')"
+                            [disabled]="resolviendo() === c.id">Entregar</button>
+                  }
                   <button class="boton contorno chico" style="margin-left:6px"
                           (click)="rechazando.set(c.id)"
                           [disabled]="resolviendo() === c.id">Rechazar</button>
@@ -404,6 +410,10 @@ import { DocenteStore } from './docente.store';
         </div>
       }
     }
+
+    @if (ruletaCanje(); as c) {
+      <app-ruleta [canje]="c" (cerrar)="cerrarRuleta($event)" />
+    }
   `,
 })
 export class DocenteComponent {
@@ -440,6 +450,8 @@ export class DocenteComponent {
   cambiando = signal<string | null>(null);
   errorReunion = signal('');
   hechoReunion = signal('');
+  /** El canje de la ruleta que se está tirando; abre el modal a pantalla completa. */
+  ruletaCanje = signal<Canje | null>(null);
 
 
   /**
@@ -571,6 +583,12 @@ export class DocenteComponent {
     } finally {
       this.resolviendo.set(null);
     }
+  }
+
+  /** Cierra la ruleta y, si el canje se resolvió, recarga la bandeja. */
+  cerrarRuleta(recargar: boolean): void {
+    this.ruletaCanje.set(null);
+    if (recargar) void this.cargarRamo();
   }
 
   async resolverUso(u: UsoDecimas, estado: 'aplicado' | 'rechazado'): Promise<void> {

@@ -16,23 +16,22 @@
  *
  * Todo lo demás —el estado del botón, el término del día, releer la misión— va
  * con la identidad del alumno, donde el RLS ya hace el filtro que corresponde.
+ *
+ * ── Qué misión le toca ──
+ *
+ * No siempre un quiz: `elegirMecanica` sortea entre las plantillas **activas** con
+ * pesos que favorecen las baratas, y nunca repite la del día anterior (ver
+ * `lib/misiones.mjs`). Si la sorteada falla —el modelo no responde, o el concepto
+ * no se presta a un diagrama— se cae a `emparejar`, que no gasta nada, y después
+ * al quiz. Lo que se gastó en el intento fallido se suma a lo registrado: el
+ * costo de la misión es lo que de verdad costó.
  */
-import { neon } from '@neondatabase/serverless';
-import { cuerpo, json, mensajeDeError } from '../lib/db.mjs';
+import { cuerpo, json, mensajeDeError, sqlMisiones } from '../lib/db.mjs';
 import { comoUsuario } from '../lib/identidad.mjs';
 import { parsearCookies, leerRefresco } from '../lib/sesion.mjs';
-import { generar } from '../lib/misiones.mjs';
-
-const PLANTILLA = 'quiz';   // la única mecánica por ahora
-
-let _gen = null;
-function generador() {
-  if (!_gen) {
-    if (!process.env.DATABASE_URL_MISIONES) throw new Error('Falta DATABASE_URL_MISIONES');
-    _gen = neon(process.env.DATABASE_URL_MISIONES);
-  }
-  return _gen;
-}
+import { generar, elegirMecanica, respaldo } from '../lib/misiones.mjs';
+import { elegirPares } from '../lib/mecanicas/emparejar.mjs';
+import { ErrorModelo } from '../lib/openrouter.mjs';
 
 export default async function handler(req, res) {
   const usuarioId = await leerRefresco(parsearCookies(req));
@@ -85,13 +84,49 @@ export default async function handler(req, res) {
       });
     }
 
-    const hecha = await generar(PLANTILLA, ctx);
+    // Qué mecánicas se pueden hoy, y cuál fue la última del alumno. Una sola ida
+    // a la base: las plantillas activas (el docente puede apagar una sin
+    // desplegar), la mecánica de su misión anterior y los candidatos para emparejar.
+    const [rot] = await comoUsuario(usuarioId, (s) =>
+      s`select coalesce((select array_agg(codigo) from public.mision_plantillas where activa), '{}') as activas,
+               (select plantilla from public.mis_misiones
+                 where matricula_id = ${matricula}::uuid and tipo = 'diaria'
+                 order by fecha desc limit 1) as previa,
+               public.terminos_para_emparejar(${matricula}::uuid, 8) as candidatos`);
+    const activas = rot?.activas ?? [];
+    const hayModelo = !!process.env.OPENROUTER_API_KEY;
+    const hayPares = !!elegirPares(rot?.candidatos);
 
-    const g = generador();
+    let codigo = elegirMecanica({ activas, previa: rot?.previa ?? null, hayModelo, hayPares });
+    if (!codigo) {
+      return json(res, 503, { error: 'Hoy no hay misiones disponibles. Inténtalo más tarde.' });
+    }
+
+    const base = { ...ctx, candidatos: rot?.candidatos ?? [] };
+    let perdidos = { tokens: 0, costo: 0 };
+    let hecha;
+    try {
+      hecha = await generar(codigo, base);
+    } catch (e) {
+      if (!(e instanceof ErrorModelo)) throw e;
+      perdidos = { tokens: e.tokens ?? 0, costo: e.costo ?? 0 };
+      const alterna = respaldo({ falló: codigo, activas, hayPares, hayModelo });
+      console.warn('mision: falló', codigo, '→', alterna ?? 'sin respaldo', e.message, e.detalle ?? '');
+      if (!alterna) throw e;
+      codigo = alterna;
+      hecha = await generar(alterna, base);
+    }
+
+    const tokens = hecha.tokens + perdidos.tokens;
+    const costoUsd = hecha.costo + perdidos.costo;
+    console.log('mision', JSON.stringify({ mecanica: hecha.mecanica, tokens, costo_usd: +costoUsd.toFixed(6) }));
+
+    const g = sqlMisiones();
     await g`select public.mision_registrar(
-              ${matricula}::uuid, ${PLANTILLA}, 'diaria',
+              ${matricula}::uuid, ${hecha.mecanica}, 'diaria',
               ${JSON.stringify(hecha.enunciado)}::jsonb,
-              ${JSON.stringify(hecha.solucion)}::jsonb, 'modelo')`;
+              ${JSON.stringify(hecha.solucion)}::jsonb, ${hecha.origen},
+              ${tokens}::integer, ${costoUsd}::numeric)`;
 
     // Se relee con la identidad del alumno: lo que se devuelve es exactamente lo
     // que él puede ver, sin la solución.

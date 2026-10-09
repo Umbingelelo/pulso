@@ -102,6 +102,19 @@ const ACCIONES = {
         ${d.activa !== false},
         ${d.puntuaDesde ?? null}::timestamptz,
         ${d.puntuaHasta ?? null}::timestamptz) as r`,
+
+  // ---------- Ruleta de nota ----------
+
+  /**
+   * Los tramos con los que se dibuja la rueda: los mismos que usa el sorteo. La
+   * tabla es nueva y la Data API no la vería por un rato, así que va por acá.
+   */
+  'ruleta-tramos': (s) =>
+    s`select nota::float8 as nota, peso from public.ruleta_tramos order by orden`,
+
+  /** El sorteo lo decide la base y deja el canje entregado; ver la 0042. */
+  'tirar-ruleta': (s, d) =>
+    s`select public.tirar_ruleta(${Number(d.canje)}::bigint) as r`,
 };
 
 /**

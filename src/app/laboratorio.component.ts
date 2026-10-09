@@ -152,7 +152,8 @@ import { PerfilStore } from './perfil.store';
             }
             @case ('aviso') {
               <aside class="nota" [class]="'nota ' + b.clase">
-                <svg viewBox="0 0 24 24" [innerHTML]="icono(iconoDeAviso(b.clase))"></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round" [innerHTML]="icono(iconoDeAviso(b.clase))"></svg>
                 <div [innerHTML]="confiar(b.html)"></div>
               </aside>
             }
@@ -316,7 +317,7 @@ import { PerfilStore } from './perfil.store';
       padding:1px 5px; font-size:13px;
     }
     :host ::ng-deep .enunciado pre{
-      background:var(--azul-900); color:#E8EEFF; border-radius:var(--r-chico);
+      background:var(--codigo-fondo); color:var(--codigo-texto); border-radius:var(--r-chico);
       padding:14px 16px; overflow-x:auto; font-size:13px; line-height:1.55; margin:14px 0;
       /* Un «pre» sin esto se estira hasta donde llegue su línea más larga y
          arrastra la página entera con él. Los laboratorios están llenos de
@@ -343,8 +344,8 @@ import { PerfilStore } from './perfil.store';
     .nota > div{ min-width:0; flex:1; }
     :host ::ng-deep .nota > div > :first-child{ margin-top:0; }
     :host ::ng-deep .nota > div > :last-child{ margin-bottom:0; }
-    .nota.alerta{ background:var(--amarillo-suave); color:#8A4B08; }
-    .nota.pista { background:var(--celeste-suave); color:#075985; }
+    .nota.alerta{ background:var(--amarillo-suave); color:var(--alerta-texto); }
+    .nota.pista { background:var(--celeste-suave); color:var(--celeste-texto); }
     .nota.ojo   { background:var(--fondo);         color:var(--texto); }
 
     .control{
@@ -384,10 +385,10 @@ import { PerfilStore } from './perfil.store';
     .sugerencia p{ margin:6px 0 0; line-height:1.6; }
     .sugerencia.logrado{ border-left-color:var(--verde); background:var(--verde-suave); }
     .sugerencia.logrado .cabeza svg{ color:var(--verde); }
-    .sugerencia.parcial{ border-left-color:#D89A2A; background:var(--amarillo-suave); }
-    .sugerencia.parcial .cabeza svg{ color:#B8791A; }
+    .sugerencia.parcial{ border-left-color:var(--parcial-borde); background:var(--amarillo-suave); }
+    .sugerencia.parcial .cabeza svg{ color:var(--parcial-icono); }
     .sugerencia.incompleto{ border-left-color:var(--celeste); background:var(--celeste-suave); }
-    .sugerencia.incompleto .cabeza svg{ color:#0369A1; }
+    .sugerencia.incompleto .cabeza svg{ color:var(--incompleto-icono); }
     .caja textarea.codigo{
       font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size:13px; line-height:1.55; white-space:pre; overflow-wrap:normal; overflow-x:auto;

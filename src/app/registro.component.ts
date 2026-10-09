@@ -1,13 +1,15 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { BotonTemaComponent } from './boton-tema.component';
 import { Asignatura, DatosService, Periodo, Seccion } from './datos.service';
 import { PerfilStore } from './perfil.store';
 
 @Component({
   selector: 'app-registro',
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, BotonTemaComponent],
   template: `
+   <app-boton-tema />
    <div class="acceso"><div class="caja">
     <img class="lockup" src="pulso-lockup.png" alt="Pulso">
     <div class="tarjeta">

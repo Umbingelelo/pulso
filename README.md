@@ -45,6 +45,12 @@ Por eso vive en `2026-02/Pulso`, al mismo nivel que las asignaturas y no dentro 
 - **Gacha con bolsas de puntos**: una de cada cuatro tiradas entrega puntos en vez de un cosmético
 - **Avisos por correo**: una vez al día, lo que espera al docente —canjes, décimas por aplicar,
   reuniones que quedaron encendidas—. Ver [Avisos por correo](#avisos-por-correo)
+- **Misión diaria variada**: cinco mecánicas —emparejar, verdadero o falso, completar un diagrama,
+  alternativas y desarrollo— sorteadas por alumno y por día, con tope de tokens. Ver
+  [Misión diaria](#misión-diaria)
+- **Ruleta de nota dentro de Pulso**: el docente la tira desde la bandeja de canjes y el servidor
+  sortea. Ver [Ruleta de nota](#ruleta-de-nota)
+- **Modo oscuro**, que sigue al sistema hasta que se elige. Ver [Modo oscuro](#modo-oscuro)
 
 En la hoja de ruta: avance por laboratorio y planes de estudio personales.
 
@@ -700,6 +706,233 @@ que una caja con un Enter contaba como respondida y dejaba entregar en blanco; y
 JavaScript sí lo considera vacío, así que la cuenta del docente y la del alumno no coincidían. Las dos
 salen ahora de `tiene_texto()`.
 
+## Misión diaria
+
+El botón «Generar mi misión» arma la misión del día en el momento, una por alumno y por día (`unique
+(matricula_id, fecha, tipo)`; el día cambia a las 23:59 de Santiago). Hasta la `0043` era siempre un quiz
+de cuatro alternativas, y el docente lo dijo con todas sus letras: es monótono, y los alumnos ya
+detectaron el patrón de que **la más larga es la correcta**. Ahora hay cinco mecánicas y se sortea una
+por alumno y por día.
+
+| Mecánica | Qué hace el alumno | Quién la escribe | Quién la corrige | Pago |
+|---|---|---|---|---|
+| `emparejar` | une 4 términos con sus 4 definiciones | **nadie**: salen tal cual del banco del docente | Postgres, determinista | 75 si las 4 |
+| `verdadero_falso` | marca 4 afirmaciones | el modelo, solo con la definición | Postgres, determinista | 75 si las 4 |
+| `diagrama` | completa el paso «?» de una cadena de 4 o 5 pasos | el modelo | Postgres, determinista | 75 |
+| `quiz` | una pregunta, cuatro alternativas | el modelo | Postgres, determinista | 75 |
+| `desarrollo` | responde en ≤ 600 caracteres con sus palabras | el modelo | **el modelo**, en el servidor | 75 / 37 / 0 |
+
+Cada mecánica es un archivo de `lib/mecanicas/` con la misma forma —esquema, instrucción, validador y
+armado— y se enchufa en el registro de `lib/misiones.mjs`. La corrección de las cuatro primeras es una
+rama del `case` de `mision_responder()`, contra una pauta que nunca baja al navegador (`misiones.solucion`
+no tiene grant para `pulso_app`; `mi_mision()` la entrega recién cuando la misión está resuelta). La
+rama `quiz` no cambió ni una línea.
+
+### La rotación
+
+`elegirMecanica()` sortea con estos pesos y **nunca repite la mecánica de la misión anterior del alumno**:
+
+| emparejar | verdadero_falso | diagrama | quiz | desarrollo |
+|---|---|---|---|---|
+| 25 | 20 | 20 | 20 | 15 |
+
+Los pesos favorecen lo barato: `emparejar` no gasta tokens y es la más frecuente; `desarrollo` gasta dos
+llamadas (redactar y corregir) y es la menos. Entran al sorteo solo las plantillas **activas**, así que
+apagar una no necesita despliegue: `update mision_plantillas set activa = false where codigo = 'diagrama'`.
+Lo que hoy no se puede hacer se descarta antes de sortear: sin `OPENROUTER_API_KEY` solo queda `emparejar`,
+y sin cuatro pares compatibles en el banco no sale `emparejar`.
+
+Si la mecánica sorteada falla —el proveedor no responde, o el modelo agota sus dos intentos sin pasar el
+validador, o el concepto no se presta a un diagrama— se cae a `emparejar` (cuesta cero) y, si tampoco
+alcanza, al quiz. Lo que se gastó en el intento fallido se **suma** a lo registrado: el costo de la misión
+es lo que costó de verdad. El botón no devuelve error por culpa del modelo mientras haya un banco que
+emparejar.
+
+### Presupuesto de tokens
+
+Medido contra el modelo real (`deepseek/deepseek-v4-flash`), con el contexto completo que arma
+`/api/mision` (curso, clase en curso, perfil), una misión por llamada, ocho llamadas por mecánica:
+
+| Mecánica | Tokens por misión | Costo (USD) | Tope de salida |
+|---|---|---|---|
+| `emparejar` | **0** | 0 | — |
+| `verdadero_falso` | ≈ 625 | ≈ 0,00009 | 500 |
+| `diagrama` | ≈ 610 | ≈ 0,00005 | 500 |
+| `quiz` | 590 – 850 | ≈ 0,00005 | 450 |
+| `desarrollo`: redactar | ≈ 665 | ≈ 0,00005 | 350 |
+| `desarrollo`: corregir | 530 – 670 | ≈ 0,00003 – 0,00004 | 250 |
+
+Con la rotación, la esperanza es de unos **550 tokens por misión** (≈ 0,00005 USD): treinta alumnos todos
+los días del semestre cuestan centavos. Ojo con lo que esto **no** dice: el quiz de antes ya era barato, así
+que la rotación no ahorra mucho respecto de «solo quiz». Lo que sí ahorra —y lo que importaba— es no
+descontrolarse, y eso lo hacen tres cosas:
+
+1. **Se apagó el razonamiento** (`reasoning: { enabled: false }` en `completar()` cuando la llama una misión).
+   El modelo piensa o no según el proveedor al que OpenRouter lo enrute: en algunos piensa por omisión, y
+   esos tokens se cobran como salida y cuentan contra `max_tokens`. Con el mismo prompt y tope de 500, **la
+   mitad de las respuestas llegaban vacías** (`finish_reason: length`, 500 tokens de pensamiento y ningún
+   JSON), y sin tope el pensamiento pasaba de 1.500 tokens para escribir 150. Con el razonamiento apagado,
+   cuatro de cuatro. Los laboratorios (`revision-lab`) **no** lo usan: ahí sí puede importar pensar, y no
+   se tocó.
+2. **`max_tokens` por mecánica** (`completar({ maxTokens })`), con holgura sobre lo que cada una pesa.
+3. **Prompt recortado**: el recorrido del alumno viaja con sus últimas 5 clases, no las 16, y el
+   verdadero/falso, que se corrige contra la definición, va sin el contexto del curso.
+
+Además `misiones.tokens` y `misiones.costo_usd` quedan escritos al registrar la misión (y `desarrollo` les
+suma la corrección). `costo()` ahora usa el `usage.cost` que informa OpenRouter: las constantes de antes
+daban 0,000045 contra 0,000069 cobrados. Sin grant para `pulso_app`; para mirarlo:
+
+```sql
+select p.codigo, count(*), round(avg(m.tokens)) tokens, round(sum(m.costo_usd), 4) usd
+  from misiones m join mision_plantillas p on p.id = m.plantilla_id
+ where m.tokens is not null group by 1 order by 4 desc;
+```
+
+### Contra los patrones que detectan los alumnos
+
+La queja era concreta, así que cada patrón tiene su defensa, y todas son **deterministas**: el prompt
+pide, pero el validador no confía en que el modelo cumpla.
+
+* **Quiz**: se rechaza si la correcta es la más larga por más de un 10% sobre la más larga de las
+  incorrectas (antes, por más de 1,6× el *promedio*, que dejaba pasar una correcta un 40% más larga que
+  las otras). Además, en el 40% de las generaciones —lo sortea el servidor— se le exige que la correcta
+  sea la **más corta**. En una muestra de once quices, la correcta fue la más larga en dos (dentro del
+  10%), la más corta en cuatro. El validador además prohíbe «siempre/nunca/únicamente» como delator, y la
+  posición de la correcta la decide el servidor al barajar (no el modelo; ver `quiz.mjs`).
+* **Verdadero/falso**: cuántas son verdaderas lo decide el servidor (1, 2 o 3, el 2 más seguido) y se
+  lo dice al modelo, para que no sea siempre dos y dos. Se rechaza si «siempre/nunca/solo…» está en dos o
+  más falsas y en ninguna verdadera, o si el largo promedio de las verdaderas se aleja más de ~45% del de
+  las falsas. Se corrige todo o nada: al azar paga 1 de 16.
+* **Diagrama**: el servidor sortea cuántos pasos y cuál se oculta —nunca el primero ni el último— antes de
+  llamar al modelo, y se lo dice por posición para que sus tres distractores sean *de ese paso*. Si trae 4 pasos cuando se
+  pidieron 5 se acepta igual mientras el oculto siga siendo interior, y una explicación larga se recorta
+  en vez de pagar otra llamada. Rige la
+  misma regla del 10% y ninguna opción puede ser 2,5 veces más larga que otra. Un distractor que repite un
+  paso ya visible se rechaza. Si el concepto no se presta a un flujo, el modelo puede decir `apto: false`
+  y no se reintenta: se cae a otra mecánica.
+* **Emparejar**: se tapa el término dentro de su propia definición («TLS es el protocolo que cifra…»
+  se empareja sola) y no se juntan dos pares donde una definición nombra al otro término. Al azar paga
+  1 de 24.
+
+### Por qué `desarrollo` paga XP con el veredicto de un modelo y los laboratorios no
+
+Es la decisión que más conviene dejar escrita. En `lib/revision-lab.mjs` el veredicto del modelo es una
+**sugerencia que nunca toca los puntos**, porque los puntos de laboratorio cuentan para la nota y una nota
+no se le delega a algo que se equivoca de vez en cuando. La experiencia de las misiones es **otra moneda**:
+alimenta el pase y el ranking, no la evaluación. Que un modelo se equivoque en 75 XP de pase es un error
+que el alumno ni nota; en una nota sería un reclamo. Por eso acá el veredicto sí paga:
+
+| Veredicto | Paga | `acertada` |
+|---|---|---|
+| `logrado` | 75 | sí |
+| `parcial` | 37 (la mitad, hacia abajo) | sí: «pagó algo» |
+| `incompleto` | 0 | no |
+
+El escalón existe para que un veredicto dudoso pese menos que uno limpio. Una consecuencia a tener en
+cuenta: con 75 por misión se llega al nivel 30 acertando 26 de 28; un `parcial` vale la mitad, así que
+quien responda desarrollo «a medias» varias veces se queda sin el margen de las dos misiones que se
+podían fallar.
+
+**Quién puede calificar.** El navegador nunca manda un veredicto: manda su texto a
+`/api/mision-responder`, que (1) con el rol `pulso_misiones` lee la pauta con `mision_pauta()` —la
+definición del docente y las ideas clave, que el alumno no puede leer antes de responder, y de paso
+comprueba que la misión es de ese usuario, de hoy, sin resolver y de desarrollo—, (2) le pide el veredicto
+al modelo y (3) lo anota con `mision_calificar()`. **Solo `pulso_misiones` puede ejecutar esas dos
+funciones**: si las ejecutara la app, un alumno con su propio token se pondría «logrado». Y
+`mision_responder()` —la que sí puede llamar— se niega a corregir esta mecánica. `mision_calificar` bloquea
+la fila (`for update`), así que dos envíos simultáneos no pagan doble, y el id de usuario que recibe sale de
+la cookie firmada ya verificada, no del cuerpo.
+
+**Si el modelo falla** (corte, 401, respuesta vacía, veredicto inutilizable), no se anota nada: la misión
+sigue sin responder, la pantalla conserva lo escrito y el alumno reenvía sin penalización
+(`503 { reintentable: true }`). Un corte del proveedor no se paga con una misión perdida.
+
+El texto del alumno va al modelo **entre marcas y como dato**, con la orden de ignorar instrucciones
+dentro de él. No es infalible y no tiene por qué serlo: lo peor que consigue quien lo engaña son 75 XP de
+pase. El mensaje se recorta a tres frases y el comentario del modelo se guarda junto con lo que escribió el
+alumno (`solucion.respuesta`, `veredicto`, `explicacion`), para que el docente pueda ver qué escribió
+cuando alguien reclama un veredicto. El tope de 240 caracteres por valor de `/api/mision-responder` sigue
+valiendo para todas las demás mecánicas; solo `respuesta.texto` pasa de ahí (a 600).
+
+### El tono, comprobado y no solo pedido
+
+En la primera corrida de navegador, la corrección de una respuesta sin sentido empezó con **«Weón, tu
+respuesta no tiene nada que ver…»** y siguió con «no cachai». Es el mismo tropiezo que tuvieron los
+laboratorios (ver [El mensaje no da la respuesta](#el-mensaje-no-da-la-respuesta)), y la causa era que
+la instrucción decía «español de Chile» a secas. Ahora `ESTILO` (`lib/mecanicas/comun.mjs`) pide tuteo
+sin voseo y prohíbe garabatos, apelativos y jerga, y además `problemasDeTono()` lo **comprueba**: en la
+generación de cualquier mecánica es un motivo de rechazo más del validador, y en la corrección de
+`desarrollo` gatilla un reintento con el motivo; si el modelo insiste, no se anota nada y el alumno
+reenvía. La regla en la instrucción baja la frecuencia; la comprobación es la que impide que llegue.
+
+### Qué se guarda, y qué no
+
+Antes no se guardaba lo que el alumno contestó. Para las mecánicas nuevas queda en
+`solucion.respuesta` (acotado a las claves que cada una espera: `mision_responder` la puede llamar
+cualquiera con su token y no hay razón para guardar un jsonb de tamaño libre). Sirve para que la pantalla,
+al recargar, marque **cuáles** de las cuatro parejas estaban mal y no solo cuáles eran las correctas. El
+quiz no lo guarda —su rama no cambió— y al recargar sigue mostrando la correcta sin marcar el error, como
+antes.
+
+### Compatible con lo que está publicado
+
+Como siempre, la base migra antes que el frontend (ver «La base migra antes que el frontend»). La `0043`
+no rompe lo desplegado:
+
+* `mision_registrar` ganó tokens y costo como una **segunda firma de ocho argumentos, sin valores por
+  omisión**; la de seis queda como envoltorio que llama a la nueva con nulos. Con omisiones, la llamada
+  de seis calzaría con las dos y Postgres la rechazaría por ambigua.
+* Las plantillas nuevas se insertan activas, pero nadie las sortea hasta que se despliegue la `/api/mision`
+  que rota; la publicada sigue pidiendo siempre `quiz`.
+* `contexto_mision` cuenta ahora también los cuatro términos de un emparejar como «ya preguntados»
+  (`enunciado.terminos`) y filtra los nulos. Sin el filtro, un solo nulo en el arreglo dejaba sin
+  candidatos a todo el banco: `x = any(array[null,'a'])` da nulo y `not nulo` es nulo.
+* `mis_misiones` y `mi_mision` no cambiaron, y las misiones viejas (quiz) siguen funcionando.
+
+### Datos del banco
+
+Con cuatro mecánicas más, la calidad del banco se nota más: una entrada como `scp — «imagina una
+herramienta de terceros que genera estadísticas de tu plataforma»` es una analogía de una diapositiva, no
+una definición, y el modelo escribe sobre ella lo que puede. Para `verdadero_falso` se le exige que las
+falsas lo sean también *en el mundo real*, no solo según la definición. El SQL de emparejar filtra lo que
+no se sostiene solo (menos de 25 o más de 200 caracteres, o que parta con viñeta o número); lo demás es
+curaduría del banco.
+
+### Cómo probarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/probar-misiones-variadas.mjs            # una misión real de cada mecánica; ~USD 0,0005
+node neon/probar-mision.mjs                       # el ciclo del quiz, que no cambió
+node neon/probar-mision-http.mjs                  # contra producción: ver nota
+```
+
+`probar-misiones-variadas.mjs` genera una misión de cada mecánica, responde mal y bien, comprueba el pago,
+que `pulso_app` **no** pueda calificar ni leer la pauta ni registrarse una misión, el fallo del modelo, el
+escalón 75/37/0, que la rotación no repita y que sin modelo caiga a `emparejar`; imprime los tokens
+medidos y limpia al alumno de prueba. Llama a los handlers de `api/` en el mismo proceso, con una cookie
+firmada con un secreto de prueba (los de producción son *Sensitive*).
+
+Para ver las pantallas **antes de desplegar**, `neon/servir-api-local.mjs` levanta `/api/mision` y
+`/api/mision-responder` con el código local y el proxy de `ng serve` les desvía solo esas dos rutas (el
+resto sigue yendo a producción; ver el encabezado del archivo):
+
+```bash
+node neon/servir-api-local.mjs &
+npx ng serve --proxy-config /tmp/proxy.json      # con "/api/mision" → localhost:3999 primero
+BASE=http://localhost:4200 TEMA=claro node neon/probar-misiones-variadas-navegador.mjs
+```
+
+La prueba de navegador siembra misiones armadas a mano (cero tokens), las responde mal y bien en cada
+mecánica, recarga y comprueba lo marcado, mira un celular, y deja capturas en `/tmp/misiones-*.png`.
+`probar-mision-http.mjs` y `probar-mision-navegador.mjs` apretan el botón de verdad, así que ya no saben
+qué mecánica les va a tocar: el primero arma la respuesta correcta de la que salga (y esperaba 25 XP,
+un número que quedó viejo con la `0039`; ahora lee los 75 de la plantilla), y el segundo, si no sale
+quiz, comprueba que el botón armó la misión y termina: el recorrido de las otras cuatro es el de
+`probar-misiones-variadas-navegador.mjs`, que siembra en vez de sortear. Corrida contra el proxy con la
+API local, `probar-mision-http` pasa con la rotación nueva (sacó `verdadero_falso` y `emparejar` en las
+dos corridas).
+
 ## Pase y ranking
 
 Un pase por evaluación parcial y por asignatura, de 30 niveles. La experiencia sale **solo de las
@@ -1074,6 +1307,104 @@ Con la cuenta de prueba: la escalada por artículo, que se cobre lo que muestra 
 usar, no pasarse del saldo, cancelar, rechazar y aplicar, y que nadie inserte en `usos_decimas` a mano.
 Borra lo que creó al terminar.
 
+## Ruleta de nota
+
+«No dar la prueba y tirar la ruleta» (`ruleta-nota`, 1.800 puntos) promete un sorteo: **50 %** un 1,0 ·
+**40 %** un 4,0 · **9 %** un 5,0 · **0,8 %** un 6,0 · **0,2 %** un 7,0. Hasta la `0042` el docente lo
+resolvía con una ruleta de una página externa —casi ninguna admite pesos— y escribía el resultado a mano
+en «Entregar». Eso no deja registro, no se puede verificar y ofrece la tentación de «girar hasta que salga
+lo que quiero». Ahora se tira dentro de Pulso: en **Curso → Canjes por resolver**, el botón de un canje de
+la ruleta no dice *Entregar* sino **Tirar la ruleta**, y abre una rueda a pantalla completa para proyectar.
+
+### El servidor decide, la rueda solo lo muestra
+
+Al apretar **¡Girar!** lo primero que ocurre es `tirar_ruleta(canje)`, que sortea **en la base** y deja el
+canje `entregado` con la nota guardada, todo en la misma transacción. Recién con la nota ya decidida la
+rueda gira unos 5 segundos y frena en un punto al azar **dentro** del tramo que salió. Consecuencias:
+
+- Cerrar la pestaña a mitad de la animación no cambia nada: el sorteo ya ocurrió y el canje ya no está
+  `solicitado`, así que no hay forma de «volver a girar».
+- El alumno ve el resultado en su tienda como respuesta del docente («La ruleta salió 4,0 · se aplica a
+  «Para la Evaluación Parcial 2»») y queda además en `canjes.ruleta_nota` / `ruleta_en` (y al final de
+  `canjes_detalle`).
+- Con `prefers-reduced-motion` la rueda no gira: muestra la nota de una vez.
+
+### Pesos por mil, en tabla
+
+`ruleta_tramos(nota, peso, orden)` guarda **500 · 400 · 90 · 8 · 2**: suman 1000, así que cada porcentaje
+es exacto y el 0,2 % es un entero. El sorteo (`ruleta_sortear()`) usa el mismo mecanismo que el gacha: **un**
+`random()` escalado al total, fuera de la comparación. La rueda del navegador se dibuja con **esas mismas
+filas**, así que lo que se ve y lo que se sortea no pueden separarse.
+
+Las proporciones son las verdaderas, y eso tiene un costo visual: el 6,0 es una franja de menos de tres
+grados y el 7,0 de menos de uno. Se dejó así —esconderlo para que se vea más lindo sería otra forma de
+mentir— y la leyenda del costado dice cada porcentaje. `orden` es el de la rueda (1,0 · 6,0 · 4,0 · 7,0 ·
+5,0) y no el de las notas, para que las dos franjas finas no queden pegadas entre sí.
+
+Los colores salen de los tokens de `styles.css` (`--rojo`, `--celeste`, `--verde`, `--amarillo`,
+`--turquesa`), así que la rueda sigue sola al modo oscuro.
+
+### Una sola vez, y sin carreras
+
+`tirar_ruleta` solo la puede tirar un docente que vea esa matrícula, solo sobre un canje de `ruleta-nota`
+y solo si está `solicitado`. La fila se bloquea con `for update` **antes** de mirar el estado: dos clics o
+dos pestañas hacen cola y el segundo encuentra el canje ya entregado y falla. Sin el bloqueo ambos leerían
+«solicitado» y sortearían dos veces, quedándose el docente con el que más le gustara.
+
+Dos funciones viejas se reemplazaron (misma firma: el frontend desplegado las sigue llamando igual):
+
+- **`resolver_canje`** ya no entrega la ruleta: «entregado» o «aprobado» sobre un canje de `ruleta-nota`
+  falla con *La ruleta se resuelve tirándola*. Si no, el botón viejo —o un RPC directo— cerraría el canje
+  sin sorteo. **Rechazar** sigue valiendo y devuelve los puntos.
+- **`resolver_canje` y `cancelar_canje`** ganaron `for update` en la lectura del canje. Eran lecturas sin
+  bloqueo: si el docente giraba justo cuando el alumno cancelaba, ambas veían «solicitado» y el alumno
+  quedaba con la nota **y** con sus 1.800 puntos de vuelta.
+
+### Cómo llega la pantalla a la base
+
+Por `/api/docente`, acciones `ruleta-tramos` y `tirar-ruleta` (solo docentes: no están en `ABIERTAS`). Es
+la misma razón que el modo reunión: una tabla o función nueva no es visible para la Data API hasta que
+PostgREST recarga, y eso puede tardar quince minutos o más. Por conexión directa funciona apenas se aplica
+la migración. Las dos columnas nuevas de `canjes_detalle` sí dependen de la recarga (`node
+neon/refrescar-api.mjs`), pero nada las necesita todavía: el resultado llega en la respuesta de
+`tirar-ruleta`.
+
+Como siempre, **la migración va antes que el frontend**: la `0042` es aditiva y el frontend publicado
+sigue funcionando con ella puesta (el botón viejo «Entregar» de la ruleta pasa a fallar con un mensaje
+claro, que es lo que se quiere).
+
+### Probarlo
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/probar-ruleta.mjs
+```
+
+Con la cuenta de prueba, sobre canjes que crea y borra (los reales de la ruleta no se tocan, y lo
+comprueba al final): los tramos suman 1000; **20.000 sorteos** de `ruleta_sortear()` con cada frecuencia
+dentro de cinco desviaciones estándar de lo esperado (con dos, una corrida honesta fallaría una de cada
+veinte veces); el alumno no la tira ni pide sorteos sueltos; «Entregar» y «Aprobar» fallan; rechazar
+devuelve los puntos; un canje de otro artículo no se tira; el segundo giro falla; **dos giros simultáneos
+dejan exactamente uno**; y tirar contra cancelar nunca deja la nota y los puntos a la vez.
+
+La pantalla se prueba en un navegador real, pero **no contra producción**: la ruleta es del docente, cuya
+clave no está en el repositorio, y `/api` de producción no tiene `tirar-ruleta` hasta desplegar.
+
+```bash
+npx ng build --configuration development --output-path /tmp/pulso-dist
+node neon/probar-ruleta-navegador.mjs [/tmp/pulso-dist/browser] [carpeta-de-capturas]
+```
+
+Sirve el `dist` y **intercepta** `/api` y `/db` desde puppeteer: la sesión es falsa, las lecturas salen de
+la base de verdad (filtradas a los canjes de la prueba) y `tirar-ruleta` ejecuta las mismas consultas que
+`api/docente.mjs` con la identidad del docente. Una primera tanda **fuerza** la nota de la respuesta —1, 4,
+5, 6 y 7— para ver frenar la rueda en cada tramo, incluida la franja del 7,0; cada giro se verifica
+**leyendo el ángulo final** y calculando qué tramo quedó bajo el puntero. La segunda usa el sorteo real y
+comprueba que la pantalla muestra lo que guardó la base y que el canje sale de la bandeja. Después, el
+modo sin movimiento y los dos temas, con capturas. Lo único que no ejerce es el handler HTTP de
+`api/docente.mjs` (necesita la cookie firmada), que se probó aparte importándolo con una cookie de
+prueba.
+
 ## Modo reunión
 
 Hay bloques en que el profesor está en reunión y no puede atender consultas. Antes eso se avisaba de
@@ -1265,6 +1596,80 @@ mirando; es el mismo remedio escrito a mano.
 
 Las dos que necesitan el objeto completo —`clases` y `actividades`, que filtran por asignatura y
 periodo— lo leen con `untracked`, para depender del uuid y usar el ramo fresco.
+
+### Modo oscuro
+
+La app tiene un tema oscuro. No es una hoja de estilos aparte: son los mismos componentes con **otros
+valores para los mismos tokens** de `src/styles.css`. Si un componente usa `var(--blanco)` o
+`var(--texto)`, ya está resuelto en los dos temas sin tocarlo.
+
+**Dónde vive la preferencia.** En `localStorage`, clave `pulso.tema`, con dos valores posibles:
+`claro` u `oscuro`. Mientras la persona no apriete el botón no hay valor guardado y manda el sistema
+(`prefers-color-scheme`), que además se sigue en caliente si cambia. En cuanto elige, su elección gana
+sobre el sistema. Son dos estados guardados y la ausencia como «lo que diga el sistema»: un tercer botón
+«automático» lo usaría casi nadie. Si el almacenamiento está bloqueado (modo privado, permisos) el tema
+cambia igual durante la sesión y solo se pierde la preferencia, igual que con `pulso.ramo` en `perfil.store.ts`.
+
+**Quién lo aplica.** Dos piezas que repiten la misma lógica, a propósito:
+
+- Un script en línea en el `<head>` de `src/index.html` pone `data-tema` en `<html>` **antes** de que
+  cargue el CSS y arranque Angular. Si se esperara a Angular, cada visita en oscuro empezaría con un
+  destello blanco.
+- `TemaService` (`src/app/tema.service.ts`, un `signal`) toma el relevo: expone `tema()`, `alternar()` y
+  `elegir()`, sigue al sistema, se entera si otra pestaña cambia el tema y actualiza
+  `<meta name="theme-color">` (`#0D2679` en claro, `#0B1224` en oscuro). `App` lo inyecta para que
+  funcione en todas las pantallas.
+
+**Dónde está el botón.** En la barra lateral, encima de «Salir» (`marco.component.ts`), con
+`aria-pressed` y una etiqueta fija («Modo oscuro»); el ícono muestra a qué se cambia. En ingresar y
+registro, que no tienen barra lateral, `<app-boton-tema>` lo pone como un botón redondo en la esquina.
+
+**Los tokens.** `:root[data-tema="oscuro"]` redefine los de siempre (`--fondo`, `--blanco`, `--borde`,
+`--texto`, `--texto-suave`, `--celeste-suave`, los tres `--*-suave` de estado, `--sombra*`) y declara
+`color-scheme: dark`, para que inputs, selects y barras de desplazamiento nativos sigan al tema. La
+paleta es azul marino y no negro: el negro plano apaga la marca y las tarjetas quedan sin borde.
+Superficies, de más hundido a más elevado: `--fondo` `#0B1224` < `--campo` `#0E1630` < `--blanco`
+`#141D36` (tarjetas). Contrastes calculados: `--texto` 15,6:1 sobre `--fondo` y 14:1 sobre `--blanco`;
+`--texto-suave` 8:1 y 7,2:1.
+
+La decisión que más pesa: **`--azul` pasa a ser el azul claro que se lee como texto** (`#8DB1FF`). Antes
+`--azul` hacía dos trabajos —texto de títulos y enlaces, y relleno de botones—, y esos dos no
+caben en un mismo valor sobre fondo oscuro. El relleno se separó en `--marca` (+ `--marca-hover`,
+`--sobre-marca`). Lo mismo con el texto sobre estados sólidos (`--sobre-estado`) y con el celeste de acción
+(`--sobre-celeste`).
+
+Tokens que se agregaron porque había colores sueltos en los componentes que no sirven en los dos temas:
+
+| Token | Para qué |
+|---|---|
+| `--campo` | fondo de inputs, selects y textareas |
+| `--lateral-fondo`, `--lateral-borde` | barra lateral (oscura en los dos temas; en oscuro lleva un borde) |
+| `--velo` | barra de entrega pegajosa (blanco semitransparente) |
+| `--logo-placa` | el «Pulso» del logo es azul marino: en oscuro va sobre una placa clara |
+| `--verde-texto`, `--amarillo-texto`, `--rojo-texto`, `--celeste-texto`, `--alerta-texto` | texto de avisos e insignias sobre su fondo suave |
+| `--codigo-fondo`, `--codigo-texto` | bloques `<pre>` de los laboratorios |
+| `--oro`, `--plata`, `--bronce` | podio del ranking |
+| `--rareza-*`, `--morada-*`, `--dorada-*`, `--magenta-*` | tonos e insignias de rareza del gacha |
+| `--parcial-borde`, `--parcial-icono`, `--incompleto-icono` | sugerencias del laboratorio |
+
+**Regla para componentes nuevos:** colores solo con `var(--token)`. Un `#hex` o `rgba()` en un componente
+se ve bien en claro y se rompe en oscuro sin que nadie lo note hasta que alguien lo abre de noche.
+Si el valor no existe como token, se agrega en `:root` **y** en `:root[data-tema="oscuro"]`. En la
+barra lateral el blanco y los `rgba(255,255,255,…)` están bien, porque es oscura en los dos temas.
+
+Los mazos de clase (`/api/clase`) se abren en otra pestaña con su propio HTML y **no** siguen este tema.
+
+**Cómo probarlo.** Con el servidor de desarrollo de «Desarrollo» arriba:
+
+1. Abre `/ingresar`. Sin nada guardado debe verse como tu sistema; cambia el tema del sistema y debe
+   seguirlo sin recargar.
+2. Aprieta el botón de la esquina: el tema se invierte, `localStorage['pulso.tema']` queda guardado y
+   recargando se mantiene aunque el sistema diga otra cosa.
+3. Entra con la cuenta de prueba y recorre inicio, clases, actividades, tienda, gacha, pase, perfil,
+   puntos y un laboratorio en los dos temas. Fíjate en que no queden textos ilegibles (azul marino sobre
+   oscuro) ni cajas blancas.
+4. En consola, `document.documentElement.dataset.tema` dice cuál manda y
+   `document.querySelector('meta[name=theme-color]').content` debe cambiar con él.
 
 ## Desplegar
 

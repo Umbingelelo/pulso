@@ -16,6 +16,9 @@ let f = 0;
 const rev = (e, r, x) => { const ok = JSON.stringify(r) === JSON.stringify(x);
   if (!ok) f++; console.log(`  ${ok?'✓':'✗'} ${e}: ${JSON.stringify(r)}${ok?'':' ← esperaba '+JSON.stringify(x)}`); };
 
+// Lo que paga una misión es dato de la plantilla (75 desde la 0039), no de la prueba.
+const [{ xp: XP }] = await d`select xp from public.mision_plantillas where codigo = 'quiz'`;
+
 const [mat] = await d`select mt.id from public.matriculas mt
    join public.usuarios u on u.id=mt.perfil_id
    join public.secciones s on s.id=mt.seccion_id
@@ -53,11 +56,14 @@ rev('estado', res.status, 200);
 console.log(`   tardó ${((Date.now()-t0)/1000).toFixed(1)}s`);
 if (g.error) { console.log('   ✗', g.error); process.exit(1); }
 rev('la generó', g.generada, true);
-rev('cuatro alternativas', g.mision.enunciado.opciones.length, 4);
-rev('la pauta no viaja', 'correcta' in g.mision.enunciado || 'explicacion' in g.mision.enunciado, false);
-rev('el cuerpo entero no trae la solución', JSON.stringify(g).includes('"solucion"'), false);
+rev('la pauta no viaja', JSON.stringify(g.mision.enunciado).includes('"correcta"')
+  || JSON.stringify(g.mision.enunciado).includes('"explicacion"'), false);
+// Desde la 0033 `mi_mision` trae la clave `solucion`, pero en nulo mientras está pendiente.
+rev('la solución viaja en nulo mientras está pendiente', g.mision.solucion ?? null, null);
+// Desde la 0043 la mecánica la sortea el servidor: puede ser cualquiera de las cinco.
+const mec = g.mision.mecanica;
+console.log(`   mecánica del día: ${mec}`);
 console.log(`   ${g.mision.enunciado.pregunta}`);
-g.mision.enunciado.opciones.forEach((o,i)=>console.log(`     ${'abcd'[i]}) ${o.slice(0,72)}`));
 
 console.log('\n5. Apretarlo de nuevo no genera otra');
 const g2 = await (await fetch(`${BASE}/api/mision`, {method:'POST', headers:H, body:JSON.stringify({matricula:mat.id})})).json();
@@ -66,13 +72,28 @@ rev('es la misma', g2.mision.id, g.mision.id);
 
 console.log('\n6. Responder bien paga');
 const [sol] = await d`select solucion from public.misiones where id=${g.mision.id}`;
+const S = sol.solucion;
+/** La respuesta correcta de cada mecánica, leída de la pauta con el rol dueño. */
+const buena = {
+  quiz: () => ({ elegida: S.correcta }),
+  diagrama: () => ({ elegida: S.correcta }),
+  verdadero_falso: () => Object.fromEntries(S.respuestas.map((v, i) => [`a${i}`, v])),
+  emparejar: () => Object.fromEntries(S.pares.map((p, j) => [`d${j}`, p])),
+  desarrollo: () => ({ texto: `${S.definicion} En concreto: ${S.criterios.join('. ')}.` }),
+}[mec]();
 const rr = await (await fetch(`${BASE}/api/mision-responder`, {method:'POST', headers:H,
-  body: JSON.stringify({mision:g.mision.id, respuesta:{elegida: sol.solucion.correcta}})})).json();
-rev('acertada', rr.acertada, true);
-rev('experiencia', rr.xp_ganada, 25);
-rev('recién ahora ve la explicación', rr.solucion.explicacion.length > 10, true);
+  body: JSON.stringify({mision:g.mision.id, respuesta: buena})})).json();
+if (rr.error) { console.log('   ✗', rr.error); f++; }
+if (mec === 'desarrollo') {
+  // Lo corrige un modelo: logrado paga todo y parcial la mitad; con las ideas clave a la vista, uno de los dos.
+  rev('paga (logrado o parcial)', [XP, Math.floor(XP / 2)].includes(rr.xp_ganada), true);
+} else {
+  rev('acertada', rr.acertada, true);
+  rev('experiencia', rr.xp_ganada, XP);
+}
+rev('recién ahora ve la pauta', !!rr.solucion, true);
 const [xp] = await d`select coalesce(sum(xp),0)::int x from public.movimientos_experiencia where matricula_id=${mat.id}`;
-rev('experiencia anotada', xp.x, 25);
+rev('experiencia anotada', xp.x, rr.xp_ganada);
 
 console.log('\n7. Responder dos veces se rechaza');
 const dos = await (await fetch(`${BASE}/api/mision-responder`, {method:'POST', headers:H,

@@ -79,7 +79,7 @@ import { PerfilStore } from './perfil.store';
 
                 @if (c.ventana_hasta && !c.terminada_en) {
                   @if (c.en_ventana) {
-                    <p class="chico" style="margin-top:10px;color:var(--ok,#3fb950)">
+                    <p class="chico" style="margin-top:10px;color:var(--verde-texto)">
                       <strong>Puntos completos</strong> hasta el
                       {{ c.ventana_hasta | date:'dd/MM' }} a las
                       {{ c.ventana_hasta | date:'HH:mm' }}.
@@ -98,9 +98,9 @@ import { PerfilStore } from './perfil.store';
 
                 @if (c.abierta) {
                   <div style="margin-top:16px">
-                    <div style="height:6px;border-radius:99px;background:rgba(255,255,255,.09);overflow:hidden">
+                    <div style="height:6px;border-radius:99px;background:var(--borde);overflow:hidden">
                       <div [style.width.%]="avance(c)"
-                           style="height:100%;background:var(--acento, #2f81f7);transition:width .3s"></div>
+                           style="height:100%;background:var(--celeste);transition:width .3s"></div>
                     </div>
                     <p class="chico suave" style="margin-top:8px">
                       Vas en la diapositiva {{ (c.slide_max ?? 0) + 1 }} de {{ c.slides }}

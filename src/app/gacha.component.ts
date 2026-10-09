@@ -207,12 +207,12 @@ import { PerfilStore } from './perfil.store';
        Un color por nivel, y la mítica en magenta y no en otro dorado: si
        legendaria y mítica comparten familia, de un vistazo no se distinguen y el
        premio más raro del pozo deja de sentirse raro. */
-    .sobre, .premio{ --tono:#64748B; --brillo:0; }
-    [data-rareza="poco_comun"]{ --tono:#0E9F6E; --brillo:.15; }
-    [data-rareza="rara"]      { --tono:#2563EB; --brillo:.3; }
-    [data-rareza="epica"]     { --tono:#7C3AED; --brillo:.5; }
-    [data-rareza="legendaria"]{ --tono:#D97706; --brillo:.75; }
-    [data-rareza="mitica"]    { --tono:#DB2777; --brillo:1; }
+    .sobre, .premio{ --tono:var(--rareza-comun); --brillo:0; }
+    [data-rareza="poco_comun"]{ --tono:var(--rareza-poco-comun); --brillo:.15; }
+    [data-rareza="rara"]      { --tono:var(--rareza-rara); --brillo:.3; }
+    [data-rareza="epica"]     { --tono:var(--rareza-epica); --brillo:.5; }
+    [data-rareza="legendaria"]{ --tono:var(--rareza-legendaria); --brillo:.75; }
+    [data-rareza="mitica"]    { --tono:var(--rareza-mitica); --brillo:1; }
 
     .sobre{
       position:relative; overflow:hidden;
@@ -319,12 +319,8 @@ import { PerfilStore } from './perfil.store';
     .pieza.del-pase{ border-style:dashed; }
     .solo-pase{
       padding:2px 7px; border-radius:20px; font-weight:600;
-      background:var(--celeste-suave); color:#075985;
+      background:var(--celeste-suave); color:var(--celeste-texto);
     }
-
-    .insignia.morada { background:#EDE9FE; color:#5B21B6; }
-    .insignia.dorada { background:#FEF3C7; color:#92400E; }
-    .insignia.magenta{ background:#FCE7F3; color:#9D174D; }
 
     /* Sin movimiento: se conserva el color, que es la información, y se quita el
        movimiento, que es el adorno. El premio aparece igual y en el acto. */

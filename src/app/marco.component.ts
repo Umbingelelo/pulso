@@ -1,5 +1,5 @@
-import { Component, computed, effect, inject } from '@angular/core';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AvatarService } from './avatar.service';
 import { DatosService } from './datos.service';
 import { DocenteStore } from './docente.store';
@@ -10,16 +10,45 @@ import { TemaService } from './tema.service';
 /**
  * Estructura de las pantallas con sesión: barra lateral azul a la izquierda,
  * contenido sobre fondo gris claro a la derecha.
+ *
+ * En el celular (≤ 640 px) la barra lateral no cabe ni como riel de íconos: le
+ * quitaba un quinto del ancho a un teléfono de 390 px y, con trece entradas, en
+ * una pantalla baja dejaba «Salir» y el tema fuera de alcance. Ahí pasa a ser
+ * un cajón que se abre desde una barra superior y se cierra al navegar.
  */
 @Component({
   selector: 'app-marco',
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <div class="aplicacion">
-      <aside class="lateral">
+      <header class="barra-movil">
+        <button type="button" class="abrir-menu" (click)="menuAbierto.set(true)"
+                aria-label="Abrir menú" aria-controls="menu-lateral"
+                [attr.aria-expanded]="menuAbierto()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>
+          </svg>
+        </button>
+        <a class="marca" routerLink="/">
+          <img src="pulso-isotipo-96.png" alt="">
+          <span>Pulso</span>
+        </a>
+      </header>
+      <div class="velo-menu" [class.visible]="menuAbierto()" (click)="menuAbierto.set(false)"
+           aria-hidden="true"></div>
+
+      <aside class="lateral" id="menu-lateral" [class.abierta]="menuAbierto()">
         <div class="marca">
           <img src="pulso-isotipo-96.png" alt="Pulso">
           <span>Pulso</span>
+          <button type="button" class="cerrar-menu" (click)="menuAbierto.set(false)"
+                  aria-label="Cerrar menú">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+            </svg>
+          </button>
         </div>
 
         <nav class="menu">
@@ -266,8 +295,10 @@ import { TemaService } from './tema.service';
             </div>
           }
           <nav class="menu" style="margin-top:6px">
-            <button type="button" (click)="tema.alternar()" aria-label="Modo oscuro"
-                    [attr.aria-pressed]="tema.tema() === 'oscuro'"
+            <!-- La etiqueta dice a qué se cambia, igual que el ícono: con el texto
+                 fijo «Modo oscuro», en oscuro el botón parecía decir que no hacía nada. -->
+            <button type="button" (click)="tema.alternar()"
+                    [attr.aria-label]="tema.tema() === 'oscuro' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'"
                     [attr.title]="tema.tema() === 'oscuro' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'">
               @if (tema.tema() === 'oscuro') {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -281,7 +312,7 @@ import { TemaService } from './tema.service';
                   <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/>
                 </svg>
               }
-              <span>Modo oscuro</span>
+              <span>{{ tema.tema() === 'oscuro' ? 'Modo claro' : 'Modo oscuro' }}</span>
             </button>
             <button type="button" (click)="salir()">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -330,6 +361,9 @@ export class MarcoComponent {
   private avatares = inject(AvatarService);
   private router = inject(Router);
 
+  /** El cajón del menú en el celular. En pantallas anchas no se usa. */
+  menuAbierto = signal(false);
+
   /** El total del ramo, para que «Todas» diga cuántos son y no solo «Todas». */
   totalMatriculados = computed(() =>
     this.docente.secciones().reduce((n, s) => n + s.matriculados, 0));
@@ -348,6 +382,24 @@ export class MarcoComponent {
     // saldría vacío hasta que entrara a alguna sección.
     effect(() => {
       if (this.perfil.esDocente()) this.docente.cargar();
+    });
+
+    // El cajón se cierra al llegar a otra pantalla y con Escape; mientras está
+    // abierto, la página de atrás no se desplaza.
+    const navegacion = this.router.events.subscribe((e) => {
+      if (e instanceof NavigationEnd) this.menuAbierto.set(false);
+    });
+    const conEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') this.menuAbierto.set(false);
+    };
+    document.addEventListener('keydown', conEscape);
+    effect(() => {
+      document.body.style.overflow = this.menuAbierto() ? 'hidden' : '';
+    });
+    inject(DestroyRef).onDestroy(() => {
+      navegacion.unsubscribe();
+      document.removeEventListener('keydown', conEscape);
+      document.body.style.overflow = '';
     });
   }
 

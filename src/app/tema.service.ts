@@ -75,7 +75,15 @@ export class TemaService {
   }
 
   private aplicar(tema: Tema): void {
-    document.documentElement.setAttribute('data-tema', tema);
+    const raiz = document.documentElement;
+    if (raiz.getAttribute('data-tema') !== tema) {
+      // Sin transiciones mientras se repinta (ver `.tema-cambiando` en styles.css).
+      // Dos cuadros: en el primero el navegador aplica los colores nuevos, y recién
+      // en el segundo se pueden devolver las transiciones sin que animen el cambio.
+      raiz.classList.add('tema-cambiando');
+      requestAnimationFrame(() => requestAnimationFrame(() => raiz.classList.remove('tema-cambiando')));
+    }
+    raiz.setAttribute('data-tema', tema);
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', COLOR_BARRA[tema]);
   }
 }

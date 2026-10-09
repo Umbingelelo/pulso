@@ -1620,9 +1620,16 @@ cambia igual durante la sesión y solo se pierde la preferencia, igual que con `
   `<meta name="theme-color">` (`#0D2679` en claro, `#0B1224` en oscuro). `App` lo inyecta para que
   funcione en todas las pantallas.
 
-**Dónde está el botón.** En la barra lateral, encima de «Salir» (`marco.component.ts`), con
-`aria-pressed` y una etiqueta fija («Modo oscuro»); el ícono muestra a qué se cambia. En ingresar y
-registro, que no tienen barra lateral, `<app-boton-tema>` lo pone como un botón redondo en la esquina.
+**Dónde está el botón.** En la barra lateral, encima de «Salir» (`marco.component.ts`). La etiqueta
+dice **a qué se cambia** («Modo claro» estando en oscuro), igual que el ícono: con el texto fijo
+«Modo oscuro», en oscuro el botón parecía no hacer nada. En ingresar y registro, que no tienen barra
+lateral, `<app-boton-tema>` lo pone como un botón redondo en la esquina.
+
+**Al cambiar, sin transiciones por un cuadro.** `TemaService` pone `tema-cambiando` en `<html>` y la
+quita dos cuadros después; mientras está, `transition:none`. Sin eso, las tarjetas, botones y bordes
+que tienen `transition` se desvanecían a destiempo del fondo, que cambia de golpe, y la pantalla se
+veía a medio pintar. El logo de ingresar lleva `aspect-ratio`: sin él, en oscuro y sin caché, la placa
+clara se dibujaba vacía —una píldora blanca— hasta que llegaba el PNG.
 
 **Los tokens.** `:root[data-tema="oscuro"]` redefine los de siempre (`--fondo`, `--blanco`, `--borde`,
 `--texto`, `--texto-suave`, `--celeste-suave`, los tres `--*-suave` de estado, `--sombra*`) y declara
@@ -1670,6 +1677,23 @@ Los mazos de clase (`/api/clase`) se abren en otra pestaña con su propio HTML y
    oscuro) ni cajas blancas.
 4. En consola, `document.documentElement.dataset.tema` dice cuál manda y
    `document.querySelector('meta[name=theme-color]').content` debe cambiar con él.
+
+### La barra lateral en el celular
+
+Tres anchos, en `styles.css`:
+
+| Ancho | Barra |
+|---|---|
+| más de 900 px | lateral de 248 px con etiquetas |
+| 641–900 px | riel de íconos de 72 px |
+| hasta 640 px | barra superior con ☰; la lateral es un cajón que se abre encima |
+
+El riel servía en una tableta y no en un teléfono: le quitaba un quinto del ancho a uno de 390 px, y
+con trece entradas más el pie, en una pantalla baja (iPhone SE, 667 px) «Salir» y el tema quedaban
+bajo el borde sin forma de llegar, porque la barra mide `100vh` y no desplazaba. Ahora la lateral
+desplaza en todos los anchos (`overflow-y:auto`), y en el celular el cajón se cierra al navegar, con
+Escape, con la ✕ o tocando el velo, y bloquea el desplazamiento de la página de atrás mientras está
+abierto.
 
 ## Desplegar
 

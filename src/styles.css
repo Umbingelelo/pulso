@@ -189,6 +189,10 @@ a:hover{ text-decoration:underline; }
   padding:26px 18px;
   display:flex; flex-direction:column; gap:30px;
   position:sticky; top:0; height:100vh;
+  /* Trece entradas más el pie no caben en una pantalla baja: sin esto, «Salir»
+     y el botón del tema quedaban debajo del borde y no había cómo llegar. */
+  overflow-y:auto; overscroll-behavior:contain;
+  scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.2) transparent;
 }
 .lateral .marca{ display:flex; align-items:center; gap:11px; padding:0 8px; }
 .lateral .marca img{ height:34px; width:auto; }
@@ -289,7 +293,8 @@ a:hover{ text-decoration:underline; }
 .encabezado{ margin-bottom:26px; }
 .encabezado p{ color:var(--texto-suave); margin-top:3px; }
 
-@media (max-width:900px){
+/* Tableta: riel de íconos. */
+@media (min-width:641px) and (max-width:900px){
   .aplicacion{ grid-template-columns:72px 1fr; }
   .lateral{ padding:22px 12px; }
   .lateral .marca span, .menu a span, .menu button span, .usuario-lateral .datos{ display:none; }
@@ -297,6 +302,57 @@ a:hover{ text-decoration:underline; }
   /* En la barra angosta no cabe el desplegable: se cambia de ramo desde /ramos. */
   .selector-ramo{ display:none; }
   .contenido{ padding:24px 20px 48px; }
+}
+
+/* Celular: barra superior y la lateral como cajón (ver marco.component.ts). */
+.barra-movil, .velo-menu, .cerrar-menu{ display:none; }
+@media (max-width:640px){
+  .aplicacion{ display:block; }
+  .barra-movil{
+    display:flex; align-items:center; gap:6px;
+    position:sticky; top:0; z-index:30;
+    height:calc(56px + env(safe-area-inset-top)); padding:env(safe-area-inset-top) 10px 0;
+    background:var(--lateral-fondo); border-bottom:1px solid var(--lateral-borde);
+  }
+  .barra-movil .marca{ display:flex; align-items:center; gap:9px; color:#fff; text-decoration:none; }
+  .barra-movil .marca img{ height:28px; width:auto; }
+  .barra-movil .marca span{ font-size:18px; font-weight:700; letter-spacing:-.02em; }
+  .abrir-menu, .cerrar-menu{
+    width:44px; height:44px; flex:none; display:grid; place-items:center;
+    border:none; border-radius:var(--r-chico); background:none; color:#fff; cursor:pointer;
+  }
+  .abrir-menu:hover, .cerrar-menu:hover{ background:rgba(255,255,255,.09); }
+  .abrir-menu svg, .cerrar-menu svg{ width:24px; height:24px; }
+  .cerrar-menu{ display:grid; margin-left:auto; margin-right:-6px; }
+
+  .lateral{
+    position:fixed; top:0; left:0; bottom:0; z-index:50;
+    width:min(84vw, 300px); height:100dvh; gap:22px;
+    padding:calc(18px + env(safe-area-inset-top)) 14px calc(18px + env(safe-area-inset-bottom));
+    box-shadow:0 0 40px rgba(0,0,0,.35);
+    transform:translateX(-100%); visibility:hidden;
+    transition:transform .22s ease, visibility 0s linear .22s;
+  }
+  .lateral.abierta{ transform:none; visibility:visible; transition:transform .22s ease; }
+  .lateral .marca{ padding:0 4px 0 8px; }
+
+  .velo-menu{
+    display:block; position:fixed; inset:0; z-index:40;
+    background:rgba(3,8,24,.55); opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .velo-menu.visible{ opacity:1; pointer-events:auto; }
+
+  .contenido{ padding:20px 16px 48px; }
+}
+@media (max-width:640px) and (prefers-reduced-motion: reduce){
+  .lateral, .lateral.abierta, .velo-menu{ transition:none; }
+}
+
+/* Al cambiar de tema se apagan las transiciones por un cuadro: si no, las
+   tarjetas, botones y bordes que tienen `transition` se desvanecen a destiempo
+   del fondo, que cambia de golpe, y la pantalla se ve a medio pintar. */
+.tema-cambiando, .tema-cambiando *, .tema-cambiando *::before, .tema-cambiando *::after{
+  transition:none !important;
 }
 
 /* ============================================================
@@ -431,7 +487,9 @@ tr:last-child td{ border-bottom:none; }
    ============================================================ */
 .acceso{ min-height:100vh; display:grid; place-items:center; padding:40px 20px; }
 .acceso .caja{ width:100%; max-width:420px; }
-.acceso .lockup{ display:block; height:44px; width:auto; margin:0 auto 26px; }
+/* aspect-ratio fija el ancho antes de que la imagen cargue: sin él, en oscuro la
+   placa se dibujaba vacía (una píldora blanca) hasta que llegaba el PNG. */
+.acceso .lockup{ display:block; height:44px; width:auto; aspect-ratio:1384 / 497; margin:0 auto 26px; }
 /* Placa clara solo en oscuro: el «Pulso» del logo es azul marino y sobre el fondo
    oscuro desaparece. Se compensa el margen para que la caja no se mueva. */
 :root[data-tema="oscuro"] .acceso .lockup{

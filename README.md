@@ -420,6 +420,55 @@ rompe al girar, ningún número lo va a decir.
 la nómina del docente, que es el precio de tenerla: si molesta, `matriculas.activa = false` la saca de
 los promedios pero también la deja fuera de la prueba.
 
+## Minijuegos
+
+Los treinta minijuegos de repaso de la EP2 —quince por ramo, en `../Arquitectura_de_Sistemas_IA/Minijuegos/`
+y `../Desarrollo_Cloud_Native/Minijuegos/`— **son clases**: cumplen el contrato de un deck (una
+`<section class="slide">` por etapa, el avance en `localStorage` con la forma `{ modo, slide, respuestas }`
+y las preguntas de control como quiz con `data-correcta`), así que `/api/clase` los sirve, el rastreo los
+instrumenta y `abrir_clase` / `clase_registrar_avance` los pagan sin una línea nueva. Cada juego paga lo
+suyo y una sola vez, con los tres tramos de siempre.
+
+Lo único nuevo es `clases.tipo` (`'clase'` o `'minijuego'`, migración 0044), que las vistas `mis_clases`
+y `clases_que_dicto` exponen. Con eso **Clases** deja fuera los juegos y **Minijuegos** (`/minijuegos`)
+muestra solo los juegos, con el resumen del repaso arriba: cuántos terminó, cuántas preguntas de control
+acertó entre todos y cuántos puntos le quedan por ganar. Sin botón de descargar: los puntos son de jugarlo
+en Pulso. En `/curso/clases` aparecen con la insignia «Minijuego» y se programan igual que una clase.
+
+| Ramo | Juegos | Etapas | Preguntas | Abrir · pregunta · cierre | Por juego | Mínimo para el cierre |
+|---|---|---|---|---|---|---|
+| ITY1102 | MJ01–MJ15 | 5 | 3 | 10 · 10 · 30 | 70 | 300 s (lo pide su README) |
+| DSY1107 | MJ01–MJ15 | 8 | 2 (MJ03: 1) | 10 · 10 · 30 | 60 (MJ03: 50) | 64 s (8 por etapa) |
+
+Van en la experiencia 2 con `orden` 101–115 —después de toda la EA2, sin renumerar nada— y sin plazo.
+El movimiento en el historial dice «Abrió la clase MJ01 · …» porque lo escriben las funciones de las
+clases, que no se tocaron.
+
+```bash
+set -a; . ./.env.local; set +a
+node neon/subir-clase.mjs --archivo "../Arquitectura_de_Sistemas_IA/Minijuegos/MJ01-Turno-de-noche.html" \
+  --sigla ITY1102 --periodo 2026-2 --codigo MJ01 --titulo "Turno de noche" --descripcion "…" \
+  --orden 101 --experiencia 2 --tipo minijuego --abrir 10 --actividad 10 --terminar 30 \
+  --segundos-minimos 300 --publicar
+```
+
+`--tipo` se conserva al resubir si no se da, igual que `--experiencia`: corregir un juego es volver a
+correr el script. Un minijuego publicado **antes** de desplegar el frontend de la 0044 sale en Clases; por
+eso se migró, se desplegó y recién después se subieron.
+
+**Probado el 2026-10-15 en producción**, con `alumno.prueba@duocuc.cl` y un Chromium automatizado: los
+treinta se abrieron desde Pulso, se llegó al cierre y el libro quedó con un pago por tramo **por juego**
+(70 en cada uno de ITY1102; 60 en DSY1107, 50 en su MJ03). En ITY1102 los niveles se dieron por superados
+con `Juego.superar(i)` —el gancho que usa su verificador— y las preguntas se respondieron con clics
+reales; los quince de DSY1107 se ganaron jugando, por la interfaz de cada juego y sin la solución
+asistida. Una respuesta incorrecta no paga, reabrir un juego terminado no vuelve a pagar, y el cierre de
+ITY1102 se pospuso hasta los 300 s y lo cobró el reintento del rastreo, sin recargar.
+
+**Ojo con las preguntas de DSY1107:** en casi todos los juegos se bloquean al primer clic, así que una
+respuesta mala deja esos 10 puntos sin cobrar. No se pierden: «Jugar de nuevo» limpia las respuestas del
+juego y acertar en la segunda vuelta paga (comprobado en MJ07). En ITY1102 la pregunta deja reintentar y
+el botón para seguir no se habilita hasta acertar.
+
 ## Laboratorios
 
 Un laboratorio es una actividad de tipo `laboratorio` con cuerpo: el enunciado, las cajas donde el
@@ -1745,7 +1794,7 @@ la llamada que ya está corriendo en producción.**
 | Ruta | Quién entra |
 |---|---|
 | `/registro`, `/ingresar` | Solo sin sesión |
-| `/inicio`, `/clases`, `/actividades`, `/laboratorio/:codigo`, `/diagnostico`, `/ramos`, `/perfil`, `/puntos`, `/tienda` | Alumnos |
+| `/inicio`, `/clases`, `/minijuegos`, `/actividades`, `/laboratorio/:codigo`, `/diagnostico`, `/ramos`, `/perfil`, `/puntos`, `/tienda` | Alumnos |
 | `/curso`, `/curso/clases`, `/curso/actividades`, `/curso/alumnos` | Docentes |
 | `/ficha/:matriculaId` | Los dos: el alumno la suya, el docente las de sus secciones |
 

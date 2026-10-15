@@ -437,8 +437,12 @@ en Pulso. En `/curso/clases` aparecen con la insignia «Minijuego» y se program
 
 | Ramo | Juegos | Etapas | Preguntas | Abrir · pregunta · cierre | Por juego | Mínimo para el cierre |
 |---|---|---|---|---|---|---|
-| ITY1102 | MJ01–MJ15 | 5 | 3 | 10 · 10 · 30 | 70 | 300 s (lo pide su README) |
-| DSY1107 | MJ01–MJ15 | 8 | 2 (MJ03: 1) | 10 · 10 · 30 | 60 (MJ03: 50) | 64 s (8 por etapa) |
+| ITY1102 | MJ01–MJ15 | 5 | 3 | 0 · 5 · 5 | 20 | 300 s (lo pide su README) |
+| DSY1107 | MJ01–MJ15 | 8 | 2 (MJ03: 1) | 0 · 5 · 10 (MJ03: 15) | 20 | 64 s (8 por etapa) |
+
+20 por juego, 300 por ramo. Empezaron en 10 · 10 · 30 (70 y 60 por juego) y el docente los bajó el
+2026-10-15 porque daban demasiados puntos; lo ya pagado con los valores de antes quedó como estaba. El
+cierre se calcula como `20 − 5 × preguntas`, así que todos suman lo mismo.
 
 Van en la experiencia 2 con `orden` 101–115 —después de toda la EA2, sin renumerar nada— y sin plazo.
 El movimiento en el historial dice «Abrió la clase MJ01 · …» porque lo escriben las funciones de las
@@ -448,7 +452,7 @@ clases, que no se tocaron.
 set -a; . ./.env.local; set +a
 node neon/subir-clase.mjs --archivo "../Arquitectura_de_Sistemas_IA/Minijuegos/MJ01-Turno-de-noche.html" \
   --sigla ITY1102 --periodo 2026-2 --codigo MJ01 --titulo "Turno de noche" --descripcion "…" \
-  --orden 101 --experiencia 2 --tipo minijuego --abrir 10 --actividad 10 --terminar 30 \
+  --orden 101 --experiencia 2 --tipo minijuego --abrir 0 --actividad 5 --terminar 5 \
   --segundos-minimos 300 --publicar
 ```
 

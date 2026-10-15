@@ -41,9 +41,56 @@ const SPRITE_MAPA = SPRITE_MITAD.map(f => f + [...f].reverse().join(''));
 const SPRITE_COLORES: Record<string, string> = {
   k: '#15121a', g: '#e8e2ee', G: '#b9b0c6', p: '#f29ab5', y: '#ff3048', Y: '#ffd34d',
   w: '#ffffff', n: '#3b2f4a', c: '#ffb800', C: '#c98a00',
+  // Los del daño: arañazo, parche, moretón y gota de sudor.
+  m: '#c0263a', b: '#e9d8b4', B: '#c8b48a', x: '#6b3a7a', e: '#7fd3ff',
 };
-const SPRITE = SPRITE_MAPA.flatMap((fila, y) => [...fila].flatMap((c, x) =>
-  c === '.' ? [] : [{ x, y, color: SPRITE_COLORES[c], ojo: c === 'y' }]));
+
+/**
+ * El daño del jefe, en cinco golpes acumulativos (seis etapas contando la de
+ * entero): cada golpe son píxeles que se pintan encima del mapa completo (ya
+ * espejado), como `[fila, columna, letra]`, donde '.' borra. Va asimétrico a
+ * propósito: un golpe no cae en los dos lados.
+ */
+type Parche = [number, number, string][];
+const borrar = (filas: number[], cols: number[]): Parche =>
+  filas.flatMap(f => cols.map(c => [f, c, '.'] as [number, number, string]));
+const DANO: Parche[] = [
+  // 1 · rasguñado: le falta una punta a la corona y tiene arañazos en la mejilla.
+  [[5, 13, '.'], [6, 14, 'C'],
+   [15, 18, 'm'], [16, 19, 'm'], [15, 20, 'm'], [16, 21, 'm']],
+  // 2 · parchado: un parche en la otra mejilla, y ya empieza a sudar.
+  [[16, 4, 'b'], [16, 5, 'B'], [16, 6, 'b'], [15, 5, 'b'], [17, 5, 'b'],
+   [7, 1, 'e'], [8, 0, 'e'], [8, 1, 'e'], [9, 0, 'e'], [9, 1, 'e']],
+  // 3 · machucado: la oreja derecha se corta en la fila 3 y la punta cae doblada
+  // hacia afuera; además pierde un diente.
+  [...borrar([0, 1, 2], [16, 17, 18, 19, 20]),
+   [3, 16, 'k'], [3, 17, 'k'], [3, 18, 'k'], [3, 19, 'k'], [3, 20, 'k'], [3, 21, 'k'], [3, 22, 'k'], [3, 23, 'k'],
+   [4, 20, 'G'], [4, 21, 'p'], [4, 22, 'g'], [4, 23, 'k'],
+   [5, 21, 'k'], [5, 22, 'k'], [5, 23, 'k'],
+   [18, 12, 'k'], [19, 12, 'k']],
+  // 4 · vendado: ojo morado y una venda en la frente, con el nudo al costado.
+  [[11, 4, 'x'], [11, 5, 'x'], [11, 6, 'x'], [11, 7, 'x'], [11, 8, 'x'], [12, 4, 'x'], [13, 4, 'x'],
+   [12, 8, 'x'], [13, 8, 'x'], [14, 4, 'x'], [14, 5, 'x'], [14, 6, 'x'], [14, 7, 'x'], [14, 8, 'x'],
+   ...Array.from({ length: 18 }, (_, i) => [10, 3 + i, i % 3 === 2 ? 'B' : 'b'] as [number, number, string]),
+   [9, 22, 'b'], [10, 22, 'B'], [11, 22, 'b'], [11, 23, 'b'], [9, 23, 'b']],
+  // 5 · derrotado: ojos en X y sin corona.
+  [[12, 5, 'k'], [12, 6, 'g'], [12, 7, 'k'], [13, 5, 'g'], [13, 6, 'k'], [13, 7, 'g'],
+   [12, 16, 'k'], [12, 17, 'g'], [12, 18, 'k'], [13, 16, 'g'], [13, 17, 'k'], [13, 18, 'g'],
+   ...borrar([5, 6, 7], [9, 10, 11, 12, 13, 14])],
+];
+
+function pixeles(mapa: string[]) {
+  return mapa.flatMap((fila, y) => [...fila].flatMap((c, x) =>
+    c === '.' ? [] : [{ x, y, color: SPRITE_COLORES[c], ojo: c === 'y' }]));
+}
+
+/** El jefe en cada etapa de daño: 0 entero, `DANO.length` derrotado. */
+const SPRITE_ETAPAS = Array.from({ length: DANO.length + 1 }, (_, etapa) => {
+  const mapa = SPRITE_MAPA.map(f => [...f]);
+  for (const parche of DANO.slice(0, etapa)) for (const [f, c, l] of parche) mapa[f][c] = l;
+  return pixeles(mapa.map(f => f.join('')));
+});
+const SPRITE = SPRITE_ETAPAS[0];
 
 /** Lo que dura una clase de DSY1107: el timer parte con esto al aceptar el desafío. */
 const DURACION_DESAFIO_MS = 79 * 60 * 1000;
@@ -76,19 +123,57 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
     .jefe-alerta::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #ff3048;
       animation: jefe-late 1s ease-in-out infinite; }
     .jefe h2 { margin: 10px 0 4px; font-size: clamp(26px, 5vw, 36px); line-height: 1.1; color: #fff; }
-    .jefe-sub { margin: 0 0 18px; color: #b9b0c6; font-size: 15px; }
-    .jefe ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: fase; }
-    .jefe li { counter-increment: fase; position: relative; padding: 10px 12px 10px 46px; border-radius: 12px;
-      background: #1e1b25; border: 1px solid #2f2a38; font-size: 15px; line-height: 1.45;
-      animation: jefe-fase .35s ease-out both; }
-    .jefe li::before { content: counter(fase); position: absolute; left: 12px; top: 10px; width: 24px; height: 24px;
-      border-radius: 7px; display: grid; place-items: center; font-weight: 900; font-size: 13px;
-      background: #3b2f4a; color: #fff; }
-    .jefe li.clave { border-color: #8a6400; background: #2a2212; }
-    .jefe li.clave::before { background: #ffb800; color: #1a1300; }
-    .jefe li.clave strong { color: #ffd34d; }
-    .jefe-tip { display: block; margin-top: 6px; font-size: 13.5px; color: #b9b0c6; }
-    .jefe-reloj { margin: 16px 0 0; font-size: 14px; color: #b9b0c6; }
+    .jefe-reloj { margin: 14px 0 0; font-size: 14px; color: #b9b0c6; }
+    /* El diálogo: el jefe habla de a una línea, como en un juego. */
+    .globo { position: relative; margin: 18px 0 0; padding: 14px 16px; border-radius: 14px; min-height: 76px;
+      background: #f4f1f7; color: #1b1722; font-size: 16px; line-height: 1.5; font-weight: 500; }
+    .globo::before { content: ''; position: absolute; top: -9px; left: 50%; margin-left: -9px;
+      border: 9px solid transparent; border-top: 0; border-bottom-color: #f4f1f7; }
+    .globo-quien { display: block; font-size: 11px; font-weight: 800; letter-spacing: .14em;
+      text-transform: uppercase; color: #8a2a3a; margin-bottom: 4px; }
+    .globo-pasos { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+    .globo-pasos i { width: 7px; height: 7px; border-radius: 50%; background: #3a3342; }
+    .globo-pasos i.on { background: #ffb800; }
+    .trato { margin-top: 16px; padding: 14px 16px; border-radius: 14px; border: 1px solid #8a6400;
+      background: #2a2212; font-size: 15px; line-height: 1.5; }
+    .trato b.titulo { display: block; font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+      color: #ffd34d; margin-bottom: 6px; }
+    .trato strong { color: #ffd34d; }
+    .jefe-acciones .secundario { background: transparent; color: #eeeaf2; border: 1px solid #3a3342; }
+    .jefe-acciones .secundario:hover { background: #1e1b25; }
+    .jefe-acciones { gap: 10px; }
+    /* El jefe acompaña la lista: su vida es lo que falta por terminar. */
+    .jefe-panel { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
+      margin-bottom: 18px; padding: 16px 20px; border-radius: 16px; background: #16141b; color: #eeeaf2;
+      border: 1px solid #3a3342; }
+    .jefe-panel svg { width: 92px; height: auto; animation: jefe-flota 2.4s ease-in-out infinite; }
+    .jefe-panel.derrotado svg { animation: none; opacity: .55; transform: rotate(-12deg); }
+    /* El golpe: cuando baja la vida, el jefe se sacude y se pone rojo un instante. */
+    .jefe-panel.golpe svg { animation: jefe-golpeado .6s ease-out; }
+    .jefe-panel.golpe .hp-barra { animation: jefe-sacude .4s ease-out; }
+    @keyframes jefe-golpeado {
+      0% { transform: translateX(0); filter: none; }
+      15% { transform: translateX(-8px) rotate(-6deg); filter: brightness(.7) sepia(1) saturate(6) hue-rotate(-30deg); }
+      35% { transform: translateX(7px) rotate(5deg); }
+      55% { transform: translateX(-4px); filter: none; }
+      100% { transform: translateX(0); }
+    }
+    @keyframes jefe-sacude { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+    .jefe-panel-etq { font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #ff6b7d; }
+    .jefe-panel-nombre { font-size: 20px; font-weight: 800; margin: 2px 0 8px; }
+    .hp { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+    .hp-barra { flex: 1; height: 14px; border-radius: 4px; background: #2a2432; border: 1px solid #3a3342; overflow: hidden; }
+    .hp-barra i { display: block; height: 100%; transition: width .8s ease, background .8s; }
+    .hp-num { font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+    .jefe-panel .globo { margin-top: 12px; min-height: 0; font-size: 15px; padding: 10px 14px; }
+    .jefe-panel .globo::before { top: 50%; left: -9px; margin: -9px 0 0; border: 9px solid transparent;
+      border-left: 0; border-right-color: #f4f1f7; }
+    @media (max-width: 560px) {
+      .jefe-panel { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+      .jefe-panel .globo::before { top: -9px; left: 50%; margin: 0 0 0 -9px; border: 9px solid transparent;
+        border-top: 0; border-bottom-color: #f4f1f7; }
+      .hp { width: 100%; }
+    }
     .jefe-sprite { display: block; width: min(168px, 40vw); height: auto; margin: 4px auto 14px;
       animation: jefe-flota 2.4s ease-in-out infinite; }
     .jefe-ojo { animation: jefe-ojos 1.6s steps(2, jump-none) infinite; }
@@ -112,16 +197,16 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
     @keyframes jefe-entra { from { opacity: 0; } }
     @keyframes jefe-golpe { from { opacity: 0; transform: scale(.9) translateY(16px); } }
     @keyframes jefe-late { 50% { opacity: .35; } }
-    @keyframes jefe-fase { from { opacity: 0; transform: translateX(-8px); } }
     @keyframes jefe-flota { 50% { transform: translateY(-6px); } }
     @keyframes jefe-ojos { 50% { fill: #ff8a96; } }
     @media (prefers-reduced-motion: reduce) {
-      .jefe-fondo, .jefe, .jefe li, .jefe-alerta::before, .jefe-sprite, .jefe-ojo { animation: none; }
+      .jefe-fondo, .jefe, .jefe-alerta::before, .jefe-sprite, .jefe-ojo, .jefe-panel svg,
+      .jefe-panel.golpe svg, .jefe-panel.golpe .hp-barra { animation: none; }
     }
   `,
   template: `
-    <!-- El desafío de DSY1107: un jefe final que hay que aceptar antes de ver los
-         juegos. Aceptar arranca el reloj de la clase. -->
+    <!-- El desafío de DSY1107: el jefe final se presenta con un diálogo y propone
+         el trato. Hay que aceptarlo para ver los juegos, y aceptar arranca el reloj. -->
     @if (verDesafio()) {
       <div class="jefe-fondo" role="dialog" aria-modal="true" aria-labelledby="jefe-titulo">
         <div class="jefe">
@@ -132,29 +217,35 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
                     [class.jefe-ojo]="p.ojo"/>
             }
           </svg>
-          <div class="jefe-alerta">Jefe final · El Conejo del Broker</div>
+          <div class="jefe-alerta">Jefe final de la EP2</div>
           <h2 id="jefe-titulo">Bienvenido a los Juegos del Hambre</h2>
-          <p class="jefe-sub">Quince minijuegos. Un solo grupo elige primero.</p>
-          <ol>
-            <li style="animation-delay:.3s">Inicia sesión en Pulso.</li>
-            <li style="animation-delay:.4s">Ve a la sección <strong>Minijuegos</strong>.</li>
-            <li style="animation-delay:.5s">Empieza a completar los minijuegos de forma individual.</li>
-            <li style="animation-delay:.6s">
-              El grupo que tenga al integrante con <strong>todos listos</strong> le avisa al profe
-              (si nadie termina, gana el que llegue más lejos).
-              <span class="jefe-tip"><strong>Pro tip:</strong> si se la quieren vivir, que todo el grupo
-                juegue en la cuenta de uno solo, así todos apoyan con las respuestas.</span>
-            </li>
-            <li class="clave" style="animation-delay:.7s">
-              Según el orden en que terminen, van a <strong>poder elegir el orden de presentación de su grupo</strong>.
-            </li>
-            <li style="animation-delay:.8s">Suerte :)</li>
-          </ol>
-          @if (!aceptadoEn()) {
-            <p class="jefe-reloj">Al aceptar parte el reloj: <strong>79 minutos</strong>, lo que dura la clase.</p>
+
+          <div class="globo" aria-live="polite">
+            <span class="globo-quien">El Conejo del Broker</span>
+            {{ DIALOGO[paso()] }}
+          </div>
+          <div class="globo-pasos" aria-hidden="true">
+            @for (d of DIALOGO; track $index) { <i [class.on]="$index <= paso()"></i> }
+          </div>
+
+          @if (ultimoPaso()) {
+            <div class="trato">
+              <b class="titulo">El trato</b>
+              Basta con que <strong>un integrante del grupo</strong> termine los {{ juegos().length }}
+              minijuegos. El <strong>primer grupo</strong> en derrotarlo <strong>elige en qué orden presenta</strong>;
+              después elige el segundo, y así. Si nadie termina, cuenta el que llegue más lejos.
+              Apenas lo logren, avísenle al profe.
+            </div>
+            @if (!aceptadoEn()) {
+              <p class="jefe-reloj">Al aceptar parte el reloj: <strong>79 minutos</strong>, lo que dura la clase.</p>
+            }
           }
+
           <div class="jefe-acciones">
-            @if (aceptadoEn()) {
+            @if (!ultimoPaso()) {
+              <button type="button" class="secundario" (click)="paso.set(DIALOGO.length - 1)">Saltar</button>
+              <button type="button" (click)="paso.set(paso() + 1)" autofocus>Siguiente ▸</button>
+            } @else if (aceptadoEn()) {
               <button type="button" (click)="releyendo.set(false)" autofocus>Volver a los juegos</button>
             } @else {
               <button type="button" (click)="aceptar()" autofocus>Aceptar el desafío</button>
@@ -183,7 +274,7 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
       </p>
       @if (hayDesafio() && aceptadoEn()) {
         <button type="button" class="boton chico contorno" style="margin-top:10px"
-                (click)="releyendo.set(true)">Ver el desafío</button>
+                (click)="paso.set(0); releyendo.set(true)">Ver el desafío</button>
       }
     </div>
 
@@ -200,6 +291,27 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
         <div class="aviso dato">Acepta el desafío para ver los minijuegos.</div>
       </div>
     } @else {
+      @if (hayDesafio()) {
+        <div class="jefe-panel" [class.derrotado]="hp() === 0" [class.golpe]="golpe()">
+          <svg [attr.viewBox]="'0 0 ' + SPRITE_ANCHO + ' ' + SPRITE_ALTO" shape-rendering="crispEdges"
+               role="img" [attr.aria-label]="'El Conejo del Broker, ' + ['entero', 'rasguñado', 'parchado', 'machucado', 'vendado', 'derrotado'][etapaDano()]">
+            @for (p of spriteDanado(); track $index) {
+              <rect [attr.x]="p.x" [attr.y]="p.y" width="1" height="1" [attr.fill]="p.color"/>
+            }
+          </svg>
+          <div>
+            <div class="jefe-panel-etq">Jefe final de la EP2</div>
+            <div class="jefe-panel-nombre">El Conejo del Broker</div>
+            <div class="hp">
+              <span>HP</span>
+              <span class="hp-barra"><i [style.width.%]="hp() / juegos().length * 100"
+                [style.background]="hp() / juegos().length > .5 ? '#3ddc84' : hp() / juegos().length > .25 ? '#ffb800' : '#ff3048'"></i></span>
+              <span class="hp-num" data-mj-hp>{{ hp() }}/{{ juegos().length }}</span>
+            </div>
+            <div class="globo">{{ burla() }}</div>
+          </div>
+        </div>
+      }
       <div class="rejilla tres" style="margin-bottom:18px">
         <div class="tarjeta">
           <p class="etiqueta">Terminados</p>
@@ -227,10 +339,10 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
 
       <div class="tarjeta" style="margin-bottom:18px">
         <p class="chico suave" style="margin:0">
-          Cada minijuego paga por separado: <strong>{{ juegos()[0].puntos_abrir }} puntos</strong>
-          por abrirlo, <strong>{{ juegos()[0].puntos_actividad }}</strong> por cada pregunta de
-          control que aciertes y <strong>{{ juegos()[0].puntos_terminar }}</strong> por llegar al
-          cierre. Cada cosa se paga una sola vez: volver a jugar es para practicar.
+          Cada minijuego paga por separado, hasta <strong>{{ maximoPorJuego() }} puntos</strong>:
+          @if (juegos()[0].puntos_abrir > 0) { <strong>{{ juegos()[0].puntos_abrir }}</strong> por abrirlo, }
+          <strong>{{ juegos()[0].puntos_actividad }}</strong> por cada pregunta de control que aciertes
+          y el resto por llegar al cierre. Cada cosa se paga una sola vez: volver a jugar es para practicar.
         </p>
         @if (hayPlazos()) {
           <p class="chico suave" style="margin:10px 0 0">
@@ -276,9 +388,9 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
 
                 <!-- Lo que paga este juego, tramo por tramo, y qué ya cobró. -->
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:14px">
-                  <span class="insignia" [class.verde]="j.abierta">
-                    Abrir · {{ j.puntos_abrir }}
-                  </span>
+                  @if (j.puntos_abrir > 0) {
+                    <span class="insignia" [class.verde]="j.abierta">Abrir · {{ j.puntos_abrir }}</span>
+                  }
                   @if (j.actividades > 0) {
                     <span class="insignia" [class.verde]="j.resueltas >= j.actividades">
                       Preguntas {{ j.resueltas }}/{{ j.actividades }} · {{ j.puntos_actividad }} c/u
@@ -359,6 +471,46 @@ export class MinijuegosComponent {
   aceptadoEn = signal<number | null>(null);
   releyendo = signal(false);
   verDesafio = computed(() => this.hayDesafio() && (!this.aceptadoEn() || this.releyendo()));
+
+  /** Lo que dice el jefe al presentarse, una línea por paso; la última deja el trato a la vista. */
+  protected readonly DIALOGO = [
+    'Así que llegaron. Soy el Conejo del Broker, jefe final de la EP2.',
+    'El profe me contrató porque hoy no tenía ganas de hacer la clase. Me paga en zanahorias y mensajes sin ack.',
+    'Mi pega es simple: que no terminen. Tengo tantos puntos de vida como minijuegos hay en esta sala.',
+    'Pero el profe me obligó a ofrecerles un trato. Léanlo bien, porque no lo voy a repetir… bueno, sí, está en el botón.',
+  ];
+  paso = signal(0);
+  ultimoPaso = computed(() => this.paso() >= this.DIALOGO.length - 1);
+
+  /** La vida del jefe: los minijuegos que faltan por terminar. */
+  hp = computed(() => this.juegos().length - this.terminados());
+  /**
+   * La etapa de daño: el último golpe (derrotado) queda para la vida en cero, y
+   * los demás se reparten parejo entre lo que lleva perdido. Con 15 juegos, un
+   * golpe nuevo cada 3 terminados.
+   */
+  etapaDano = computed(() => {
+    const total = this.juegos().length || 1;
+    if (this.hp() === 0) return DANO.length;
+    return Math.min(DANO.length - 1, Math.floor(((total - this.hp()) / total) * DANO.length));
+  });
+  maximoPorJuego = computed(() => Math.max(0, ...this.juegos().map(j =>
+    j.puntos_abrir + j.actividades * j.puntos_actividad + j.puntos_terminar)));
+  spriteDanado = computed(() => SPRITE_ETAPAS[this.etapaDano()]);
+  /** Se enciende un instante cada vez que la vida baja, para que el golpe se note. */
+  golpe = signal(false);
+  /** Lo que el jefe va diciendo al lado de la lista, según cuánto le queda y el reloj. */
+  burla = computed(() => {
+    const hp = this.hp();
+    const total = this.juegos().length;
+    if (hp === 0) return 'Me derrotaron… Corran a avisarle al profe antes que otro grupo, y díganle que me debe las zanahorias.';
+    if (this.restanteMs() === 0) return 'Se acabó el tiempo. Si nadie me ganó, que avise el que llegó más lejos.';
+    if (hp === total) return '¿Ni uno todavía? El profe me dijo que esto iba a ser fácil.';
+    if (hp > total * 2 / 3) return `Eso fue suerte. Me quedan ${hp} de vida.`;
+    if (hp > total / 3) return `Ya, ya… me dolió. Pero un consumidor sin idempotencia procesa dos veces. Me quedan ${hp}.`;
+    if (hp > 1) return `¡Paren! Me quedan ${hp}. Voy a pedirle aumento al profe.`;
+    return 'Uno. Me queda uno. Por favor, piénsenlo dos veces… o una sola, si es idempotente.';
+  });
   private ahora = signal(Date.now());
   restanteMs = computed(() =>
     Math.max(0, (this.aceptadoEn() ?? this.ahora()) + DURACION_DESAFIO_MS - this.ahora()));
@@ -386,6 +538,20 @@ export class MinijuegosComponent {
     });
     const tic = setInterval(() => this.ahora.set(Date.now()), 1000);
     inject(DestroyRef).onDestroy(() => clearInterval(tic));
+    // El golpe se marca solo cuando la vida baja respecto de la que ya se mostró:
+    // la primera carga no cuenta, y cambiar de ramo tampoco (vuelve a partir).
+    let hpAnterior: number | null = null;
+    let apagar: number | undefined;
+    effect(() => {
+      const hp = this.juegos().length ? this.hp() : null;
+      if (hp !== null && hpAnterior !== null && hp < hpAnterior) {
+        this.golpe.set(false);
+        queueMicrotask(() => this.golpe.set(true));
+        clearTimeout(apagar);
+        apagar = window.setTimeout(() => this.golpe.set(false), 700);
+      }
+      hpAnterior = hp;
+    });
     effect(() => {
       const ramo = this.perfil.matricula() ? untracked(() => this.perfil.ramo()) : null;
       if (ramo) void this.cargar(ramo);

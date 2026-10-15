@@ -458,11 +458,19 @@ eso se migró, se desplegó y recién después se subieron.
 
 **Probado el 2026-10-15 en producción**, con `alumno.prueba@duocuc.cl` y un Chromium automatizado: los
 treinta se abrieron desde Pulso, se llegó al cierre y el libro quedó con un pago por tramo **por juego**
-(70 en cada uno de ITY1102; 60 en DSY1107, 50 en su MJ03). En ITY1102 los niveles se dieron por superados
-con `Juego.superar(i)` —el gancho que usa su verificador— y las preguntas se respondieron con clics
-reales; los quince de DSY1107 se ganaron jugando, por la interfaz de cada juego y sin la solución
-asistida. Una respuesta incorrecta no paga, reabrir un juego terminado no vuelve a pagar, y el cierre de
-ITY1102 se pospuso hasta los 300 s y lo cobró el reintento del rastreo, sin recargar.
+(70 en cada uno de ITY1102; 60 en DSY1107, 50 en su MJ03). Después se **jugaron los treinta** de verdad
+desde Pulso, nivel por nivel y mirando cada pantalla en escritorio y en celular. Una respuesta
+incorrecta no paga, reabrir un juego terminado no vuelve a pagar, y el cierre de ITY1102 se pospuso
+hasta los 300 s y lo cobró el reintento del rastreo, sin recargar.
+
+Esa pasada encontró defectos de dibujo, todos en el código de los juegos y ninguno en la inyección de
+Pulso (el peor, el de KAPLAY, se reprodujo igual sirviendo el archivo fuera de Pulso), y se corrigieron en las fuentes antes de resubir: en DSY1107 MJ02 y
+MJ10 el texto del canvas salía en rectángulos negros desde la segunda instancia de KAPLAY (el atlas de
+fuentes es compartido y `quit()` mata su contexto: ahora cada instancia usa su propia llave de fuente);
+en ITY1102, el núcleo partía en columnas las alternativas con `<code>`, mostraba las etiquetas `<code>`
+de las explicaciones como texto y le ponía borde de campo vacío al puntaje del cierre, y había etiquetas
+encimadas en MJ04 y MJ05, un registro que empujaba el tablero fuera de la pantalla en MJ12, una sola vida
+en MJ01, palabras cortadas en su terminal, y comillas invertidas y tildes faltantes en MJ06.
 
 **Ojo con las preguntas de DSY1107:** en casi todos los juegos se bloquean al primer clic, así que una
 respuesta mala deja esos 10 puntos sin cobrar. No se pierden: «Jugar de nuevo» limpia las respuestas del

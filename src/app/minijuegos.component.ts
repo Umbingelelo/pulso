@@ -1,42 +1,52 @@
 import { DecimalPipe } from '@angular/common';
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import type { Clase, Ramo } from './datos.service';
 import { DatosService } from './datos.service';
 import { agruparPorExperiencia, experienciaEnCurso } from './experiencias';
 import { PerfilStore } from './perfil.store';
 
 /**
- * El sprite del jefe final, en pixel art: una letra por píxel, y solo la mitad
- * izquierda: la derecha es su espejo, así queda simétrico sin cuidarlo a mano.
- * k contorno · r cuerpo · d sombra · h cuernos · y ojos · w dientes · o fuego.
+ * El jefe final, el Conejo del Broker, en pixel art: una letra por píxel, y solo
+ * la mitad izquierda; la derecha es su espejo, así queda simétrico sin cuidarlo.
+ * k contorno · g pelaje · G sombra · p oreja · y ojo · Y brillo · w dientes ·
+ * n collar · c corona · C sombra de la corona.
  */
 const SPRITE_MITAD = [
-  '...h.......',
-  '..hh.......',
-  '..hhh......',
-  '...hhk..kkk',
-  '....hkkkrrr',
-  '.....krrrrr',
-  '....krrdrrr',
-  '...krrkyykr',
-  '...krrkyykr',
-  '...krrrkkrr',
-  '..kdrrrrrrd',
-  '..kdrrkwkwk',
-  '..kddrkkwkw',
-  '...kddrrkkk',
-  '..okkddrrrr',
-  '.oorkkkdddd',
-  'oorrk.kkkkk',
-  '.oo..ok..o.',
-  '..o...o....',
+  '....kkk.....',
+  '...kgGgk....',
+  '...kgpGk....',
+  '...kgpGk....',
+  '...kgpGk....',
+  '...kgpGk..c.',
+  '...kgpGk.ccc',
+  '...kgGgk.cCc',
+  '....kgggkkkk',
+  '...kggggggGg',
+  '..kgggggggGg',
+  '..kgkkkkgggg',
+  '..kgkyYykggg',
+  '..kgkyyykggg',
+  '..kggkkkgggg',
+  '..kGgggggggk',
+  '..kGgggggkpp',
+  '...kGggggkkk',
+  '...kGGggggkw',
+  '....kkGgggkw',
+  '...knnkkkkkk',
+  '..knnnnnnnnn',
+  '..knnnnnncnn',
+  '..kkkkkkkkkk',
 ];
 const SPRITE_MAPA = SPRITE_MITAD.map(f => f + [...f].reverse().join(''));
 const SPRITE_COLORES: Record<string, string> = {
-  k: '#14070a', r: '#c0263a', d: '#7a1222', h: '#e9dcc4', y: '#ffd25e', w: '#ffffff', o: '#ff8a3d',
+  k: '#15121a', g: '#e8e2ee', G: '#b9b0c6', p: '#f29ab5', y: '#ff3048', Y: '#ffd34d',
+  w: '#ffffff', n: '#3b2f4a', c: '#ffb800', C: '#c98a00',
 };
 const SPRITE = SPRITE_MAPA.flatMap((fila, y) => [...fila].flatMap((c, x) =>
   c === '.' ? [] : [{ x, y, color: SPRITE_COLORES[c], ojo: c === 'y' }]));
+
+/** Lo que dura una clase de DSY1107: el timer parte con esto al aceptar el desafío. */
+const DURACION_DESAFIO_MS = 79 * 60 * 1000;
 
 /**
  * Los minijuegos del ramo: el repaso jugable de la evaluación en curso.
@@ -54,94 +64,114 @@ const SPRITE = SPRITE_MAPA.flatMap((fila, y) => [...fila].flatMap((c, x) =>
   styles: `
     .jefe-fondo {
       position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 18px;
-      background: radial-gradient(circle at 50% 30%, rgba(120, 10, 20, .55), rgba(5, 5, 10, .92) 70%);
-      backdrop-filter: blur(3px); animation: jefe-entra .35s ease-out both;
+      background: rgba(8, 8, 12, .88); animation: jefe-entra .3s ease-out both;
     }
     .jefe {
       width: min(620px, 100%); max-height: calc(100dvh - 36px); overflow-y: auto;
-      background: linear-gradient(180deg, #1b0b10 0%, #0d0b12 100%); color: #f4e9e9;
-      border: 2px solid #c0263a; border-radius: 18px; padding: 26px 26px 22px;
-      box-shadow: 0 0 0 1px rgba(255, 80, 90, .25), 0 0 60px rgba(192, 38, 58, .45);
-      animation: jefe-golpe .6s cubic-bezier(.2, 1.4, .4, 1) .1s both;
+      background: #16141b; color: #eeeaf2; border: 1px solid #3a3342; border-radius: 18px;
+      padding: 26px 26px 22px; animation: jefe-golpe .5s cubic-bezier(.2, 1.3, .4, 1) .05s both;
     }
     .jefe-alerta { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 800;
-      letter-spacing: .22em; text-transform: uppercase; color: #ff5a6a; }
-    .jefe-alerta::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #ff3b4e;
-      box-shadow: 0 0 12px #ff3b4e; animation: jefe-late 1s ease-in-out infinite; }
-    .jefe h2 { margin: 10px 0 4px; font-size: clamp(26px, 5vw, 36px); line-height: 1.1; color: #fff;
-      text-shadow: 0 0 18px rgba(255, 60, 80, .55); }
-    .jefe-sub { margin: 0 0 16px; color: #d7b9bd; font-size: 15px; }
-    .jefe-vida { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; font-size: 12px;
-      font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: #ffb3bb; }
-    .jefe-vida-barra { flex: 1; height: 12px; border-radius: 99px; background: #3a1018;
-      border: 1px solid #6d1a28; overflow: hidden; }
-    .jefe-vida-barra i { display: block; height: 100%; width: 100%;
-      background: linear-gradient(90deg, #ff3b4e, #ff8a3d); animation: jefe-llena 1.2s ease-out .4s both; }
+      letter-spacing: .22em; text-transform: uppercase; color: #ff6b7d; }
+    .jefe-alerta::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #ff3048;
+      animation: jefe-late 1s ease-in-out infinite; }
+    .jefe h2 { margin: 10px 0 4px; font-size: clamp(26px, 5vw, 36px); line-height: 1.1; color: #fff; }
+    .jefe-sub { margin: 0 0 18px; color: #b9b0c6; font-size: 15px; }
     .jefe ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: fase; }
     .jefe li { counter-increment: fase; position: relative; padding: 10px 12px 10px 46px; border-radius: 12px;
-      background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 90, 106, .18); font-size: 15px;
-      line-height: 1.45; animation: jefe-fase .4s ease-out both; }
+      background: #1e1b25; border: 1px solid #2f2a38; font-size: 15px; line-height: 1.45;
+      animation: jefe-fase .35s ease-out both; }
     .jefe li::before { content: counter(fase); position: absolute; left: 12px; top: 10px; width: 24px; height: 24px;
       border-radius: 7px; display: grid; place-items: center; font-weight: 900; font-size: 13px;
-      background: #c0263a; color: #fff; }
-    .jefe li.clave { border-color: #ffb800; background: rgba(255, 184, 0, .08); }
-    .jefe li.clave strong { color: #ffd25e; }
-    .jefe-tip { display: block; margin-top: 6px; font-size: 13.5px; color: #d7b9bd; }
-    .jefe-sprite { display: block; width: min(176px, 42vw); height: auto; margin: -4px auto 12px;
-      filter: drop-shadow(0 0 14px rgba(255, 60, 80, .55)); animation: jefe-flota 2.4s ease-in-out infinite; }
+      background: #3b2f4a; color: #fff; }
+    .jefe li.clave { border-color: #8a6400; background: #2a2212; }
+    .jefe li.clave::before { background: #ffb800; color: #1a1300; }
+    .jefe li.clave strong { color: #ffd34d; }
+    .jefe-tip { display: block; margin-top: 6px; font-size: 13.5px; color: #b9b0c6; }
+    .jefe-reloj { margin: 16px 0 0; font-size: 14px; color: #b9b0c6; }
+    .jefe-sprite { display: block; width: min(168px, 40vw); height: auto; margin: 4px auto 14px;
+      animation: jefe-flota 2.4s ease-in-out infinite; }
     .jefe-ojo { animation: jefe-ojos 1.6s steps(2, jump-none) infinite; }
-    @keyframes jefe-flota { 50% { transform: translateY(-6px); } }
-    @keyframes jefe-ojos { 50% { fill: #fff6a8; } }
-    .jefe-acciones { display: flex; justify-content: flex-end; margin-top: 20px; }
-    .jefe-acciones button { font: inherit; font-weight: 800; font-size: 16px; letter-spacing: .02em;
-      padding: 12px 22px; border-radius: 12px; border: 0; cursor: pointer; color: #fff;
-      background: linear-gradient(135deg, #c0263a, #ff5a3d); box-shadow: 0 6px 22px rgba(192, 38, 58, .5); }
-    .jefe-acciones button:focus-visible { outline: 3px solid #ffd25e; outline-offset: 2px; }
+    .jefe-acciones { display: flex; justify-content: flex-end; margin-top: 18px; }
+    .jefe-acciones button { font: inherit; font-weight: 800; font-size: 16px; padding: 12px 22px;
+      border-radius: 12px; border: 0; cursor: pointer; color: #1a1300; background: #ffb800; }
+    .jefe-acciones button:hover { background: #ffc633; }
+    .jefe-acciones button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+    /* El marcador del desafío: fijo arriba a la derecha mientras dura. */
+    .marcador {
+      position: fixed; top: 14px; right: 14px; z-index: 900; display: flex; gap: 6px;
+      background: #16141b; color: #eeeaf2; border: 1px solid #3a3342; border-radius: 14px; padding: 6px;
+    }
+    .marcador div { padding: 6px 12px; border-radius: 10px; background: #1e1b25; text-align: center; min-width: 74px; }
+    .marcador span { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .12em;
+      text-transform: uppercase; color: #b9b0c6; }
+    .marcador b { font-size: 20px; font-variant-numeric: tabular-nums; }
+    .marcador .fin b { color: #ff6b7d; }
+    .marcador .listo b { color: #3ddc84; }
+    @media (max-width: 760px) { .marcador { top: auto; bottom: 12px; right: 12px; } }
     @keyframes jefe-entra { from { opacity: 0; } }
-    @keyframes jefe-golpe { from { opacity: 0; transform: scale(.85) translateY(20px); } }
+    @keyframes jefe-golpe { from { opacity: 0; transform: scale(.9) translateY(16px); } }
     @keyframes jefe-late { 50% { opacity: .35; } }
-    @keyframes jefe-llena { from { width: 0; } }
-    @keyframes jefe-fase { from { opacity: 0; transform: translateX(-10px); } }
+    @keyframes jefe-fase { from { opacity: 0; transform: translateX(-8px); } }
+    @keyframes jefe-flota { 50% { transform: translateY(-6px); } }
+    @keyframes jefe-ojos { 50% { fill: #ff8a96; } }
     @media (prefers-reduced-motion: reduce) {
-      .jefe-fondo, .jefe, .jefe li, .jefe-vida-barra i, .jefe-alerta::before,
-      .jefe-sprite, .jefe-ojo { animation: none; }
+      .jefe-fondo, .jefe, .jefe li, .jefe-alerta::before, .jefe-sprite, .jefe-ojo { animation: none; }
     }
   `,
   template: `
-    <!-- El desafío de DSY1107: se presenta como un jefe final apenas se entra a la
-         sección, para que el incentivo sea el juego y no solo los puntos. -->
+    <!-- El desafío de DSY1107: un jefe final que hay que aceptar antes de ver los
+         juegos. Aceptar arranca el reloj de la clase. -->
     @if (verDesafio()) {
       <div class="jefe-fondo" role="dialog" aria-modal="true" aria-labelledby="jefe-titulo">
         <div class="jefe">
           <svg class="jefe-sprite" [attr.viewBox]="'0 0 ' + SPRITE_ANCHO + ' ' + SPRITE_ALTO"
-               shape-rendering="crispEdges" role="img" aria-label="El jefe final">
+               shape-rendering="crispEdges" role="img" aria-label="El Conejo del Broker, el jefe final">
             @for (p of SPRITE; track $index) {
               <rect [attr.x]="p.x" [attr.y]="p.y" width="1" height="1" [attr.fill]="p.color"
                     [class.jefe-ojo]="p.ojo"/>
             }
           </svg>
-          <div class="jefe-alerta">Jefe final · se acerca</div>
+          <div class="jefe-alerta">Jefe final · El Conejo del Broker</div>
           <h2 id="jefe-titulo">Bienvenido a los Juegos del Hambre</h2>
           <p class="jefe-sub">Quince minijuegos. Un solo grupo elige primero.</p>
-          <div class="jefe-vida"><span>Desafío</span><span class="jefe-vida-barra"><i></i></span></div>
           <ol>
-            <li style="animation-delay:.5s">Inicia sesión en Pulso.</li>
-            <li style="animation-delay:.6s">Ve a la sección <strong>Minijuegos</strong>.</li>
-            <li style="animation-delay:.7s">Empieza a completar los minijuegos de forma individual.</li>
-            <li style="animation-delay:.8s">
+            <li style="animation-delay:.3s">Inicia sesión en Pulso.</li>
+            <li style="animation-delay:.4s">Ve a la sección <strong>Minijuegos</strong>.</li>
+            <li style="animation-delay:.5s">Empieza a completar los minijuegos de forma individual.</li>
+            <li style="animation-delay:.6s">
               El grupo que tenga al integrante con <strong>todos listos</strong> le avisa al profe
               (si nadie termina, gana el que llegue más lejos).
               <span class="jefe-tip"><strong>Pro tip:</strong> si se la quieren vivir, que todo el grupo
                 juegue en la cuenta de uno solo, así todos apoyan con las respuestas.</span>
             </li>
-            <li class="clave" style="animation-delay:.9s">
+            <li class="clave" style="animation-delay:.7s">
               Según el orden en que terminen, van a <strong>poder elegir el orden de presentación de su grupo</strong>.
             </li>
-            <li style="animation-delay:1s">Suerte :)</li>
+            <li style="animation-delay:.8s">Suerte :)</li>
           </ol>
+          @if (!aceptadoEn()) {
+            <p class="jefe-reloj">Al aceptar parte el reloj: <strong>79 minutos</strong>, lo que dura la clase.</p>
+          }
           <div class="jefe-acciones">
-            <button type="button" (click)="desafioCerrado.set(true)" autofocus>Aceptar el desafío</button>
+            @if (aceptadoEn()) {
+              <button type="button" (click)="releyendo.set(false)" autofocus>Volver a los juegos</button>
+            } @else {
+              <button type="button" (click)="aceptar()" autofocus>Aceptar el desafío</button>
+            }
           </div>
+        </div>
+      </div>
+    }
+
+    @if (hayDesafio() && aceptadoEn()) {
+      <div class="marcador" aria-live="off">
+        <div [class.listo]="terminados() === juegos().length">
+          <span>Juegos</span><b data-mj-marcador="juegos">{{ terminados() }}/{{ juegos().length }}</b>
+        </div>
+        <div [class.fin]="restanteMs() === 0">
+          <span>{{ restanteMs() === 0 ? 'Se acabó' : 'Quedan' }}</span>
+          <b data-mj-marcador="reloj">{{ reloj() }}</b>
         </div>
       </div>
     }
@@ -151,9 +181,9 @@ const SPRITE = SPRITE_MAPA.flatMap((fila, y) => [...fila].flatMap((c, x) =>
       <p>
         El repaso jugable de la evaluación{{ perfil.ramo() ? ' · ' + perfil.ramo()!.asignatura : '' }}.
       </p>
-      @if (hayDesafio()) {
+      @if (hayDesafio() && aceptadoEn()) {
         <button type="button" class="boton chico contorno" style="margin-top:10px"
-                (click)="desafioCerrado.set(false)">Ver el desafío</button>
+                (click)="releyendo.set(true)">Ver el desafío</button>
       }
     </div>
 
@@ -164,6 +194,10 @@ const SPRITE = SPRITE_MAPA.flatMap((fila, y) => [...fila].flatMap((c, x) =>
         <div class="aviso dato">
           Todavía no hay minijuegos publicados en este ramo.
         </div>
+      </div>
+    } @else if (hayDesafio() && !aceptadoEn()) {
+      <div class="tarjeta">
+        <div class="aviso dato">Acepta el desafío para ver los minijuegos.</div>
       </div>
     } @else {
       <div class="rejilla tres" style="margin-bottom:18px">
@@ -311,20 +345,47 @@ export class MinijuegosComponent {
 
   /**
    * Solo DSY1107 tiene el desafío del orden de presentación, y solo con juegos
-   * publicados: antes de la hora de apertura no hay nada que desafiar. Se muestra
-   * cada vez que se entra a la sección; volver desde la pestaña de un juego no lo
-   * repite, porque la pantalla no se vuelve a crear.
+   * publicados: antes de la hora de apertura no hay nada que desafiar. Los juegos
+   * no se muestran hasta aceptarlo, y aceptar arranca un reloj de 79 minutos.
+   *
+   * La aceptación se guarda en este navegador, por matrícula: recargar o volver
+   * desde la pestaña de un juego no reinicia el reloj. En otro equipo se acepta
+   * de nuevo y el reloj parte de ahí; es un empujón para la clase, no un control.
    */
   hayDesafio = computed(() => this.perfil.ramo()?.sigla === 'DSY1107' && this.juegos().length > 0);
   protected readonly SPRITE = SPRITE;
   protected readonly SPRITE_ANCHO = SPRITE_MAPA[0].length;
   protected readonly SPRITE_ALTO = SPRITE_MAPA.length;
-  desafioCerrado = signal(false);
-  verDesafio = computed(() => this.hayDesafio() && !this.desafioCerrado());
+  aceptadoEn = signal<number | null>(null);
+  releyendo = signal(false);
+  verDesafio = computed(() => this.hayDesafio() && (!this.aceptadoEn() || this.releyendo()));
+  private ahora = signal(Date.now());
+  restanteMs = computed(() =>
+    Math.max(0, (this.aceptadoEn() ?? this.ahora()) + DURACION_DESAFIO_MS - this.ahora()));
+  reloj = computed(() => {
+    const s = Math.ceil(this.restanteMs() / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  });
 
+  aceptar(): void {
+    const matricula = this.perfil.matricula();
+    if (!matricula) return;
+    const ahora = Date.now();
+    try { localStorage.setItem(`pulso.desafio.${matricula}`, String(ahora)); } catch { /* sin almacenamiento: dura lo que la pestaña */ }
+    this.aceptadoEn.set(ahora);
+  }
 
   /** Igual que en Clases: reacciona a la matrícula y lee el ramo sin registrarlo. */
   constructor() {
+    effect(() => {
+      const matricula = this.perfil.matricula();
+      let guardado: string | null = null;
+      try { guardado = matricula ? localStorage.getItem(`pulso.desafio.${matricula}`) : null; } catch { /* sin almacenamiento */ }
+      this.aceptadoEn.set(guardado ? Number(guardado) : null);
+      this.releyendo.set(false);
+    });
+    const tic = setInterval(() => this.ahora.set(Date.now()), 1000);
+    inject(DestroyRef).onDestroy(() => clearInterval(tic));
     effect(() => {
       const ramo = this.perfil.matricula() ? untracked(() => this.perfil.ramo()) : null;
       if (ramo) void this.cargar(ramo);

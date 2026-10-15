@@ -188,7 +188,9 @@ export class ClasesComponent {
         this.datos.clases(ramo),
         this.datos.experiencias(ramo),
       ]);
-      this.clases.set(clases);
+      // Los minijuegos viven en su propia pantalla: mezclados acá, quince juegos
+      // entierran la clase de esta semana.
+      this.clases.set(clases.filter(c => c.tipo !== 'minijuego'));
       this.experiencias.set(experiencias);
     } finally {
       this.cargando.set(false);

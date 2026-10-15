@@ -28,6 +28,9 @@
  *             --terminar N  --publicar-en "2026-08-17T08:30:00-04:00"
  *             --experiencia N (EA1, EA2…: el grupo en que aparece. Si no se da,
  *                              al volver a subir se conserva la que ya tenía)
+ *             --tipo minijuego (sale en la pantalla Minijuegos y no en Clases.
+ *                               Si no se da, una nueva es `clase` y al volver
+ *                               a subir se conserva el que tenía)
  *             --seco (no sube ni escribe: solo informa lo que haría)
  */
 import { readFile } from 'node:fs/promises';
@@ -117,6 +120,12 @@ if (experiencia !== null && !/^[1-9]$/.test(String(args.experiencia))) {
   process.exit(1);
 }
 
+const tipo = args.tipo === undefined ? null : String(args.tipo);
+if (tipo !== null && !['clase', 'minijuego'].includes(tipo)) {
+  console.error(`--tipo ${args.tipo}: va «clase» o «minijuego».`);
+  process.exit(1);
+}
+
 const html = await readFile(args.archivo, 'utf8');
 const slides = posicionesDeSlides(html);
 const { pauta, choques } = leerPauta(html, slides);
@@ -200,6 +209,7 @@ console.log(`Mínimo       ${segundosMinimos} s para darla por terminada`);
 console.log(`Ruta blob    ${ruta}`);
 console.log(`Publicada    ${publicadaDesde ?? 'no (queda cargada y oculta)'}`);
 console.log(`Experiencia  ${experiencia ?? 'no viene · al resubir se conserva la que tenía'}`);
+console.log(`Tipo         ${tipo ?? 'no viene · nueva es clase, al resubir se conserva'}`);
 
 if (args.seco) {
   console.log('\n--seco: no subí nada ni escribí en la base.');
@@ -225,14 +235,15 @@ const filas = await sql`
     asignatura_id, periodo_id, codigo, titulo, descripcion, orden, dictada_el,
     archivo, pauta, slides, actividades,
     puntos_abrir, puntos_actividad, puntos_terminar,
-    segundos_minimos, publicada_desde, experiencia)
+    segundos_minimos, publicada_desde, experiencia, tipo)
   select a.id, p.id, ${args.codigo}, ${nombre}, ${args.descripcion ?? null},
          ${Number(args.orden ?? 0)}, ${args.dictada ?? null}::date,
          ${blob.pathname}, ${JSON.stringify(pauta)}::jsonb,
          ${slides.length}, ${actividades},
          ${Number(args.abrir ?? 5)}, ${Number(args.actividad ?? 10)},
          ${Number(args.terminar ?? 20)},
-         ${segundosMinimos}, ${publicadaDesde}::timestamptz, ${experiencia}::smallint
+         ${segundosMinimos}, ${publicadaDesde}::timestamptz, ${experiencia}::smallint,
+         coalesce(${tipo}::text, 'clase')
     from public.asignaturas a, public.periodos p
    where a.sigla = ${args.sigla} and p.codigo = ${args.periodo}
   on conflict (asignatura_id, periodo_id, codigo) do update
@@ -250,8 +261,9 @@ const filas = await sql`
         segundos_minimos = excluded.segundos_minimos,
         publicada_desde = excluded.publicada_desde,
         experiencia = coalesce(excluded.experiencia, public.clases.experiencia),
+        tipo = coalesce(${tipo}::text, public.clases.tipo),
         actualizada_en = now()
-  returning id, codigo, titulo, slides, actividades, publicada_desde, experiencia`;
+  returning id, codigo, titulo, slides, actividades, publicada_desde, experiencia, tipo`;
 
 if (!filas.length) {
   console.error(`\nNo existe la asignatura ${args.sigla} en el periodo ${args.periodo}.`);

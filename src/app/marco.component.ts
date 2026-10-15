@@ -131,6 +131,14 @@ import { TemaService } from './tema.service';
               </svg>
               <span>Clases</span>
             </a>
+            <a routerLink="/minijuegos" routerLinkActive="activo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6.5 7.5h11a4 4 0 0 1 3.9 4.8l-.9 4.6a2.4 2.4 0 0 1-4.2 1l-2-2.4h-4.6l-2 2.4a2.4 2.4 0 0 1-4.2-1l-.9-4.6a4 4 0 0 1 3.9-4.8z"/>
+                <path d="M7.5 10.5v3"/><path d="M6 12h3"/><path d="M15.5 11h.01"/><path d="M17.5 13h.01"/>
+              </svg>
+              <span>Minijuegos</span>
+            </a>
             <a routerLink="/actividades" routerLinkActive="activo">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                    stroke-linecap="round" stroke-linejoin="round">

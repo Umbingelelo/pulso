@@ -147,6 +147,8 @@ export interface Clase {
   factor_atrasado: number;
   en_ventana: boolean;
   experiencia: number | null;
+  /** `minijuego` sale en su propia pantalla; `clase`, en Clases. Se pagan igual. */
+  tipo: 'clase' | 'minijuego';
 }
 
 /** La misma clase vista por quien la dicta: trae también las no publicadas. */
@@ -175,6 +177,7 @@ export interface ClaseDocente {
   abrieron: number;
   terminaron: number;
   a_tiempo: number;
+  tipo: 'clase' | 'minijuego';
 }
 
 /**
@@ -1150,7 +1153,7 @@ export class DatosService {
       .from('mis_clases')
       // En una sola línea a propósito: `postgrest-js` infiere el tipo del
       // resultado leyendo este literal, y una cadena concatenada lo deja ciego.
-      .select('id, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, matricula_id, abierta, abierta_en, slide_max, terminada_en, resueltas, ventana_hasta, factor_atrasado, en_ventana, experiencia')
+      .select('id, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, matricula_id, abierta, abierta_en, slide_max, terminada_en, resueltas, ventana_hasta, factor_atrasado, en_ventana, experiencia, tipo')
       .eq('matricula_id', ramo.matricula_id)
       .order('orden')
       .order('codigo');
@@ -1162,7 +1165,7 @@ export class DatosService {
   async clasesQueDicto(asignaturaId: string, periodoId: string): Promise<ClaseDocente[]> {
     const { data, error } = await this.db
       .from('clases_que_dicto')
-      .select('id, asignatura_id, periodo_id, sigla, asignatura, periodo, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, publicada_desde, ventana_hasta, factor_atrasado, publicada, en_ventana, abrieron, terminaron, a_tiempo')
+      .select('id, asignatura_id, periodo_id, sigla, asignatura, periodo, codigo, titulo, descripcion, orden, dictada_el, slides, actividades, puntos_abrir, puntos_actividad, puntos_terminar, publicada_desde, ventana_hasta, factor_atrasado, publicada, en_ventana, abrieron, terminaron, a_tiempo, tipo')
       .eq('asignatura_id', asignaturaId)
       .eq('periodo_id', periodoId)
       .order('orden')

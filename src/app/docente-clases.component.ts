@@ -49,6 +49,7 @@ import { aIso, aLocal } from './fechas';
             <tr>
               <td>
                 <strong>{{ c.codigo }}</strong> · {{ c.titulo }}
+                @if (c.tipo === 'minijuego') { <span class="insignia celeste">Minijuego</span> }
                 <div class="chico suave">
                   {{ c.slides }} diapositivas · {{ c.actividades }} actividades ·
                   hasta {{ maximo(c) }} puntos

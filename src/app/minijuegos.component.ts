@@ -237,7 +237,8 @@ const DURACION_DESAFIO_MS = 79 * 60 * 1000;
               Apenas lo logren, avísenle al profe.
             </div>
             @if (!aceptadoEn()) {
-              <p class="jefe-reloj">Al aceptar parte el reloj: <strong>79 minutos</strong>, lo que dura la clase.</p>
+              <p class="jefe-reloj">Al aceptar parte el reloj: <strong>79 minutos</strong>, lo que dura la clase.
+                El reloj ordena el desafío, no los puntos: cuando se acabe, los juegos siguen abiertos y siguen pagando.</p>
             }
           }
 
@@ -504,7 +505,7 @@ export class MinijuegosComponent {
     const hp = this.hp();
     const total = this.juegos().length;
     if (hp === 0) return 'Me derrotaron… Corran a avisarle al profe antes que otro grupo, y díganle que me debe las zanahorias.';
-    if (this.restanteMs() === 0) return 'Se acabó el tiempo. Si nadie me ganó, que avise el que llegó más lejos.';
+    if (this.restanteMs() === 0) return 'Se acabó el tiempo del desafío: si nadie me ganó, que avise el que llegó más lejos. Los puntos se siguen ganando igual.';
     if (hp === total) return '¿Ni uno todavía? El profe me dijo que esto iba a ser fácil.';
     if (hp > total * 2 / 3) return `Eso fue suerte. Me quedan ${hp} de vida.`;
     if (hp > total / 3) return `Ya, ya… me dolió. Pero un consumidor sin idempotencia procesa dos veces. Me quedan ${hp}.`;
